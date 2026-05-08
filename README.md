@@ -23,6 +23,35 @@ It turns out that having a face and a voice makes a surprisingly big difference.
   - Adjustable speech rate (0.5× to 3.0×)
   - Settings persist across sessions via localStorage
 
+## Installation
+
+You need [Node.js](https://nodejs.org) installed. Then clone or download this repo and copy the `copilot-avatar` folder from `.github/extensions/` to one of the locations below.
+
+**Per-project** (only active when you're inside that repo):
+
+```
+your-project/
+└── .github/
+    └── extensions/
+        └── copilot-avatar/   ← copy here
+```
+
+**Global** (active in every project on your machine):
+
+| Platform | Path |
+|----------|------|
+| Windows | `%USERPROFILE%\.copilot\extensions\copilot-avatar\` |
+| macOS / Linux | `~/.copilot/extensions/copilot-avatar/` |
+
+After copying, install dependencies:
+
+```bash
+cd <path-to-copilot-avatar>
+npm install
+```
+
+Then start (or restart) Copilot CLI and the avatar window will appear automatically.
+
 ## Usage
 
 The avatar window opens automatically when a session starts. You can also:
