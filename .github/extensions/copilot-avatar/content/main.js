@@ -3,17 +3,20 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // --- Message display ---
 const messageEl = document.getElementById('message-text');
+const statusEl = document.getElementById('status-indicator');
+const subtasksEl = document.getElementById('subtasks');
 let fadeTimeout = null;
 
 window.showMessage = (text) => {
     if (fadeTimeout) clearTimeout(fadeTimeout);
 
-    // Truncate very long messages to first ~200 chars
-    const display = text.length > 200 ? text.slice(0, 200) + '…' : text;
-
+    // Show full message
     messageEl.classList.remove('fading');
     messageEl.classList.add('visible');
-    messageEl.textContent = display;
+    messageEl.textContent = text;
+
+    // Speak the message if TTS is enabled
+    speak(text);
 
     // Fade out after 6 seconds or when next message arrives
     fadeTimeout = setTimeout(() => {
@@ -21,6 +24,150 @@ window.showMessage = (text) => {
         messageEl.classList.remove('visible');
     }, 6000);
 };
+
+window.setWorking = (active) => {
+    if (active) {
+        statusEl.textContent = '● Working…';
+        statusEl.classList.add('active');
+    } else {
+        statusEl.classList.remove('active');
+        subtasksEl.textContent = '';
+    }
+};
+
+window.setSubtask = (text) => {
+    subtasksEl.textContent = text || '';
+};
+
+// --- Text-to-Speech ---
+let ttsEnabled = false;
+let ttsRate = 1.1;
+let ttsPitch = 1.0;
+let ttsVoiceName = null;
+const ttsToggleBtn = document.getElementById('tts-toggle');
+const ttsSettingsBtn = document.getElementById('tts-settings-btn');
+const ttsDropdown = document.getElementById('tts-dropdown');
+const ttsVoiceSelect = document.getElementById('tts-voice-select');
+const ttsRateInput = document.getElementById('tts-rate-input');
+const ttsRateValue = document.getElementById('tts-rate-value');
+const ttsPitchInput = document.getElementById('tts-pitch-input');
+const ttsPitchValue = document.getElementById('tts-pitch-value');
+
+function updateTtsButton() {
+    ttsToggleBtn.textContent = ttsEnabled ? '🔊' : '🔇';
+}
+
+// Load saved settings from file via bridge
+let savedTts = {};
+try { savedTts = await copilot.loadSettings() || {}; } catch {}
+if (savedTts.rate) { ttsRate = savedTts.rate; ttsRateInput.value = ttsRate; ttsRateValue.textContent = `${ttsRate.toFixed(1)}×`; }
+if (savedTts.pitch != null) { ttsPitch = savedTts.pitch; ttsPitchInput.value = ttsPitch; ttsPitchValue.textContent = ttsPitch.toFixed(1); }
+if (savedTts.voice) { ttsVoiceName = savedTts.voice; }
+if (savedTts.enabled) { ttsEnabled = true; updateTtsButton(); }
+
+// Load initial session context
+try {
+    const ctx = await copilot.getContext();
+    if (ctx) window.setContext(ctx);
+} catch {}
+
+function saveTtsSettings() {
+    copilot.saveSettings({ enabled: ttsEnabled, rate: ttsRate, pitch: ttsPitch, voice: ttsVoiceName }).catch(() => {});
+}
+
+function populateVoices() {
+    const voices = speechSynthesis.getVoices();
+    ttsVoiceSelect.innerHTML = '';
+    voices.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.name;
+        opt.textContent = `${v.name} (${v.lang})`;
+        if (v.name === ttsVoiceName) opt.selected = true;
+        ttsVoiceSelect.appendChild(opt);
+    });
+}
+
+speechSynthesis.onvoiceschanged = populateVoices;
+populateVoices();
+
+ttsToggleBtn.addEventListener('click', () => {
+    ttsEnabled = !ttsEnabled;
+    updateTtsButton();
+    if (!ttsEnabled) speechSynthesis.cancel();
+    saveTtsSettings();
+});
+
+ttsSettingsBtn.addEventListener('click', () => {
+    ttsDropdown.classList.toggle('hidden');
+});
+
+ttsVoiceSelect.addEventListener('change', () => {
+    ttsVoiceName = ttsVoiceSelect.value;
+    saveTtsSettings();
+});
+
+ttsRateInput.addEventListener('input', () => {
+    ttsRate = parseFloat(ttsRateInput.value);
+    ttsRateValue.textContent = `${ttsRate.toFixed(1)}×`;
+    saveTtsSettings();
+});
+
+ttsPitchInput.addEventListener('input', () => {
+    ttsPitch = parseFloat(ttsPitchInput.value);
+    ttsPitchValue.textContent = ttsPitch.toFixed(1);
+    saveTtsSettings();
+});
+
+window.setContext = ({ folder, sessionTitle }) => {
+    const folderEl = document.querySelector('#session-context .folder-name');
+    const nameEl = document.querySelector('#session-context .session-name');
+    folderEl.textContent = folder || '';
+    nameEl.textContent = sessionTitle || '';
+    nameEl.style.display = sessionTitle ? '' : 'none';
+    document.title = `Copilot Avatar · ${folder || ''}`;
+};
+
+window.setTts = (enabled) => {
+    ttsEnabled = !!enabled;
+    updateTtsButton();
+    if (!ttsEnabled) speechSynthesis.cancel();
+    return ttsEnabled;
+};
+
+window.getTts = () => ttsEnabled;
+
+window.getVoices = () => {
+    const voices = speechSynthesis.getVoices();
+    return voices.map((v, i) => `${i}: ${v.name} (${v.lang})`).join('\n');
+};
+
+window.setVoice = (name) => {
+    ttsVoiceName = name;
+    ttsVoiceSelect.value = name;
+    return `Voice set to: ${name}`;
+};
+
+window.setRate = (rate) => {
+    ttsRate = Math.max(0.5, Math.min(3.0, Number(rate) || 1.1));
+    ttsRateInput.value = ttsRate;
+    ttsRateValue.textContent = `${ttsRate.toFixed(1)}×`;
+    return `Rate set to: ${ttsRate}`;
+};
+
+window.getTtsSettings = () => JSON.stringify({ enabled: ttsEnabled, rate: ttsRate, voice: ttsVoiceName });
+
+function speak(text) {
+    if (!ttsEnabled || !text) return;
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = ttsRate;
+    utterance.pitch = ttsPitch;
+    if (ttsVoiceName) {
+        const voice = speechSynthesis.getVoices().find(v => v.name === ttsVoiceName);
+        if (voice) utterance.voice = voice;
+    }
+    speechSynthesis.speak(utterance);
+}
 
 // --- 3D Avatar ---
 const container = document.getElementById('avatar-container');

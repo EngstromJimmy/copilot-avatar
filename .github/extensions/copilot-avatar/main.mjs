@@ -1,11 +1,14 @@
 // Copilot Avatar extension — shows a 3D Copilot head in a native window
 // and displays agent responses beneath it as floating text.
 import { joinSession } from "@github/copilot-sdk/extension";
-import { join } from "node:path";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { join, basename } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
 import { CopilotWebview } from "./lib/copilot-webview.js";
 
 const settingsPath = join(import.meta.dirname, ".tts-settings.json");
+
+let folderName = basename(process.cwd());
+let sessionTitle = null;
 
 async function loadSettings() {
     try {
@@ -22,13 +25,14 @@ async function saveSettings(settings) {
 const webview = new CopilotWebview({
     extensionName: "copilot_avatar",
     contentDir: join(import.meta.dirname, "content"),
-    title: "Copilot Avatar",
+    title: `Copilot Avatar · ${folderName}`,
     width: 500,
     height: 600,
     callbacks: {
         log: (msg, opts) => session.log(msg, opts),
         loadSettings: () => loadSettings(),
         saveSettings: (settings) => saveSettings(settings),
+        getContext: () => ({ folder: folderName, sessionTitle }),
     },
 });
 
@@ -45,6 +49,29 @@ const session = await joinSession({
 });
 
 // Listen for agent responses and push them to the webview
+async function pushContext() {
+    if (!webview._handle) return;
+    await webview.eval(`window.setContext(${JSON.stringify({ folder: folderName, sessionTitle })})`).catch(() => {});
+}
+
+session.on("session.start", (event) => {
+    if (event.data?.context?.cwd) folderName = basename(event.data.context.cwd);
+    pushContext();
+});
+
+session.on("session.resume", (event) => {
+    if (event.data?.context?.cwd) folderName = basename(event.data.context.cwd);
+    pushContext();
+});
+
+session.on("session.context_changed", (event) => {
+    if (event.data?.cwd) { folderName = basename(event.data.cwd); pushContext(); }
+});
+
+session.on("session.title_changed", (event) => {
+    if (event.data?.title) { sessionTitle = event.data.title; pushContext(); }
+});
+
 session.on("assistant.message", async (event) => {
     const text = event.data?.content;
     if (text && webview._handle) {
