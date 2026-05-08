@@ -65,12 +65,6 @@ if (savedTts.pitch != null) { ttsPitch = savedTts.pitch; ttsPitchInput.value = t
 if (savedTts.voice) { ttsVoiceName = savedTts.voice; }
 if (savedTts.enabled) { ttsEnabled = true; updateTtsButton(); }
 
-// Load initial session context
-try {
-    const ctx = await copilot.getContext();
-    if (ctx) window.setContext(ctx);
-} catch {}
-
 function saveTtsSettings() {
     copilot.saveSettings({ enabled: ttsEnabled, rate: ttsRate, pitch: ttsPitch, voice: ttsVoiceName }).catch(() => {});
 }
@@ -126,6 +120,12 @@ window.setContext = ({ folder, sessionTitle }) => {
     nameEl.style.display = sessionTitle ? '' : 'none';
     document.title = `Copilot Avatar · ${folder || ''}`;
 };
+
+// Load initial session context (must come after window.setContext is defined)
+try {
+    const ctx = await copilot.getContext();
+    if (ctx) window.setContext(ctx);
+} catch {}
 
 window.setTts = (enabled) => {
     ttsEnabled = !!enabled;
