@@ -6,18 +6,18 @@ A 3D animated Copilot avatar that lives in a native window alongside your termin
 
 ## Why?
 
-I love using Copilot CLI — but sometimes the only feedback you get is a bleep. The agent is off doing its thing, and you're just sitting there waiting. I wanted something a bit more... human.
+I love using Copilot CLI, but sometimes the only feedback you get is a bleep. The agent is off doing its thing, and you're just sitting there waiting. I wanted something a bit more... human.
 
-So I built this. A little friend that lives on your screen and actually talks to you. When Copilot finishes a task, the avatar reads the response back using text-to-speech — not every intermediate step, just the final message. The meaningful stuff.
+So I built this. A little friend that lives on your screen and actually talks to you. When Copilot finishes a task, the avatar reads the response back using text-to-speech. Not every intermediate step, just the final message. The meaningful stuff.
 
 It turns out that having a face and a voice makes a surprisingly big difference. Give it a try.
 
 ## Features
 
-- **3D Animated Avatar** — A Copilot head model with animated eyes (blinking, winking, head movement)
-- **Live Response Display** — Shows agent messages as floating text near the avatar
-- **Working Indicator** — Pulsing "● Working…" status when the agent is processing, with subtask info
-- **Text-to-Speech** — Built-in TTS using the Web Speech API
+- **3D Animated Avatar**: A Copilot head model with animated eyes (blinking, winking, head movement)
+- **Live Response Display**: Shows agent messages as floating text near the avatar
+- **Working Indicator**: Pulsing "● Working…" status when the agent is processing, with subtask info
+- **Text-to-Speech**: Built-in TTS using the Web Speech API
   - Toggle on/off with the 🔇/🔊 button
   - Choose from available system voices
   - Adjustable speech rate (0.5× to 3.0×)
@@ -62,6 +62,6 @@ copilot-avatar/
 
 ## Dependencies
 
-- `ws` — WebSocket server for bridge communication
-- `@webviewjs/webview` — Native webview window
+- `ws`: WebSocket server for bridge communication
+- `@webviewjs/webview`: Native webview window
 - Three.js (loaded from CDN in the webview)
