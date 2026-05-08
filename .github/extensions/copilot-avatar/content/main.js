@@ -112,21 +112,6 @@ ttsPitchInput.addEventListener('input', () => {
     saveTtsSettings();
 });
 
-window.setContext = ({ folder, sessionTitle }) => {
-    const folderEl = document.querySelector('#session-context .folder-name');
-    const nameEl = document.querySelector('#session-context .session-name');
-    folderEl.textContent = folder || '';
-    nameEl.textContent = sessionTitle || '';
-    nameEl.style.display = sessionTitle ? '' : 'none';
-    document.title = `Copilot Avatar · ${folder || ''}`;
-};
-
-// Load initial session context (must come after window.setContext is defined)
-try {
-    const ctx = await copilot.getContext();
-    if (ctx) window.setContext(ctx);
-} catch {}
-
 window.setTts = (enabled) => {
     ttsEnabled = !!enabled;
     updateTtsButton();

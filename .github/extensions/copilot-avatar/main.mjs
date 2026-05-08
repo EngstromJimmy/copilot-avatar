@@ -6,9 +6,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { CopilotWebview } from "./lib/copilot-webview.js";
 
 const settingsPath = join(import.meta.dirname, ".tts-settings.json");
-
 let folderName = basename(process.cwd());
-let sessionTitle = null;
+
+function formatTitle() {
+    return `Copilot Avatar · ${folderName}`;
+}
 
 async function loadSettings() {
     try {
@@ -25,34 +27,26 @@ async function saveSettings(settings) {
 const webview = new CopilotWebview({
     extensionName: "copilot_avatar",
     contentDir: join(import.meta.dirname, "content"),
-    title: `Copilot Avatar · ${folderName}`,
+    title: formatTitle(),
     width: 500,
     height: 600,
     callbacks: {
         log: (msg, opts) => session.log(msg, opts),
         loadSettings: () => loadSettings(),
         saveSettings: (settings) => saveSettings(settings),
-        getContext: () => ({ folder: folderName, sessionTitle }),
     },
 });
 
-// Push context to the page with retry until the WebSocket connects
-async function pushContext() {
-    if (!webview._handle) return;
-    const payload = JSON.stringify({ folder: folderName, sessionTitle });
-    for (let i = 0; i < 15; i++) {
-        try {
-            await webview.eval(`window.setContext(${payload})`);
-            return;
-        } catch {
-            if (i < 14) await new Promise(r => setTimeout(r, 200));
-        }
+async function syncTitle() {
+    const title = formatTitle();
+    webview.title = title;
+    if (webview._handle) {
+        await webview.eval(`document.title = ${JSON.stringify(title)}`, { timeoutMs: 2000 }).catch(() => {});
     }
 }
 
 const session = await joinSession({
     tools: [
-        // Override the built-in show tool to push context after opening
         {
             name: "copilot_avatar_show",
             description: "Open the Copilot avatar window. If already open, pass reload=true to refresh.",
@@ -65,8 +59,8 @@ const session = await joinSession({
             handler: async ({ reload = false } = {}) => {
                 try {
                     await webview.show({ reload });
-                    pushContext();
-                    return "Avatar window opened.";
+                    await syncTitle();
+                    return reload ? "Avatar window refreshed." : "Avatar window opened.";
                 } catch (e) {
                     return `Error: ${e.message}`;
                 }
@@ -77,7 +71,10 @@ const session = await joinSession({
     commands: [{
         name: "avatar",
         description: "Open the Copilot 3D avatar window.",
-        handler: async () => { await webview.show(); pushContext(); },
+        handler: async () => {
+            await webview.show();
+            await syncTitle();
+        },
     }],
     hooks: {
         onSessionEnd: webview.close,
@@ -85,21 +82,24 @@ const session = await joinSession({
 });
 
 session.on("session.start", (event) => {
-    if (event.data?.context?.cwd) folderName = basename(event.data.context.cwd);
-    pushContext();
+    if (event.data?.context?.cwd) {
+        folderName = basename(event.data.context.cwd);
+        void syncTitle();
+    }
 });
 
 session.on("session.resume", (event) => {
-    if (event.data?.context?.cwd) folderName = basename(event.data.context.cwd);
-    pushContext();
+    if (event.data?.context?.cwd) {
+        folderName = basename(event.data.context.cwd);
+        void syncTitle();
+    }
 });
 
 session.on("session.context_changed", (event) => {
-    if (event.data?.cwd) { folderName = basename(event.data.cwd); pushContext(); }
-});
-
-session.on("session.title_changed", (event) => {
-    if (event.data?.title) { sessionTitle = event.data.title; pushContext(); }
+    if (event.data?.cwd) {
+        folderName = basename(event.data.cwd);
+        void syncTitle();
+    }
 });
 
 session.on("assistant.message", async (event) => {
