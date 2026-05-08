@@ -36,23 +36,53 @@ const webview = new CopilotWebview({
     },
 });
 
+// Push context to the page with retry until the WebSocket connects
+async function pushContext() {
+    if (!webview._handle) return;
+    const payload = JSON.stringify({ folder: folderName, sessionTitle });
+    for (let i = 0; i < 15; i++) {
+        try {
+            await webview.eval(`window.setContext(${payload})`);
+            return;
+        } catch {
+            if (i < 14) await new Promise(r => setTimeout(r, 200));
+        }
+    }
+}
+
 const session = await joinSession({
-    tools: webview.tools,
+    tools: [
+        // Override the built-in show tool to push context after opening
+        {
+            name: "copilot_avatar_show",
+            description: "Open the Copilot avatar window. If already open, pass reload=true to refresh.",
+            parameters: {
+                type: "object",
+                properties: {
+                    reload: { type: "boolean", description: "If the window is already open, reload the page. Default false." },
+                },
+            },
+            handler: async ({ reload = false } = {}) => {
+                try {
+                    await webview.show({ reload });
+                    pushContext();
+                    return "Avatar window opened.";
+                } catch (e) {
+                    return `Error: ${e.message}`;
+                }
+            },
+        },
+        ...webview.tools.filter(t => t.name !== "copilot_avatar_show"),
+    ],
     commands: [{
         name: "avatar",
         description: "Open the Copilot 3D avatar window.",
-        handler: () => webview.show(),
+        handler: async () => { await webview.show(); pushContext(); },
     }],
     hooks: {
         onSessionEnd: webview.close,
     },
 });
-
-// Listen for agent responses and push them to the webview
-async function pushContext() {
-    if (!webview._handle) return;
-    await webview.eval(`window.setContext(${JSON.stringify({ folder: folderName, sessionTitle })})`).catch(() => {});
-}
 
 session.on("session.start", (event) => {
     if (event.data?.context?.cwd) folderName = basename(event.data.context.cwd);
