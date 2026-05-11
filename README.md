@@ -17,6 +17,7 @@ It turns out that having a face and a voice makes a surprisingly big difference.
 - **3D Animated Avatar**: A Copilot head model with animated eyes (blinking, winking, head movement)
 - **Live Response Display**: Shows agent messages as floating text near the avatar
 - **Working Indicator**: Pulsing "● Working…" status when the agent is processing, with subtask info
+- **Emotion Reactions**: Emoji-triggered expressions and motion for hearts, laughter, raccoon mode, and idle sleep
 - **Text-to-Speech**: Built-in TTS using the Web Speech API
   - Toggle on/off with the 🔇/🔊 button
   - Choose from available system voices

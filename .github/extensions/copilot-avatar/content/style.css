@@ -16,6 +16,15 @@ body {
   min-height: 0;
 }
 
+#confetti-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9;
+}
+
 #avatar-container canvas {
   display: block;
   width: 100% !important;
@@ -59,6 +68,75 @@ body {
   opacity: 0;
 }
 
+#emotion-bubble {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  z-index: 12;
+  opacity: 0;
+  pointer-events: none;
+  font-size: 32px;
+  line-height: 1;
+  text-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%) scale(0.85);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+#emotion-bubble.visible {
+  opacity: 1;
+}
+
+#emotion-bubble.heart {
+  color: #ff7eb6;
+  animation: emotion-float 1.5s ease-in-out infinite;
+}
+
+#emotion-bubble.laugh {
+  animation: emotion-bounce 0.45s ease-in-out infinite;
+}
+
+#emotion-bubble.party {
+  color: #ffd866;
+  animation: emotion-party 0.55s ease-in-out infinite;
+}
+
+#emotion-bubble.think {
+  color: #bccbff;
+  animation: emotion-think 1.8s ease-in-out infinite;
+}
+
+#emotion-bubble.success {
+  color: #7ee787;
+  animation: emotion-float 1.1s ease-in-out infinite;
+}
+
+#emotion-bubble.warning {
+  color: #ffb86b;
+  animation: emotion-alert 0.85s ease-in-out infinite;
+}
+
+#emotion-bubble.error {
+  color: #ff7b72;
+  animation: emotion-sink 1.15s ease-in-out infinite;
+}
+
+#emotion-bubble.sparkle {
+  color: #fff0a8;
+  animation: emotion-sparkle 1.2s ease-in-out infinite;
+}
+
+#emotion-bubble.raccoon {
+  animation: emotion-tilt 1.2s ease-in-out infinite;
+}
+
+#emotion-bubble.sleep {
+  color: #9fb5ff;
+  font-size: 24px;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  animation: emotion-drift 2s ease-in-out infinite;
+}
+
 #status-container {
   position: absolute;
   bottom: 42%;
@@ -89,6 +167,55 @@ body {
   50% { opacity: 1; }
 }
 
+@keyframes emotion-float {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.95); }
+  50% { transform: translate(-50%, calc(-50% - 8px)) scale(1.08); }
+}
+
+@keyframes emotion-bounce {
+  0%, 100% { transform: translate(-50%, -50%) rotate(-8deg); }
+  50% { transform: translate(-50%, calc(-50% - 6px)) rotate(8deg); }
+}
+
+@keyframes emotion-party {
+  0%, 100% { transform: translate(-50%, -50%) rotate(-10deg) scale(0.96); }
+  35% { transform: translate(-50%, calc(-50% - 8px)) rotate(8deg) scale(1.06); }
+  65% { transform: translate(-50%, calc(-50% - 2px)) rotate(-4deg) scale(1.02); }
+}
+
+@keyframes emotion-think {
+  0%, 100% { transform: translate(-50%, -50%) rotate(-5deg) scale(0.96); }
+  50% { transform: translate(-50%, calc(-50% - 4px)) rotate(4deg) scale(1.01); }
+}
+
+@keyframes emotion-alert {
+  0%, 100% { transform: translate(-50%, -50%) rotate(-8deg); }
+  25% { transform: translate(-50%, calc(-50% - 3px)) rotate(6deg); }
+  50% { transform: translate(-50%, -50%) rotate(-4deg) scale(1.03); }
+  75% { transform: translate(-50%, calc(-50% - 3px)) rotate(6deg); }
+}
+
+@keyframes emotion-sink {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.98); }
+  50% { transform: translate(-50%, calc(-50% + 6px)) scale(0.94); }
+}
+
+@keyframes emotion-sparkle {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.94) rotate(-6deg); }
+  35% { transform: translate(-50%, calc(-50% - 5px)) scale(1.08) rotate(6deg); }
+  70% { transform: translate(-50%, calc(-50% - 2px)) scale(1.02) rotate(-3deg); }
+}
+
+@keyframes emotion-tilt {
+  0%, 100% { transform: translate(-50%, -50%) rotate(-8deg); }
+  50% { transform: translate(-50%, -50%) rotate(8deg); }
+}
+
+@keyframes emotion-drift {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.95); }
+  50% { transform: translate(-50%, calc(-50% - 10px)) scale(1.02); }
+}
+
 #subtasks {
   font-size: 13px;
   color: #7d8590;
@@ -97,7 +224,7 @@ body {
   white-space: pre-wrap;
   word-wrap: break-word;
 }
-
+
 #tts-controls {
   position: absolute;
   top: 12px;
