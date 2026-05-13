@@ -170,6 +170,7 @@ const eyeFragmentShader = `
 const eyeGeometry = new THREE.PlaneGeometry(0.12, 0.18);
 const maskGeometry = new THREE.PlaneGeometry(1, 1);
 const particleTexture = createParticleTexture();
+const readingBeamTexture = createReadingBeamTexture();
 const heartGeometry = createHeartGeometry();
 const binaryGlyphTextures = {
     0: createBinaryGlyphTexture('0'),
@@ -193,6 +194,27 @@ function createParticleTexture() {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size, size);
     return new THREE.CanvasTexture(canvas);
+}
+
+function createReadingBeamTexture() {
+    const width = 96;
+    const height = 384;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, width, 0);
+    gradient.addColorStop(0, 'rgba(88,166,255,0)');
+    gradient.addColorStop(0.32, 'rgba(88,166,255,0.08)');
+    gradient.addColorStop(0.5, 'rgba(180,224,255,0.78)');
+    gradient.addColorStop(0.68, 'rgba(88,166,255,0.08)');
+    gradient.addColorStop(1, 'rgba(88,166,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
 }
 
 function createBinaryGlyphTexture(character) {
@@ -281,6 +303,44 @@ function placeHeartEye(heartEye, x, y, z, scale = 0.1) {
     heartEye.position.set(x, y, z + 0.003);
     heartEye.userData.baseScale = scale;
     heartEye.scale.setScalar(scale);
+}
+
+function createActivityEffects() {
+    const readingBeamMaterial = new THREE.MeshBasicMaterial({
+        map: readingBeamTexture,
+        color: 0x7fc8ff,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+    });
+    const readingBeam = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 1), readingBeamMaterial);
+    readingBeam.visible = false;
+    readingBeam.renderOrder = 3;
+
+    const thinkingDots = Array.from({ length: 3 }, (_, index) => {
+        const material = new THREE.SpriteMaterial({
+            map: particleTexture,
+            color: 0xbc8cff,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+        const sprite = new THREE.Sprite(material);
+        sprite.visible = false;
+        sprite.renderOrder = 4;
+        return {
+            sprite,
+            material,
+            phase: (index / 3) * Math.PI * 2,
+            orbitRadius: 0.11 + index * 0.02,
+            size: 1 - index * 0.12,
+        };
+    });
+
+    return { readingBeam, readingBeamMaterial, thinkingDots };
 }
 
 function createWritingGlyphs() {
@@ -399,6 +459,13 @@ function createBaseAsset(modelScene) {
             heartScale: 0.1,
             overlayOffset: new THREE.Vector3(0, -0.35, 0.3),
             bubbleOffset: new THREE.Vector3(0.2, 0.16, 0.45),
+            readingBeamY: 0,
+            readingBeamZ: 0.56,
+            readingBeamHeight: 0.78,
+            readingBeamWidth: 0.18,
+            thinkingCenterY: 0.34,
+            thinkingOrbitRadius: 0.12,
+            thinkingDotSize: 0.05,
             rowSpacing: 0.9,
             rootY: 0.55,
             subY: -0.8,
@@ -421,6 +488,13 @@ function createBaseAsset(modelScene) {
         heartScale: 0.1,
         overlayOffset: new THREE.Vector3(0, -size.y * 0.82, size.z * 0.14),
         bubbleOffset: new THREE.Vector3(size.x * 0.18, size.y * 0.36, size.z * 0.42),
+        readingBeamY: size.y * 0.2,
+        readingBeamZ: size.z * 0.5,
+        readingBeamHeight: size.y * 0.8,
+        readingBeamWidth: Math.max(size.x * 0.18, 0.12),
+        thinkingCenterY: size.y * 0.54,
+        thinkingOrbitRadius: Math.max(size.x * 0.19, 0.11),
+        thinkingDotSize: Math.max(size.x * 0.07, 0.045),
         rowSpacing: Math.max(size.x * 0.78, 0.72),
         rootY: size.y * 0.6,
         subY: -size.y * 0.9,
@@ -495,6 +569,13 @@ function createAvatarInstance(agentId, data = {}) {
     for (const glyph of writingGlyphs) {
         modelRoot.add(glyph.sprite);
     }
+    const activityEffects = createActivityEffects();
+    activityEffects.readingBeam.position.set(0, baseAsset.readingBeamY, baseAsset.readingBeamZ);
+    activityEffects.readingBeam.scale.set(baseAsset.readingBeamWidth, baseAsset.readingBeamHeight, 1);
+    modelRoot.add(activityEffects.readingBeam);
+    for (const dot of activityEffects.thinkingDots) {
+        modelRoot.add(dot.sprite);
+    }
 
     const overlay = isRoot ? null : createOverlay(agentId);
     const targetPosition = new THREE.Vector3(0, isRoot ? baseAsset.rootY : baseAsset.subY, 0);
@@ -518,6 +599,7 @@ function createAvatarInstance(agentId, data = {}) {
         heartEyeR,
         raccoonMask,
         writingGlyphs,
+        activityEffects,
         overlay,
         activeTools: new Map(),
         thinkingUntil: 0,
@@ -551,6 +633,8 @@ function createAvatarInstance(agentId, data = {}) {
         currentRotY: 0,
         currentRotZ: 0,
         currentWritingFx: 0,
+        currentReadingFx: 0,
+        currentThinkingFx: 0,
         anim: {
             idleTime: 0,
             blinkTimer: 2 + Math.random() * 3,
@@ -584,6 +668,11 @@ function disposeAvatar(avatar) {
     avatar.heartEyeR.userData.core.material.dispose();
     for (const glyph of avatar.writingGlyphs) {
         glyph.material.dispose();
+    }
+    avatar.activityEffects.readingBeam.geometry.dispose();
+    avatar.activityEffects.readingBeamMaterial.dispose();
+    for (const dot of avatar.activityEffects.thinkingDots) {
+        dot.material.dispose();
     }
 
     if (avatar.overlay) {
@@ -1163,6 +1252,8 @@ function updateAvatar(avatar, dt, now) {
     avatar.currentEyeScaleY += (visual.eyeScaleY - avatar.currentEyeScaleY) * eyeEase;
     avatar.currentHeartPulse += (visual.heartPulse - avatar.currentHeartPulse) * eyeEase;
     avatar.currentWritingFx += ((resolvedActivity === 'writing' ? 1 : 0) - avatar.currentWritingFx) * eyeEase;
+    avatar.currentReadingFx += ((resolvedActivity === 'reading' ? 1 : 0) - avatar.currentReadingFx) * eyeEase;
+    avatar.currentThinkingFx += ((resolvedActivity === 'thinking' ? 1 : 0) - avatar.currentThinkingFx) * eyeEase;
 
     let shakeX = 0;
     if (avatar.shakeUntil > now) {
@@ -1208,6 +1299,27 @@ function updateAvatar(avatar, dt, now) {
         );
         const glyphScale = glyph.size * (0.92 + Math.sin(avatar.anim.idleTime * 3.1 + glyph.phase) * 0.08);
         glyph.sprite.scale.setScalar(glyphScale);
+    }
+    const readingBeam = avatar.activityEffects.readingBeam;
+    const readingBeamMaterial = avatar.activityEffects.readingBeamMaterial;
+    readingBeam.visible = avatar.currentReadingFx > 0.04;
+    readingBeamMaterial.opacity = avatar.currentReadingFx * 0.42;
+    readingBeam.position.x = Math.sin(avatar.anim.idleTime * 1.7) * baseAsset.eyeSpacing * 1.45;
+    readingBeam.scale.x = baseAsset.readingBeamWidth * (0.82 + (Math.sin(avatar.anim.idleTime * 2.5) + 1) * 0.1);
+    readingBeam.scale.y = baseAsset.readingBeamHeight;
+
+    for (const dot of avatar.activityEffects.thinkingDots) {
+        const orbitAngle = avatar.anim.idleTime * 0.85 + dot.phase;
+        const bob = Math.sin(avatar.anim.idleTime * 1.6 + dot.phase * 1.5) * 0.03;
+        dot.sprite.visible = avatar.currentThinkingFx > 0.04;
+        dot.material.opacity = avatar.currentThinkingFx * (0.22 + (Math.sin(avatar.anim.idleTime * 2 + dot.phase) + 1) * 0.08);
+        dot.sprite.position.set(
+            Math.cos(orbitAngle) * (baseAsset.thinkingOrbitRadius + dot.orbitRadius * 0.4),
+            baseAsset.thinkingCenterY + bob,
+            baseAsset.eyeZ + 0.08 + Math.sin(orbitAngle) * 0.05,
+        );
+        const dotScale = baseAsset.thinkingDotSize * dot.size * (0.9 + (Math.sin(avatar.anim.idleTime * 2.2 + dot.phase) + 1) * 0.08);
+        dot.sprite.scale.setScalar(dotScale);
     }
 
     updateBlinkState(avatar, visual, dt, now);

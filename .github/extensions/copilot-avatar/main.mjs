@@ -62,6 +62,36 @@ function getToolLabel(toolName) {
     return (toolName || "").replace(/[_-]+/g, " ").trim();
 }
 
+function normalizeTurnText(text) {
+    return String(text || "")
+        .replace(/```[\s\S]*?```/g, " ")
+        .replace(/`([^`]+)`/g, "$1")
+        .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+        .replace(/[*_~>#-]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+}
+
+function messageLooksSuccessful(text) {
+    const normalized = normalizeTurnText(text);
+    if (!normalized) return false;
+    return /\b(done|completed|fixed|implemented|updated|added|created|pushed|refactored|resolved|finished|ready|working now)\b/.test(normalized);
+}
+
+function messageLooksFailed(text) {
+    const normalized = normalizeTurnText(text);
+    if (!normalized) return false;
+    return /\b(failed|error|unable|cannot|can't|couldn't|blocked|not working|won't|problem|issue)\b/.test(normalized);
+}
+
+const rootTurnState = {
+    hadFailure: false,
+    sawMessage: false,
+    lastMessage: "",
+};
+
 const session = await joinSession({
     tools: [
         {
@@ -160,6 +190,10 @@ session.on("tool.execution_start", async (event) => {
 });
 
 session.on("tool.execution_complete", async (event) => {
+    if (!event.agentId && (event.data?.success === false || event.data?.error)) {
+        rootTurnState.hadFailure = true;
+    }
+
     await callWindowFunction("clearAgentActivity", {
         agentId: event.agentId ?? null,
         toolName: event.data?.toolName ?? "",
@@ -190,15 +224,37 @@ session.on("assistant.message", async (event) => {
 
     const text = event.data?.content;
     if (!text) return;
+    rootTurnState.sawMessage = true;
+    rootTurnState.lastMessage = text;
     await callWindowFunction("showMessage", text, 5000);
 });
 
 session.on("assistant.turn_start", async (event) => {
     if (event.agentId) return;
+    rootTurnState.hadFailure = false;
+    rootTurnState.sawMessage = false;
+    rootTurnState.lastMessage = "";
     await evalWebview("window.setWorking(true)");
 });
 
 session.on("assistant.turn_end", async (event) => {
     if (event.agentId) return;
     await evalWebview("window.setWorking(false)");
+
+    if (rootTurnState.hadFailure || messageLooksFailed(rootTurnState.lastMessage)) {
+        await callWindowFunction("setAgentExpression", {
+            agentId: null,
+            expression: "failed",
+            durationMs: 2200,
+        });
+        return;
+    }
+
+    if (rootTurnState.sawMessage && messageLooksSuccessful(rootTurnState.lastMessage)) {
+        await callWindowFunction("setAgentExpression", {
+            agentId: null,
+            expression: "success",
+            durationMs: 1700,
+        });
+    }
 });

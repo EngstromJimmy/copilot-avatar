@@ -1,28 +1,38 @@
 # Copilot Avatar Extension
 
-![Copilot Avatar Demo](assets/avatar-demo.gif)
+![Copilot Avatar Demo](assets/copilot-avatar-squad-demo.gif)
 
-A 3D animated Copilot avatar that lives in a native window alongside your terminal session. It displays agent responses as floating text and can read them aloud with text-to-speech.
+A 3D animated Copilot avatar that lives in a native window alongside your terminal session. It shows the main Copilot avatar, visualizes sub-agents as a small squad, displays floating messages, and can read final responses aloud with text-to-speech.
 
 ## Why?
 
-I love using Copilot CLI, but sometimes the only feedback you get is a bleep. The agent is off doing its thing, and you're just sitting there waiting. I wanted something a bit more... human.
+I love using Copilot CLI, but sometimes the only feedback you get is a bleep. The agent is off doing its thing, and you're just sitting there waiting. I wanted something a bit more human.
 
 So I built this. A little friend that lives on your screen and actually talks to you. When Copilot finishes a task, the avatar reads the response back using text-to-speech. Not every intermediate step, just the final message. The meaningful stuff.
 
-It turns out that having a face and a voice makes a surprisingly big difference. Give it a try.
-
 ## Features
 
-- **3D Animated Avatar**: A Copilot head model with animated eyes (blinking, winking, head movement)
-- **Live Response Display**: Shows agent messages as floating text near the avatar
-- **Working Indicator**: Pulsing "● Working…" status when the agent is processing, with subtask info
-- **Emotion Reactions**: Emoji-triggered expressions and motion for hearts, laughter, raccoon mode, and idle sleep
-- **Text-to-Speech**: Built-in TTS using the Web Speech API
+- **Main avatar + sub-agent squad view**: a large root Copilot avatar with dynamically spawned sub-agent avatars underneath it
+- **Per-agent activity states**: writing, reading, running, thinking, and idle states route independently to the correct avatar
+- **Responsive squad layout**: sub-agents reflow into centered rows for smaller windows instead of disappearing off-screen
+- **Activity FX**
+  - Writing: green eyes, typing motion, floating binary glyphs
+  - Reading: blue eyes, scanning motion, soft scan beam
+  - Running: amber eyes, more energetic motion
+  - Thinking: purple eyes, calmer motion, orbiting dots
+- **Lifecycle reactions**
+  - Sub-agent completion confetti and success pulse
+  - Sub-agent failure flash and shake
+  - Root avatar success/failure reactions based on turn outcomes
+- **Live response display**: final root-agent messages appear as floating text near the avatar
+- **Working indicator**: pulsing `● Working…` status with current subtask/intent text
+- **Emotion reactions**: emoji-triggered expressions and motion for hearts, laughter, sparkle, raccoon mode, and idle sleep
+- **Text-to-Speech**: built-in TTS using the Web Speech API
   - Toggle on/off with the 🔇/🔊 button
   - Choose from available system voices
-  - Adjustable speech rate (0.5× to 3.0×)
-  - Settings persist across sessions via localStorage
+  - Adjustable speech rate and pitch
+  - Markdown formatting is stripped before speech
+  - Settings persist in `.tts-settings.json`
 
 ## Installation
 
@@ -34,13 +44,13 @@ You need [Node.js](https://nodejs.org) installed. Then clone or download this re
 your-project/
 └── .github/
     └── extensions/
-        └── copilot-avatar/   ← copy here
+        └── copilot-avatar/
 ```
 
 **Global** (active in every project on your machine):
 
 | Platform | Path |
-|----------|------|
+| --- | --- |
 | Windows | `%USERPROFILE%\.copilot\extensions\copilot-avatar\` |
 | macOS / Linux | `~/.copilot/extensions/copilot-avatar/` |
 
@@ -51,27 +61,44 @@ cd <path-to-copilot-avatar>
 npm install
 ```
 
-Then start (or restart) Copilot CLI and the avatar window will appear automatically.
+Then restart Copilot CLI so the extension loads.
+
+> **Important:** do not keep both a **global** and **per-project** copy enabled at the same time. If both exist, disable one so only the copy you want is active.
 
 ## Usage
 
-The avatar window opens automatically when a session starts. You can also:
+Open the avatar window when you want it, then let it react to the current session:
 
 - Use the `/avatar` command to open it manually
 - Use the `copilot_avatar_show` tool (with optional `reload: true`)
 - Use the `copilot_avatar_eval` tool to run JavaScript in the webview
 - Use the `copilot_avatar_close` tool to close the window
 
+Sub-agents appear automatically when the current session emits sub-agent lifecycle events.
+
+## Activity States
+
+| State | Trigger | Visual |
+| --- | --- | --- |
+| **Idle** | No active tool/reasoning | White eyes, neutral motion |
+| **Writing** | `edit`, `create` | Green eyes, typing motion, floating `0/1` glyphs |
+| **Reading** | `view`, `grep`, `glob`, `rg`, `lsp*` | Blue eyes, scanning motion, soft scan beam |
+| **Running** | `powershell`, `task` | Amber eyes, more energetic motion |
+| **Thinking** | `assistant.reasoning` | Purple eyes, calmer motion, orbiting dots |
+
+The root avatar uses the same activity-state system even when there are no sub-agents active.
+
 ## TTS Controls
 
 | Control | Description |
-|---------|-------------|
+| --- | --- |
 | 🔇/🔊 button | Toggle speech on/off |
 | ⚙️ button | Open settings dropdown |
 | Voice dropdown | Select a system voice |
 | Speed slider | Adjust rate from 0.5× to 3.0× |
+| Pitch slider | Adjust pitch from 0.5 to 2.0 |
 
-All TTS settings (enabled state, voice, speed) are saved automatically.
+All TTS settings are saved automatically.
 
 ## File Structure
 
@@ -85,8 +112,8 @@ copilot-avatar/
 │   └── webview-child.mjs     # Child process for native window
 └── content/
     ├── index.html      # Webview page
-    ├── style.css       # Styling
-    ├── main.js         # 3D scene, TTS, message display logic
+    ├── style.css       # Styling for the window and overlays
+    ├── main.js         # 3D scene, squad logic, activity effects, TTS
     └── model.glb       # 3D Copilot head model
 ```
 
