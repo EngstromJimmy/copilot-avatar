@@ -28,8 +28,8 @@ const webview = new CopilotWebview({
     extensionName: "copilot_avatar",
     contentDir: join(import.meta.dirname, "content"),
     title: formatTitle(),
-    width: 500,
-    height: 600,
+    width: 600,
+    height: 800,
     callbacks: {
         log: (msg, opts) => session.log(msg, opts),
         loadSettings: () => loadSettings(),
@@ -43,6 +43,23 @@ async function syncTitle() {
     if (webview._handle) {
         await webview.eval(`document.title = ${JSON.stringify(title)}`, { timeoutMs: 2000 }).catch(() => {});
     }
+}
+
+async function evalWebview(expression, timeoutMs = 2000) {
+    if (!webview._handle) return;
+    await webview.eval(expression, { timeoutMs }).catch(() => {});
+}
+
+async function callWindowFunction(name, value, timeoutMs = 2000) {
+    await evalWebview(`window.${name}(${JSON.stringify(value)})`, timeoutMs);
+}
+
+function getIntentText(event) {
+    return event.data?.intent || event.data?.content || "";
+}
+
+function getToolLabel(toolName) {
+    return (toolName || "").replace(/[_-]+/g, " ").trim();
 }
 
 const session = await joinSession({
@@ -102,36 +119,86 @@ session.on("session.context_changed", (event) => {
     }
 });
 
+session.on("subagent.started", async (event) => {
+    await callWindowFunction("addSubagent", {
+        agentId: event.agentId ?? null,
+        agentName: event.data?.agentName ?? "",
+        displayName: event.data?.agentDisplayName ?? event.data?.agentName ?? "",
+        description: event.data?.agentDescription ?? "",
+        toolCallId: event.data?.toolCallId ?? null,
+    }, 3000);
+});
+
+session.on("subagent.completed", async (event) => {
+    await callWindowFunction("completeSubagent", {
+        agentId: event.agentId ?? null,
+        displayName: event.data?.agentDisplayName ?? event.data?.agentName ?? "",
+        durationMs: event.data?.durationMs ?? null,
+        totalToolCalls: event.data?.totalToolCalls ?? null,
+    }, 3000);
+});
+
+session.on("subagent.failed", async (event) => {
+    await callWindowFunction("failSubagent", {
+        agentId: event.agentId ?? null,
+        displayName: event.data?.agentDisplayName ?? event.data?.agentName ?? "",
+        error: event.data?.error ?? "",
+    }, 3000);
+});
+
+session.on("tool.execution_start", async (event) => {
+    const toolName = event.data?.toolName ?? "";
+    await callWindowFunction("setAgentActivity", {
+        agentId: event.agentId ?? null,
+        toolName,
+        toolCallId: event.data?.toolCallId ?? null,
+    });
+
+    if (!event.agentId && toolName) {
+        await callWindowFunction("setSubtask", getToolLabel(toolName));
+    }
+});
+
+session.on("tool.execution_complete", async (event) => {
+    await callWindowFunction("clearAgentActivity", {
+        agentId: event.agentId ?? null,
+        toolName: event.data?.toolName ?? "",
+        toolCallId: event.data?.toolCallId ?? null,
+    });
+});
+
+session.on("assistant.reasoning", async (event) => {
+    await callWindowFunction("setAgentThinking", event.agentId ?? null);
+});
+
+session.on("assistant.intent", async (event) => {
+    const intent = getIntentText(event);
+    if (!intent) return;
+
+    await callWindowFunction("setAgentIntent", {
+        agentId: event.agentId ?? null,
+        intent,
+    });
+
+    if (!event.agentId) {
+        await callWindowFunction("setSubtask", intent);
+    }
+});
+
 session.on("assistant.message", async (event) => {
+    if (event.agentId) return;
+
     const text = event.data?.content;
-    if (text && webview._handle) {
-        const escaped = JSON.stringify(text);
-        await webview.eval(`window.setWorking(false)`, { timeoutMs: 2000 }).catch(() => {});
-        await webview.eval(`window.showMessage(${escaped})`, { timeoutMs: 5000 }).catch(() => {});
-    }
+    if (!text) return;
+    await callWindowFunction("showMessage", text, 5000);
 });
 
-// Show working indicator when agent starts processing
-session.on("assistant.thinking", async () => {
-    if (webview._handle) {
-        await webview.eval(`window.setWorking(true)`, { timeoutMs: 2000 }).catch(() => {});
-    }
+session.on("assistant.turn_start", async (event) => {
+    if (event.agentId) return;
+    await evalWebview("window.setWorking(true)");
 });
 
-// Show subtasks (tool calls, intent changes)
-session.on("tool.start", async (event) => {
-    const name = event.data?.name || event.data?.tool;
-    if (name && webview._handle) {
-        const label = name.replace(/_/g, ' ').replace(/-/g, ' ');
-        const escaped = JSON.stringify(label);
-        await webview.eval(`window.setSubtask(${escaped})`, { timeoutMs: 2000 }).catch(() => {});
-    }
-});
-
-session.on("intent", async (event) => {
-    const intent = event.data?.intent || event.data?.content;
-    if (intent && webview._handle) {
-        const escaped = JSON.stringify(intent);
-        await webview.eval(`window.setSubtask(${escaped})`, { timeoutMs: 2000 }).catch(() => {});
-    }
+session.on("assistant.turn_end", async (event) => {
+    if (event.agentId) return;
+    await evalWebview("window.setWorking(false)");
 });
