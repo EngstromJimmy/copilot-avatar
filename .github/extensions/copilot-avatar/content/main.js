@@ -524,8 +524,8 @@ function createDuckBeak() {
 function positionDuckBeak(beak) {
     if (!beak) return;
 
-    beak.position.set(baseAsset.size.x * 0.01, baseAsset.eyeY - baseAsset.size.y * 0.12, baseAsset.eyeZ + baseAsset.size.z * 0.07);
-    beak.rotation.set(0.22, 0.01, 0);
+    beak.position.set(0, baseAsset.eyeY - baseAsset.size.y * 0.145, baseAsset.eyeZ - baseAsset.size.z * 0.055);
+    beak.rotation.set(0.14, 0.003, 0);
     beak.scale.setScalar(Math.max(baseAsset.size.x, baseAsset.size.y, baseAsset.size.z) * 0.31);
     beak.userData.baseScale = beak.scale.clone();
 }
