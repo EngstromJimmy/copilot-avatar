@@ -87,7 +87,7 @@ Releases are created with the **Release extension** GitHub Actions workflow.
 
 1. Open **Actions** in GitHub and select **Release extension**.
 2. Run the workflow with a semantic version like `0.1.0` or `0.2.0`.
-3. The workflow updates `.github/extensions/copilot-avatar/package.json` and `package-lock.json`, commits that version bump, creates the matching `vX.Y.Z` tag, builds `copilot-avatar-vX.Y.Z.zip`, and publishes a GitHub Release with GitHub-generated notes.
+3. The workflow updates `.github/extensions/copilot-avatar/package.json` and `package-lock.json` when needed, commits that version bump, creates the matching `vX.Y.Z` tag, builds `copilot-avatar-vX.Y.Z.zip`, and publishes a GitHub Release with GitHub-generated notes.
 
 ## Usage
 
