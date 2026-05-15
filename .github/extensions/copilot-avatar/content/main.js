@@ -64,6 +64,11 @@ const CLIPPY_ANIMATION_KEYWORDS = {
 
 const container = document.getElementById('avatar-container');
 const overlayContainer = document.getElementById('subagent-overlays');
+
+// Native OS window drag — let WebView2 handle it natively
+document.body.style.webkitAppRegion = 'drag';
+document.getElementById('tts-controls').style.webkitAppRegion = 'no-drag';
+container.style.cursor = 'grab';
 const messageEl = document.getElementById('message-text');
 const statusEl = document.getElementById('status-indicator');
 const subtasksEl = document.getElementById('subtasks');
@@ -830,6 +835,7 @@ function updateClippyModel(dt, now) {
     const time = now / 1000;
     const mode = getClippyAnimationKey();
     const motion = getClippyMotionConfig(mode, time);
+    clippyRoot.position.x = 0;
     clippyRoot.position.y = clippyBaseY + motion.bobY;
     clippyRoot.rotation.set(motion.rotX, motion.rotY, motion.rotZ);
     clippyRoot.scale.setScalar(clippyBaseScale * motion.scale);
