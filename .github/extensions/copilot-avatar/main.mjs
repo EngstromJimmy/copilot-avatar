@@ -48,6 +48,7 @@ const webview = new CopilotWebview({
     width: 600,
     height: 800,
     transparent: true,
+    alwaysOnTop: true,
     callbacks: {
         log: (msg, opts) => session.log(msg, opts),
         loadSettings: () => loadSettings(),
