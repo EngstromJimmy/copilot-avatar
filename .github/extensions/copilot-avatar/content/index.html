@@ -25,10 +25,18 @@
     <div id="message-text"></div>
   </div>
   <div id="emotion-bubble" aria-hidden="true"></div>
+  <div id="clippy-avatar" aria-label="Clippy avatar" aria-hidden="true" data-mode="idle"></div>
   <div id="tts-controls">
     <button id="tts-toggle" title="Toggle text-to-speech">🔇</button>
     <button id="tts-settings-btn" title="TTS settings">⚙️</button>
     <div id="tts-dropdown" class="hidden">
+      <label>Avatar
+        <select id="avatar-style-select">
+          <option value="copilot">Copilot</option>
+          <option value="clippy">Clippy</option>
+        </select>
+      </label>
+
       <label>Engine
         <select id="tts-engine-select">
           <option value="webspeech">Web Speech</option>
@@ -97,11 +105,16 @@
             <span id="voxtral-record-timer" class="hidden">0s</span>
             <button id="voxtral-stop-btn" class="hidden">■ Stop</button>
           </div>
+          <button id="clippy-retro-voice-btn" type="button">Generate retro Clippy sample</button>
           <audio id="voxtral-audio-preview" class="hidden" controls></audio>
+          <label class="tts-file-label">Import prerecorded voice
+            <input id="voxtral-file-input" type="file" accept="audio/*" />
+          </label>
           <button id="voxtral-rerecord-btn" class="hidden">Re-record</button>
         </div>
       </div>
     </div>
+  </div>
   <script type="module" src="/main.js"></script>
 </body>
 </html>

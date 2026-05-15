@@ -12,6 +12,8 @@ const THINKING_HOLD_MS = 1800;
 const INTENT_HOLD_MS = 2600;
 const COMPLETION_HOLD_MS = 2000;
 const FAILURE_HOLD_MS = 1100;
+const CLIPPY_MODEL_URL = 'clippy.glb';
+const CLIPPY_TARGET_HEIGHT = 1.55;
 const ACTIVITY_COLORS = {
     idle: new THREE.Color(0xffffff),
     writing: new THREE.Color(0x3fb950),
@@ -41,6 +43,22 @@ const HEART_EMOJIS = ['❤️', '❤', '💖', '💗', '💓', '💕', '💞', '
 const LAUGH_EMOJIS = ['😂', '🤣', '😆', '😹'];
 const RACCOON_EMOJIS = ['🦝'];
 const SLEEP_EMOJIS = ['😴', '💤'];
+const CLIPPY_ANIMATION_KEYWORDS = {
+    idle: ['idle', 'stand', 'loop'],
+    speaking: ['talk', 'speak', 'explain', 'gesture', 'wave', 'idle'],
+    writing: ['write', 'type', 'work', 'gesture', 'idle'],
+    reading: ['read', 'look', 'search', 'idle'],
+    running: ['run', 'work', 'process', 'thinking', 'idle'],
+    thinking: ['think', 'ponder', 'idle'],
+    think: ['think', 'ponder', 'idle'],
+    success: ['happy', 'success', 'celebrate', 'wave', 'idle'],
+    sparkle: ['happy', 'success', 'celebrate', 'wave', 'idle'],
+    party: ['happy', 'success', 'celebrate', 'wave', 'idle'],
+    failed: ['sad', 'error', 'confused', 'no', 'idle'],
+    error: ['sad', 'error', 'confused', 'no', 'idle'],
+    warning: ['warning', 'confused', 'no', 'idle'],
+    sleep: ['sleep', 'idle'],
+};
 
 const container = document.getElementById('avatar-container');
 const overlayContainer = document.getElementById('subagent-overlays');
@@ -48,10 +66,12 @@ const messageEl = document.getElementById('message-text');
 const statusEl = document.getElementById('status-indicator');
 const subtasksEl = document.getElementById('subtasks');
 const emotionBubbleEl = document.getElementById('emotion-bubble');
+const clippyAvatarEl = document.getElementById('clippy-avatar');
 
 const ttsToggleBtn = document.getElementById('tts-toggle');
 const ttsSettingsBtn = document.getElementById('tts-settings-btn');
 const ttsDropdown = document.getElementById('tts-dropdown');
+const avatarStyleSelect = document.getElementById('avatar-style-select');
 const ttsEngineSelect = document.getElementById('tts-engine-select');
 const ttsWebspeechSection = document.getElementById('tts-webspeech-section');
 const ttsVoxtralSection = document.getElementById('tts-voxtral-section');
@@ -72,7 +92,9 @@ const voxtralRecordSection = document.getElementById('voxtral-record-section');
 const voxtralRecordBtn = document.getElementById('voxtral-record-btn');
 const voxtralRecordTimer = document.getElementById('voxtral-record-timer');
 const voxtralStopBtn = document.getElementById('voxtral-stop-btn');
+const clippyRetroVoiceBtn = document.getElementById('clippy-retro-voice-btn');
 const voxtralAudioPreview = document.getElementById('voxtral-audio-preview');
+const voxtralFileInput = document.getElementById('voxtral-file-input');
 const voxtralRerecordBtn = document.getElementById('voxtral-rerecord-btn');
 
 const avatars = new Map();
@@ -86,6 +108,15 @@ let fadeTimeout = null;
 let animationStarted = false;
 let lastFrameTime = performance.now();
 let baseAsset = null;
+let clippyRoot = null;
+let clippyMixer = null;
+let clippyActions = [];
+let clippyActiveAction = null;
+let clippyCurrentAnimationKey = '';
+let clippyVisualMode = 'idle';
+let clippySpeaking = false;
+let clippyBaseY = 0;
+let clippyBaseScale = 1;
 let layoutState = {
     columns: 1,
     rows: 0,
@@ -103,12 +134,13 @@ let layoutState = {
 };
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0d1117);
+scene.background = null;
 
 const camera = new THREE.PerspectiveCamera(36, 1, 0.01, 1000);
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(container.clientWidth || 1, container.clientHeight || 1);
+renderer.setClearColor(0x000000, 0);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.18;
 container.appendChild(renderer.domElement);
@@ -462,6 +494,301 @@ function updateStatusIndicator() {
 
 function updateTtsButton() {
     ttsToggleBtn.textContent = ttsEnabled ? '🔊' : '🔇';
+}
+
+function clearMessageOverlay() {
+    if (fadeTimeout) {
+        clearTimeout(fadeTimeout);
+        fadeTimeout = null;
+    }
+    messageEl.classList.remove('visible');
+    messageEl.classList.remove('fading');
+    messageEl.textContent = '';
+}
+
+function isClippyAvatar() {
+    return avatarStyle === 'clippy';
+}
+
+function setRadioGroupValue(name, value) {
+    document.querySelectorAll(`input[name="${name}"]`).forEach((radio) => {
+        radio.checked = radio.value === value;
+    });
+}
+
+function setClippySpeaking(active) {
+    clippySpeaking = !!active;
+    clippyAvatarEl.dataset.speaking = clippySpeaking ? 'true' : 'false';
+    updateClippyAnimationState();
+}
+
+function updateClippyVisual(mode = 'idle') {
+    const normalized = mode === 'running' && rootWorking ? 'running' : (mode || 'idle');
+    clippyVisualMode = normalized;
+    clippyAvatarEl.dataset.mode = normalized;
+    updateClippyAnimationState();
+}
+
+function getClippyAnimationKey() {
+    return clippySpeaking ? 'speaking' : clippyVisualMode || 'idle';
+}
+
+function findClippyAction(mode) {
+    if (!clippyActions.length) return null;
+    const keywords = CLIPPY_ANIMATION_KEYWORDS[mode] || CLIPPY_ANIMATION_KEYWORDS.idle;
+
+    for (const keyword of keywords) {
+        const action = clippyActions.find((candidate) => candidate.getClip().name.toLowerCase().includes(keyword));
+        if (action) return action;
+    }
+
+    return clippyActions[0];
+}
+
+function updateClippyAnimationState() {
+    if (!clippyMixer || !clippyActions.length) return;
+    const key = getClippyAnimationKey();
+    if (key === clippyCurrentAnimationKey && clippyActiveAction) return;
+
+    const nextAction = findClippyAction(key);
+    if (!nextAction) return;
+
+    nextAction.enabled = true;
+    nextAction.setLoop(THREE.LoopRepeat, Infinity);
+    nextAction.clampWhenFinished = false;
+    if (nextAction !== clippyActiveAction) {
+        nextAction.reset().fadeIn(0.18).play();
+        if (clippyActiveAction) {
+            clippyActiveAction.fadeOut(0.18);
+        }
+        clippyActiveAction = nextAction;
+    }
+
+    clippyCurrentAnimationKey = key;
+}
+
+function updateSceneModeVisibility() {
+    const clippyActive = isClippyAvatar();
+    if (clippyRoot) {
+        clippyRoot.visible = clippyActive;
+    }
+
+    for (const avatar of avatars.values()) {
+        avatar.group.visible = !clippyActive;
+    }
+
+    for (const particle of particles) {
+        particle.sprite.visible = !clippyActive;
+    }
+}
+
+function getObjectMaterialNames(object) {
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    return materials.map((material) => material?.name?.toLowerCase() || '');
+}
+
+function styleClippyMesh(object) {
+    if (!object.isMesh) return;
+
+    const objectName = object.name.toLowerCase();
+    const materialNames = getObjectMaterialNames(object);
+    if (objectName.includes('paper') || materialNames.some((name) => name.includes('paper'))) {
+        object.visible = false;
+        return;
+    }
+
+    object.frustumCulled = false;
+    if (objectName.includes('clip') || materialNames.some((name) => name.includes('clippy'))) {
+        object.material = new THREE.MeshStandardMaterial({
+            color: 0x8f9492,
+            metalness: 0.32,
+            roughness: 0.26,
+            envMapIntensity: 0.9,
+        });
+    } else if (object.material) {
+        object.material.needsUpdate = true;
+    }
+}
+
+function normalizeClippyModel(model, root) {
+    const box = new THREE.Box3();
+    const objectBox = new THREE.Box3();
+    model.updateWorldMatrix(true, true);
+    model.traverse((object) => {
+        if (!object.isMesh || !object.visible) return;
+        objectBox.setFromObject(object);
+        box.union(objectBox);
+    });
+    if (box.isEmpty()) {
+        box.setFromObject(model);
+    }
+
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const height = size.y || Math.max(size.x, size.z, 1);
+
+    model.position.sub(center);
+    clippyBaseScale = CLIPPY_TARGET_HEIGHT / height;
+    clippyBaseY = 0.02;
+    root.scale.setScalar(clippyBaseScale);
+    root.position.set(0, clippyBaseY, 0);
+}
+
+async function loadClippyModel(loader) {
+    try {
+        const gltf = await loader.loadAsync(CLIPPY_MODEL_URL);
+        clippyRoot = new THREE.Group();
+        clippyRoot.name = 'Clippy';
+        clippyRoot.visible = false;
+
+        const model = gltf.scene;
+        const modelWrapper = new THREE.Group();
+        modelWrapper.add(model);
+        model.traverse(styleClippyMesh);
+        normalizeClippyModel(modelWrapper, clippyRoot);
+
+        clippyRoot.add(modelWrapper);
+        scene.add(clippyRoot);
+
+        if (gltf.animations?.length) {
+            clippyMixer = new THREE.AnimationMixer(model);
+            clippyActions = gltf.animations.map((clip) => clippyMixer.clipAction(clip));
+            updateClippyAnimationState();
+        }
+
+        updateSceneModeVisibility();
+    } catch (error) {
+        console.warn('Unable to load Clippy GLB:', error);
+    }
+}
+
+function getClippyMotionConfig(mode, time) {
+    const config = { bobY: Math.sin(time * 1.45) * 0.025, rotX: 0, rotY: Math.sin(time * 0.8) * 0.05, rotZ: Math.sin(time * 1.1) * 0.025, scale: 1, timeScale: 1 };
+
+    switch (mode) {
+        case 'speaking':
+            config.bobY = Math.sin(time * 8.2) * 0.035;
+            config.rotY = Math.sin(time * 5.1) * 0.08;
+            config.rotZ = Math.sin(time * 6.4) * 0.04;
+            config.scale = 1.02 + Math.sin(time * 8.2) * 0.012;
+            config.timeScale = 1.25;
+            break;
+        case 'writing':
+        case 'running':
+            config.bobY = Math.sin(time * 7.4) * 0.028;
+            config.rotX = Math.sin(time * 6.2) * 0.04;
+            config.rotY = Math.sin(time * 4.4) * 0.1;
+            config.rotZ = Math.sin(time * 8.1) * 0.04;
+            config.timeScale = 1.18;
+            break;
+        case 'reading':
+            config.bobY = Math.sin(time * 1.7) * 0.018;
+            config.rotY = Math.sin(time * 1.4) * 0.16;
+            config.rotZ = Math.sin(time * 0.8) * 0.018;
+            config.timeScale = 0.92;
+            break;
+        case 'thinking':
+        case 'think':
+            config.bobY = Math.sin(time * 1.2) * 0.016;
+            config.rotX = -0.06 + Math.sin(time * 0.9) * 0.025;
+            config.rotY = 0.11 + Math.sin(time * 0.7) * 0.045;
+            config.rotZ = -0.025 + Math.sin(time * 0.6) * 0.018;
+            config.timeScale = 0.78;
+            break;
+        case 'success':
+        case 'sparkle':
+        case 'party':
+            config.bobY = Math.sin(time * 5.8) * 0.04;
+            config.rotY = Math.sin(time * 4.8) * 0.11;
+            config.rotZ = Math.sin(time * 7.2) * 0.06;
+            config.scale = 1.04 + Math.sin(time * 5.8) * 0.018;
+            config.timeScale = 1.24;
+            break;
+        case 'failed':
+        case 'error':
+        case 'warning':
+            config.bobY = Math.sin(time * 3.4) * 0.014;
+            config.rotX = -0.08 + Math.sin(time * 2.8) * 0.025;
+            config.rotY = Math.sin(time * 4.8) * 0.09;
+            config.rotZ = Math.sin(time * 9.5) * 0.035;
+            config.timeScale = 0.9;
+            break;
+        case 'sleep':
+            config.bobY = Math.sin(time * 0.75) * 0.012;
+            config.rotX = -0.08;
+            config.rotY = Math.sin(time * 0.45) * 0.035;
+            config.rotZ = -0.035 + Math.sin(time * 0.5) * 0.015;
+            config.timeScale = 0.45;
+            break;
+    }
+
+    return config;
+}
+
+function updateClippyModel(dt, now) {
+    if (!clippyRoot || !isClippyAvatar()) return;
+
+    const time = now / 1000;
+    const mode = getClippyAnimationKey();
+    const motion = getClippyMotionConfig(mode, time);
+    clippyRoot.position.y = clippyBaseY + motion.bobY;
+    clippyRoot.rotation.set(motion.rotX, motion.rotY, motion.rotZ);
+    clippyRoot.scale.setScalar(clippyBaseScale * motion.scale);
+
+    if (clippyMixer) {
+        clippyMixer.timeScale = motion.timeScale;
+        clippyMixer.update(dt);
+    }
+}
+
+function setVoxtralRefAudio(dataUrl, { rememberForClippy = isClippyAvatar(), save = true } = {}) {
+    voxtralRefAudio = dataUrl || null;
+    if (rememberForClippy) {
+        clippyRefAudio = voxtralRefAudio;
+    }
+
+    if (voxtralRefAudio) {
+        voxtralAudioPreview.src = voxtralRefAudio;
+        voxtralAudioPreview.classList.remove('hidden');
+        voxtralRerecordBtn.classList.remove('hidden');
+        voxtralRecordBtn.classList.add('hidden');
+    } else {
+        voxtralAudioPreview.removeAttribute('src');
+        voxtralAudioPreview.classList.add('hidden');
+        voxtralRerecordBtn.classList.add('hidden');
+        voxtralRecordBtn.classList.remove('hidden', 'recording');
+    }
+
+    if (save) saveTtsSettings();
+}
+
+function applyAvatarStyle({ enforceVoiceDefaults = false } = {}) {
+    document.body.classList.toggle('avatar-clippy', isClippyAvatar());
+    avatarStyleSelect.value = avatarStyle;
+    updateSceneModeVisibility();
+    updateCamera();
+    if (!isClippyAvatar()) {
+        setClippySpeaking(false);
+        updateClippyVisual('idle');
+        return;
+    }
+
+    if (enforceVoiceDefaults) {
+        ttsEnabled = true;
+        ttsEngine = 'voxtral';
+        ttsEngineSelect.value = ttsEngine;
+        voxtralVoice = clippyVoxtralVoice || 'en_paul_cheerful';
+        voxtralVoiceSource = 'myvoice';
+        setRadioGroupValue('voxtral-voice-source', voxtralVoiceSource);
+        if (clippyRefAudio) {
+            setVoxtralRefAudio(clippyRefAudio, { rememberForClippy: false, save: false });
+        } else if (voxtralRefAudio) {
+            clippyRefAudio = voxtralRefAudio;
+        }
+    }
+
+    updateTtsButton();
+    updateEngineUI();
 }
 
 function createBaseAsset(modelScene) {
@@ -1357,6 +1684,12 @@ function animate(now) {
     scene.updateMatrixWorld(true);
     updateEmotionBubble(getActiveRootEmotion(now));
     updateEmotionBubblePosition();
+    if (isClippyAvatar()) {
+        const rootAvatar = avatars.get(ROOT_AGENT_ID);
+        updateClippyVisual(rootAvatar ? getVisualMode(rootAvatar, now) : 'idle');
+        updateClippyModel(dt, now);
+    }
+    updateSceneModeVisibility();
     renderer.render(scene, camera);
 }
 
@@ -1373,6 +1706,15 @@ function updateCamera(layout = layoutState) {
     const width = container.clientWidth || 1;
     const height = container.clientHeight || 1;
     camera.aspect = width / height;
+    if (isClippyAvatar()) {
+        const compactness = THREE.MathUtils.clamp(Math.max((520 - width) / 260, (640 - height) / 260), 0, 1);
+        camera.position.set(0, 0.08 + compactness * 0.06, 4.65 + compactness * 0.5);
+        camera.lookAt(0, 0.02, 0);
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+        return;
+    }
+
     camera.position.set(
         0,
         baseAsset ? layout.cameraY : 0.05,
@@ -1397,6 +1739,12 @@ window.showMessage = (text) => {
         if (emotion === 'party' || emotion === 'sparkle') {
             triggerRootBurst(emotion);
         }
+    }
+
+    if (isClippyAvatar()) {
+        clearMessageOverlay();
+        speakClippySummary(text);
+        return;
     }
 
     messageEl.classList.remove('fading');
@@ -1539,6 +1887,7 @@ let ttsEnabled = false;
 let ttsRate = 1.1;
 let ttsPitch = 1.0;
 let ttsVoiceName = null;
+let avatarStyle = 'copilot';
 let ttsEngine = 'webspeech';
 let voxtralBackend = 'cloud';
 let voxtralUrl = 'http://localhost:18000';
@@ -1546,6 +1895,8 @@ let voxtralApiKey = '';
 let voxtralVoice = 'en_paul_neutral';
 let voxtralVoiceSource = 'preset';
 let voxtralRefAudio = null;
+let clippyVoxtralVoice = 'en_paul_cheerful';
+let clippyRefAudio = null;
 let voxtralAudioPlayer = null;
 
 // Recording state
@@ -1577,6 +1928,10 @@ if (savedTts.voice) {
 if (savedTts.enabled) {
     ttsEnabled = true;
 }
+if (savedTts.avatarStyle) {
+    avatarStyle = savedTts.avatarStyle;
+    avatarStyleSelect.value = avatarStyle;
+}
 if (savedTts.engine) {
     ttsEngine = savedTts.engine;
     ttsEngineSelect.value = ttsEngine;
@@ -1598,18 +1953,22 @@ if (savedTts.voxtralApiKey) {
 if (savedTts.voxtralVoice) {
     voxtralVoice = savedTts.voxtralVoice;
 }
+if (savedTts.clippyVoxtralVoice) {
+    clippyVoxtralVoice = savedTts.clippyVoxtralVoice;
+}
 if (savedTts.voxtralVoiceSource) {
     voxtralVoiceSource = savedTts.voxtralVoiceSource;
     document.querySelectorAll('input[name="voxtral-voice-source"]').forEach((radio) => {
         radio.checked = radio.value === voxtralVoiceSource;
     });
 }
-if (savedTts.voxtralRefAudio) {
-    voxtralRefAudio = savedTts.voxtralRefAudio;
-    voxtralAudioPreview.src = voxtralRefAudio;
-    voxtralAudioPreview.classList.remove('hidden');
-    voxtralRerecordBtn.classList.remove('hidden');
+if (savedTts.clippyRefAudio) {
+    clippyRefAudio = savedTts.clippyRefAudio;
 }
+if (savedTts.voxtralRefAudio) {
+    setVoxtralRefAudio(savedTts.voxtralRefAudio, { rememberForClippy: false, save: false });
+}
+applyAvatarStyle({ enforceVoiceDefaults: avatarStyle === 'clippy' });
 updateTtsButton();
 updateEngineUI();
 
@@ -1619,6 +1978,7 @@ function saveTtsSettings() {
         rate: ttsRate,
         pitch: ttsPitch,
         voice: ttsVoiceName,
+        avatarStyle,
         engine: ttsEngine,
         voxtralBackend,
         voxtralUrl,
@@ -1626,6 +1986,8 @@ function saveTtsSettings() {
         voxtralVoice,
         voxtralVoiceSource,
         voxtralRefAudio,
+        clippyVoxtralVoice,
+        clippyRefAudio,
     }).catch(() => {});
 }
 
@@ -1755,6 +2117,22 @@ function audioBufferToWavDataUrl(audioBuffer) {
     return 'data:audio/wav;base64,' + btoa(binary);
 }
 
+async function audioFileToVoxtralRefAudio(file) {
+    const originalDataUrl = await blobToBase64(file);
+    if (/audio\/(wav|mpeg|mp3)/i.test(file.type)) {
+        return originalDataUrl;
+    }
+
+    try {
+        const arrayBuf = await file.arrayBuffer();
+        const ctx = new AudioContext();
+        const decoded = await ctx.decodeAudioData(arrayBuf);
+        return audioBufferToWavDataUrl(decoded);
+    } catch {
+        return originalDataUrl;
+    }
+}
+
 async function startRecording() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1772,13 +2150,11 @@ async function startRecording() {
                 const ctx = new AudioContext();
                 const decoded = await ctx.decodeAudioData(arrayBuf);
                 const wavDataUrl = audioBufferToWavDataUrl(decoded);
-                voxtralRefAudio = wavDataUrl;
-                voxtralAudioPreview.src = wavDataUrl;
+                setVoxtralRefAudio(wavDataUrl, { save: false });
             } catch {
                 // Fallback: store webm (may not work with Mistral but at least saves)
                 const dataUrl = await blobToBase64(webmBlob);
-                voxtralRefAudio = dataUrl;
-                voxtralAudioPreview.src = dataUrl;
+                setVoxtralRefAudio(dataUrl, { save: false });
             }
             voxtralAudioPreview.classList.remove('hidden');
             voxtralRerecordBtn.classList.remove('hidden');
@@ -1812,9 +2188,33 @@ function stopRecording() {
     }
 }
 
+async function generateRetroClippyVoice() {
+    const previousText = clippyRetroVoiceBtn.textContent;
+    clippyRetroVoiceBtn.disabled = true;
+    clippyRetroVoiceBtn.textContent = 'Generating...';
+    try {
+        const dataUrl = await copilot.generateRetroClippyVoice();
+        avatarStyle = 'clippy';
+        ttsEnabled = true;
+        ttsEngine = 'voxtral';
+        voxtralVoiceSource = 'myvoice';
+        avatarStyleSelect.value = avatarStyle;
+        ttsEngineSelect.value = ttsEngine;
+        setRadioGroupValue('voxtral-voice-source', voxtralVoiceSource);
+        setVoxtralRefAudio(dataUrl, { rememberForClippy: true, save: false });
+        applyAvatarStyle({ enforceVoiceDefaults: true });
+        saveTtsSettings();
+    } catch (err) {
+        console.error('Retro Clippy voice generation failed:', err);
+    } finally {
+        clippyRetroVoiceBtn.disabled = false;
+        clippyRetroVoiceBtn.textContent = previousText;
+    }
+}
+
 // ── TTS engines ───────────────────────────────────────────────────────────────
 
-function speakWebSpeech(text) {
+function speakWebSpeech(text, { clippy = false } = {}) {
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = ttsRate;
@@ -1823,26 +2223,34 @@ function speakWebSpeech(text) {
         const voice = speechSynthesis.getVoices().find((item) => item.name === ttsVoiceName);
         if (voice) utterance.voice = voice;
     }
+    if (clippy) {
+        setClippySpeaking(true);
+        utterance.onend = () => setClippySpeaking(false);
+        utterance.onerror = () => setClippySpeaking(false);
+    }
     speechSynthesis.speak(utterance);
 }
 
-async function speakVoxtral(text) {
+async function speakVoxtral(text, { clippy = false } = {}) {
     try {
         const isCloud = voxtralBackend === 'cloud';
         const apiUrl = isCloud ? 'https://api.mistral.ai' : voxtralUrl;
         const model = isCloud ? 'voxtral-mini-tts-latest' : 'mistralai/Voxtral-4B-TTS-2603';
+        const activeRefAudio = clippy ? (clippyRefAudio || voxtralRefAudio) : voxtralRefAudio;
+        const activeVoice = clippy ? (clippyVoxtralVoice || voxtralVoice || 'en_paul_cheerful') : voxtralVoice;
         const body = {
             input: text,
             model,
             response_format: 'wav',
         };
-        if (voxtralVoiceSource === 'myvoice' && voxtralRefAudio) {
+        if ((clippy || voxtralVoiceSource === 'myvoice') && activeRefAudio) {
             // Strip the data URL prefix to get raw base64
-            body.ref_audio = voxtralRefAudio.includes(',')
-                ? voxtralRefAudio.split(',')[1]
-                : voxtralRefAudio;
+            body.ref_audio = activeRefAudio.includes(',')
+                ? activeRefAudio.split(',')[1]
+                : activeRefAudio;
         } else {
-            body.voice = voxtralVoice;
+            body.voice_id = activeVoice;
+            body.voice = activeVoice;
         }
         const reqHeaders = { 'Content-Type': 'application/json' };
         if (voxtralApiKey) reqHeaders['Authorization'] = `Bearer ${voxtralApiKey}`;
@@ -1869,8 +2277,14 @@ async function speakVoxtral(text) {
         }
         const audio = new Audio(audioSrc);
         voxtralAudioPlayer = audio;
+        if (clippy) {
+            setClippySpeaking(true);
+            audio.addEventListener('ended', () => setClippySpeaking(false), { once: true });
+            audio.addEventListener('error', () => setClippySpeaking(false), { once: true });
+        }
         await audio.play();
     } catch (err) {
+        if (clippy) setClippySpeaking(false);
         console.error('Voxtral TTS failed:', err);
     }
 }
@@ -1881,6 +2295,7 @@ function stopAllSpeech() {
         voxtralAudioPlayer.pause();
         voxtralAudioPlayer = null;
     }
+    setClippySpeaking(false);
 }
 
 // ── Event handlers ────────────────────────────────────────────────────────────
@@ -1894,6 +2309,12 @@ ttsToggleBtn.addEventListener('click', () => {
 
 ttsSettingsBtn.addEventListener('click', () => {
     ttsDropdown.classList.toggle('hidden');
+});
+
+avatarStyleSelect.addEventListener('change', () => {
+    avatarStyle = avatarStyleSelect.value;
+    applyAvatarStyle({ enforceVoiceDefaults: avatarStyle === 'clippy' });
+    saveTtsSettings();
 });
 
 ttsEngineSelect.addEventListener('change', () => {
@@ -1941,6 +2362,9 @@ voxtralRefreshBtn.addEventListener('click', () => fetchVoxtralVoices());
 
 voxtralVoiceSelect.addEventListener('change', () => {
     voxtralVoice = voxtralVoiceSelect.value;
+    if (isClippyAvatar()) {
+        clippyVoxtralVoice = voxtralVoice;
+    }
     saveTtsSettings();
 });
 
@@ -1954,12 +2378,19 @@ document.querySelectorAll('input[name="voxtral-voice-source"]').forEach((radio) 
 
 voxtralRecordBtn.addEventListener('click', () => startRecording());
 voxtralStopBtn.addEventListener('click', () => stopRecording());
+clippyRetroVoiceBtn.addEventListener('click', () => generateRetroClippyVoice());
+voxtralFileInput.addEventListener('change', async () => {
+    const file = voxtralFileInput.files?.[0];
+    if (!file) return;
+    const dataUrl = await audioFileToVoxtralRefAudio(file);
+    voxtralVoiceSource = 'myvoice';
+    setRadioGroupValue('voxtral-voice-source', voxtralVoiceSource);
+    setVoxtralRefAudio(dataUrl);
+    updateEngineUI();
+    voxtralFileInput.value = '';
+});
 voxtralRerecordBtn.addEventListener('click', () => {
-    voxtralRefAudio = null;
-    voxtralAudioPreview.classList.add('hidden');
-    voxtralRerecordBtn.classList.add('hidden');
-    voxtralRecordBtn.classList.remove('hidden', 'recording');
-    saveTtsSettings();
+    setVoxtralRefAudio(null);
 });
 
 window.setTts = (enabled) => {
@@ -1972,6 +2403,14 @@ window.setTts = (enabled) => {
 
 window.getTts = () => ttsEnabled;
 window.speak = (text) => speak(text);
+window.speakClippySummary = (text) => speakClippySummary(text);
+window.setAvatarStyle = (style) => {
+    avatarStyle = style === 'clippy' ? 'clippy' : 'copilot';
+    applyAvatarStyle({ enforceVoiceDefaults: avatarStyle === 'clippy' });
+    saveTtsSettings();
+    return avatarStyle;
+};
+window.getAvatarStyle = () => avatarStyle;
 
 window.getVoices = () => {
     const voices = speechSynthesis.getVoices();
@@ -1998,12 +2437,17 @@ window.getTtsSettings = () => JSON.stringify({
     rate: ttsRate,
     pitch: ttsPitch,
     voice: ttsVoiceName,
+    avatarStyle,
     engine: ttsEngine,
     voxtralBackend,
     voxtralUrl,
     voxtralApiKey,
     voxtralVoice,
     voxtralVoiceSource,
+    clippyVoxtralVoice,
+    hasClippyRefAudio: !!clippyRefAudio,
+    hasClippyModel: !!clippyRoot,
+    clippyAnimations: clippyActions.map((action) => action.getClip().name),
 });
 
 function stripMarkdownForSpeech(text) {
@@ -2025,14 +2469,54 @@ function stripMarkdownForSpeech(text) {
         .trim();
 }
 
-function speak(text) {
+function clampSpokenSummary(text, maxLength = 185) {
+    const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+    if (normalized.length <= maxLength) return normalized;
+    const clipped = normalized.slice(0, maxLength - 1);
+    const breakAt = Math.max(clipped.lastIndexOf('.'), clipped.lastIndexOf(','), clipped.lastIndexOf(';'));
+    return `${clipped.slice(0, breakAt > 70 ? breakAt : maxLength - 1).trim()}...`;
+}
+
+function summarizeForClippy(text) {
+    const plain = stripMarkdownForSpeech(text)
+        .replace(/https?:\/\/\S+/gi, 'a link')
+        .replace(/\b[A-Z]:\\\S+/g, 'a file')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (!plain) return 'It looks like there is nothing new to report.';
+
+    const sentences = plain
+        .split(/(?<=[.!?])\s+/)
+        .map((sentence) => sentence.trim())
+        .filter(Boolean);
+    const lower = plain.toLowerCase();
+    const failed = /\b(failed|error|unable|cannot|can't|couldn't|blocked|not working|issue|problem)\b/.test(lower);
+    const successful = /\b(done|completed|fixed|implemented|updated|added|created|ready|finished|resolved)\b/.test(lower);
+    const candidate = sentences.find((sentence) => sentence.length >= 24 && sentence.length <= 220) || sentences[0] || plain;
+    const summary = clampSpokenSummary(candidate.replace(/^(done|completed|fixed|implemented|updated|added|created|ready|finished|resolved)[:,.\s-]*/i, ''));
+
+    if (failed) {
+        return `It looks like we hit a snag. ${summary}`;
+    }
+    if (successful) {
+        return `It looks like you're all set. ${summary}`;
+    }
+    return `It looks like there is an update. ${summary}`;
+}
+
+function speakClippySummary(text) {
+    speak(summarizeForClippy(text), { clippy: true, forceEngine: 'voxtral' });
+}
+
+function speak(text, { clippy = false, forceEngine = null } = {}) {
     if (!ttsEnabled || !text) return;
     const spokenText = stripMarkdownForSpeech(text);
     if (!spokenText) return;
-    if (ttsEngine === 'voxtral') {
-        speakVoxtral(spokenText);
+    const engine = forceEngine || (clippy ? 'voxtral' : ttsEngine);
+    if (engine === 'voxtral') {
+        speakVoxtral(spokenText, { clippy });
     } else {
-        speakWebSpeech(spokenText);
+        speakWebSpeech(spokenText, { clippy });
     }
 }
 
@@ -2041,15 +2525,17 @@ const resizeObserver = new ResizeObserver(() => {
 });
 resizeObserver.observe(container);
 
+const loader = new GLTFLoader();
 try {
-    const loader = new GLTFLoader();
     const gltf = await loader.loadAsync('model.glb');
     baseAsset = createBaseAsset(gltf.scene);
 } catch {
     baseAsset = createBaseAsset(null);
 }
+await loadClippyModel(loader);
 
 initializeRootAvatar();
+updateSceneModeVisibility();
 layoutSubagents();
 updateStatusIndicator();
 updateCamera();

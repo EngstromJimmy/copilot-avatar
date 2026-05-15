@@ -13,6 +13,7 @@ So I built this. A little friend that lives on your screen and actually talks to
 ## Features
 
 - **Main avatar + sub-agent squad view**: a large root Copilot avatar with dynamically spawned sub-agent avatars underneath it
+- **Optional Clippy mode**: swap the root avatar for an animated paperclip-style assistant on a transparent background
 - **Per-agent activity states**: writing, reading, running, thinking, and idle states route independently to the correct avatar
 - **Responsive squad layout**: sub-agents reflow into centered rows for smaller windows instead of disappearing off-screen
 - **Activity FX**
@@ -27,9 +28,11 @@ So I built this. A little friend that lives on your screen and actually talks to
 - **Live response display**: final root-agent messages appear as floating text near the avatar
 - **Working indicator**: pulsing `● Working…` status with current subtask/intent text
 - **Emotion reactions**: emoji-triggered expressions and motion for hearts, laughter, sparkle, raccoon mode, and idle sleep
-- **Text-to-Speech**: built-in TTS using the Web Speech API
+- **Text-to-Speech**: built-in TTS using the Web Speech API or Voxtral TTS
   - Toggle on/off with the 🔇/🔊 button
   - Choose from available system voices
+  - Use Voxtral with Mistral Cloud or a local vLLM server
+  - Record or import a prerecorded voice sample for Voxtral reference audio
   - Adjustable speech rate and pitch
   - Markdown formatting is stripped before speech
   - Settings persist in `.tts-settings.json`
@@ -76,6 +79,8 @@ Open the avatar window when you want it, then let it react to the current sessio
 
 Sub-agents appear automatically when the current session emits sub-agent lifecycle events.
 
+Select **Avatar → Clippy** in settings to show the animated grey `clippy.glb` paperclip on a transparent background. Clippy mode forces Voxtral speech, hides response/status overlays, and speaks a short Clippy-style summary of the final Copilot response instead of reading the message verbatim. Import or record a Voxtral reference clip while Clippy is selected to save it as the default Clippy voice. You can also use **Generate retro Clippy sample** to fetch a short SAPI4/TruVoice-style reference WAV at setup time instead of bundling an audio file.
+
 ## Activity States
 
 | State | Trigger | Visual |
@@ -94,7 +99,12 @@ The root avatar uses the same activity-state system even when there are no sub-a
 | --- | --- |
 | 🔇/🔊 button | Toggle speech on/off |
 | ⚙️ button | Open settings dropdown |
+| Avatar dropdown | Choose Copilot or Clippy |
+| Engine dropdown | Choose Web Speech or Voxtral |
 | Voice dropdown | Select a system voice |
+| Voxtral backend | Choose Mistral Cloud or local vLLM |
+| Generate retro Clippy sample | Fetch and save a SAPI4-style Voxtral reference clip for Clippy |
+| Import prerecorded voice | Save reference audio for Voxtral voice cloning |
 | Speed slider | Adjust rate from 0.5× to 3.0× |
 | Pitch slider | Adjust pitch from 0.5 to 2.0 |
 
@@ -114,7 +124,8 @@ copilot-avatar/
     ├── index.html      # Webview page
     ├── style.css       # Styling for the window and overlays
     ├── main.js         # 3D scene, squad logic, activity effects, TTS
-    └── model.glb       # 3D Copilot head model
+    ├── model.glb       # 3D Copilot head model
+    └── clippy.glb      # 3D animated Clippy model
 ```
 
 ## Dependencies

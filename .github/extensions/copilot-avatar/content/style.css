@@ -4,6 +4,7 @@
 html, body {
   height: 100%;
   overflow: hidden;
+  background: transparent;
 }
 
 body {
@@ -13,23 +14,54 @@ body {
   position: relative;
 }
 
+body.avatar-clippy {
+  background: transparent;
+}
+
 #avatar-container,
 #subagent-overlays,
 #message-container,
 #status-container,
 #emotion-bubble,
+#clippy-avatar,
 #tts-controls {
   position: absolute;
 }
 
 #avatar-container {
   inset: 0;
+  z-index: 1;
 }
 
 #avatar-container canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
+}
+
+body.avatar-clippy #subagent-overlays,
+body.avatar-clippy #message-container,
+body.avatar-clippy #status-container,
+body.avatar-clippy #emotion-bubble {
+  display: none !important;
+}
+
+body.avatar-clippy #avatar-container {
+  z-index: 2;
+}
+
+#clippy-avatar {
+  inset: 0;
+  z-index: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+body.avatar-clippy #clippy-avatar {
+  display: flex;
 }
 
 #subagent-overlays {
@@ -297,6 +329,11 @@ body.tiny-layout .agent-badge {
   display: flex;
   gap: 6px;
   align-items: flex-start;
+  transition: opacity 0.18s ease;
+}
+
+body.avatar-clippy #tts-controls:not(:hover):not(:focus-within) {
+  opacity: 0;
 }
 
 #tts-toggle,
@@ -348,7 +385,8 @@ body.tiny-layout .agent-badge {
 }
 
 #tts-dropdown select,
-#tts-dropdown input[type="range"] {
+#tts-dropdown input[type="range"],
+#tts-dropdown input[type="file"] {
   width: 100%;
 }
 
@@ -368,7 +406,8 @@ body.tiny-layout .agent-badge {
   text-align: center;
 }
 
-#tts-dropdown input[type="text"] {
+#tts-dropdown input[type="text"],
+#tts-dropdown input[type="password"] {
   flex: 1;
   padding: 6px 8px;
   background: #0d1117;
@@ -376,6 +415,11 @@ body.tiny-layout .agent-badge {
   border-radius: 6px;
   color: #e6edf3;
   font-size: 13px;
+}
+
+.tts-file-label input[type="file"] {
+  color: #c9d1d9;
+  font-size: 12px;
 }
 
 .tts-row {
@@ -415,6 +459,7 @@ body.tiny-layout .agent-badge {
 #voxtral-refresh-btn,
 #voxtral-record-btn,
 #voxtral-stop-btn,
+#clippy-retro-voice-btn,
 #voxtral-rerecord-btn {
   padding: 5px 10px;
   background: #21262d;
@@ -429,8 +474,14 @@ body.tiny-layout .agent-badge {
 #voxtral-refresh-btn:hover,
 #voxtral-record-btn:hover,
 #voxtral-stop-btn:hover,
+#clippy-retro-voice-btn:hover,
 #voxtral-rerecord-btn:hover {
   background: #30363d;
+}
+
+#clippy-retro-voice-btn {
+  width: 100%;
+  border-color: rgba(88, 166, 255, 0.35);
 }
 
 #voxtral-record-btn.recording {
@@ -454,6 +505,65 @@ body.tiny-layout .agent-badge {
 @keyframes record-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+@keyframes clippy-idle {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-8px) rotate(1.5deg); }
+}
+
+@keyframes clippy-speaking {
+  0%, 100% { transform: translateY(0) rotate(-2deg) scale(1); }
+  50% { transform: translateY(-7px) rotate(2deg) scale(1.035); }
+}
+
+@keyframes clippy-busy {
+  0%, 100% { transform: translate(0, 0) rotate(-4deg); }
+  25% { transform: translate(5px, -9px) rotate(5deg); }
+  50% { transform: translate(-2px, -3px) rotate(-1deg); }
+  75% { transform: translate(-5px, -8px) rotate(4deg); }
+}
+
+@keyframes clippy-thinking {
+  0%, 100% { transform: translateY(0) rotate(-5deg); }
+  50% { transform: translateY(-5px) rotate(7deg); }
+}
+
+@keyframes clippy-happy {
+  0%, 100% { transform: translateY(0) rotate(-7deg) scale(1); }
+  45% { transform: translateY(-15px) rotate(9deg) scale(1.06); }
+}
+
+@keyframes clippy-alert {
+  0%, 100% { transform: translateX(0) rotate(-3deg); }
+  25% { transform: translateX(-6px) rotate(-9deg); }
+  75% { transform: translateX(6px) rotate(7deg); }
+}
+
+@keyframes clippy-shadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.2; }
+  50% { transform: scaleX(0.82); opacity: 0.13; }
+}
+
+@keyframes clippy-look {
+  0%, 100% { transform: translateX(0); }
+  24% { transform: translate(4px, 1px); }
+  56% { transform: translate(-4px, 0); }
+}
+
+@keyframes clippy-scan {
+  0%, 100% { transform: translateX(-10px); }
+  50% { transform: translateX(10px); }
+}
+
+@keyframes clippy-brow-talk-left {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-4px) rotate(-4deg); }
+}
+
+@keyframes clippy-brow-talk-right {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-4px) rotate(4deg); }
 }
 
 @keyframes pulse {

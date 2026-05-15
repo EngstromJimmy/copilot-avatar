@@ -6,6 +6,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { CopilotWebview } from "./lib/copilot-webview.js";
 
 const settingsPath = join(import.meta.dirname, ".tts-settings.json");
+const retroClippySampleText = "It looks like you're working on some code. Would you like a hand?";
 let folderName = basename(process.cwd());
 
 function formatTitle() {
@@ -16,12 +17,28 @@ async function loadSettings() {
     try {
         return JSON.parse(await readFile(settingsPath, "utf-8"));
     } catch {
-        return { enabled: false, rate: 1.1, voice: null, engine: 'webspeech', voxtralBackend: 'cloud', voxtralUrl: 'http://localhost:18000', voxtralApiKey: '', voxtralVoice: 'en_paul_neutral', voxtralVoiceSource: 'preset' };
+        return { enabled: false, rate: 1.1, voice: null, avatarStyle: 'copilot', engine: 'webspeech', voxtralBackend: 'cloud', voxtralUrl: 'http://localhost:18000', voxtralApiKey: '', voxtralVoice: 'en_paul_neutral', voxtralVoiceSource: 'preset', clippyVoxtralVoice: 'en_paul_cheerful', clippyRefAudio: null };
     }
 }
 
 async function saveSettings(settings) {
     await writeFile(settingsPath, JSON.stringify(settings), "utf-8");
+}
+
+async function generateRetroClippyVoice() {
+    const params = new URLSearchParams({
+        text: retroClippySampleText,
+        voice: "Adult Male #2, American English (TruVoice)",
+        pitch: "140",
+        speed: "157",
+    });
+    const response = await fetch(`https://www.tetyys.com/SAPI4/SAPI4?${params}`);
+    if (!response.ok) {
+        throw new Error(`SAPI4 voice generation failed (${response.status})`);
+    }
+    const contentType = response.headers.get("content-type") || "audio/wav";
+    const bytes = Buffer.from(await response.arrayBuffer());
+    return `data:${contentType};base64,${bytes.toString("base64")}`;
 }
 
 const webview = new CopilotWebview({
@@ -30,10 +47,12 @@ const webview = new CopilotWebview({
     title: formatTitle(),
     width: 600,
     height: 800,
+    transparent: true,
     callbacks: {
         log: (msg, opts) => session.log(msg, opts),
         loadSettings: () => loadSettings(),
         saveSettings: (settings) => saveSettings(settings),
+        generateRetroClippyVoice: () => generateRetroClippyVoice(),
     },
 });
 
