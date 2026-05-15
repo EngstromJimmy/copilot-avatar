@@ -65,10 +65,8 @@ const CLIPPY_ANIMATION_KEYWORDS = {
 const container = document.getElementById('avatar-container');
 const overlayContainer = document.getElementById('subagent-overlays');
 
-// Native OS window drag — let WebView2 handle it natively
+// Full window drag — click on Clippy opens settings
 document.body.style.webkitAppRegion = 'drag';
-document.getElementById('tts-controls').style.webkitAppRegion = 'no-drag';
-container.style.cursor = 'grab';
 const messageEl = document.getElementById('message-text');
 const statusEl = document.getElementById('status-indicator');
 const subtasksEl = document.getElementById('subtasks');
@@ -2483,6 +2481,19 @@ container.addEventListener('contextmenu', (event) => {
     if (!isClippyAvatar()) return;
     event.preventDefault();
     setTtsSettingsOpen(true);
+});
+
+// Single click on Clippy toggles settings (right-click blocked by OS drag region)
+container.addEventListener('click', () => {
+    if (!isClippyAvatar()) return;
+    toggleTtsSettings();
+});
+
+// Close TTS controls when clicking outside
+document.addEventListener('pointerdown', (e) => {
+    if (!ttsControls.contains(e.target)) {
+        setTtsSettingsOpen(false);
+    }
 });
 
 avatarStyleSelect.addEventListener('change', () => {
