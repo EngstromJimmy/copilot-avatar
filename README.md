@@ -13,11 +13,18 @@ So I built this. A little friend that lives on your screen and actually talks to
 ## Features
 
 - **Main avatar + sub-agent view**: a large root Copilot avatar with dynamically spawned sub-agent avatars underneath it
-- **Optional [Squad](https://github.com/bradygaster/squad) integration**: if Squad metadata is available, the avatar uses Squad names and role-based styling for those sub-agents
 - **Per-agent activity states**: writing, reading, running, thinking, and idle states route independently to the correct avatar
 - **Responsive sub-agent layout**: sub-agents reflow into centered rows for smaller windows
 - **Lifecycle and message reactions**: success/failure reactions, floating responses, working state, and emoji-driven expressions
 - **Built-in TTS**: voice, speed, pitch, and persisted settings
+
+## Squad Integration
+
+With optional [Squad](https://github.com/bradygaster/squad) integration, the avatar keeps the normal Copilot flow and enriches the same sub-agents with Squad metadata.
+
+- **Names from Squad**: sub-agents use Squad member names when available
+- **Role-based color coding**: labels, accents, glows, and head tints follow Squad roles
+- **Extra context**: roster and charter metadata help each sub-agent feel distinct
 
 ## Releases
 
@@ -74,7 +81,7 @@ Open the avatar window when you want it, then let it react to the current sessio
 
 Sub-agents appear automatically when the current session emits sub-agent lifecycle events.
 
-If [Squad](https://github.com/bradygaster/squad) is available for the workspace, the avatar keeps the normal Copilot flow and enriches those same sub-agents with Squad roster and charter metadata. Without Squad, it works as a normal Copilot avatar.
+If Squad is available for the workspace, the avatar uses that metadata automatically. Without Squad, it works as a normal Copilot avatar.
 
 ## Activity States
 
