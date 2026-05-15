@@ -14,6 +14,8 @@ const COMPLETION_HOLD_MS = 2000;
 const FAILURE_HOLD_MS = 1100;
 const CLIPPY_MODEL_URL = 'clippy.glb';
 const CLIPPY_TARGET_HEIGHT = 1.55;
+const CLIPPY_DEFAULT_VOXTRAL_VOICE = 'en_paul_excited';
+const CLIPPY_LEGACY_DEFAULT_VOXTRAL_VOICE = 'en_paul_cheerful';
 const ACTIVITY_COLORS = {
     idle: new THREE.Color(0xffffff),
     writing: new THREE.Color(0x3fb950),
@@ -70,6 +72,7 @@ const clippyAvatarEl = document.getElementById('clippy-avatar');
 
 const ttsToggleBtn = document.getElementById('tts-toggle');
 const ttsSettingsBtn = document.getElementById('tts-settings-btn');
+const ttsControls = document.getElementById('tts-controls');
 const ttsDropdown = document.getElementById('tts-dropdown');
 const avatarStyleSelect = document.getElementById('avatar-style-select');
 const ttsEngineSelect = document.getElementById('tts-engine-select');
@@ -117,6 +120,8 @@ let clippyVisualMode = 'idle';
 let clippySpeaking = false;
 let clippyBaseY = 0;
 let clippyBaseScale = 1;
+let clippyInnerClipDeform = null;
+let clippyTalkEnvelope = 0;
 let layoutState = {
     columns: 1,
     rows: 0,
@@ -496,6 +501,15 @@ function updateTtsButton() {
     ttsToggleBtn.textContent = ttsEnabled ? '🔊' : '🔇';
 }
 
+function setTtsSettingsOpen(open) {
+    ttsDropdown.classList.toggle('hidden', !open);
+    ttsControls.classList.toggle('settings-open', open);
+}
+
+function toggleTtsSettings() {
+    setTtsSettingsOpen(ttsDropdown.classList.contains('hidden'));
+}
+
 function clearMessageOverlay() {
     if (fadeTimeout) {
         clearTimeout(fadeTimeout);
@@ -587,8 +601,69 @@ function getObjectMaterialNames(object) {
     return materials.map((material) => material?.name?.toLowerCase() || '');
 }
 
+function smoothStep(edge0, edge1, value) {
+    const t = THREE.MathUtils.clamp((value - edge0) / (edge1 - edge0), 0, 1);
+    return t * t * (3 - 2 * t);
+}
+
+function rangeInfluence(value, min, max, fade = 0.18) {
+    return smoothStep(min, min + fade, value) * (1 - smoothStep(max - fade, max, value));
+}
+
+function prepareClippyInnerClipDeform(mesh) {
+    console.log('[JAW] prepareClippyInnerClipDeform called for mesh:', mesh.name, 'verts:', mesh.geometry?.attributes?.position?.count);
+    window.__jawMeshNames = (window.__jawMeshNames || []);
+    window.__jawMeshNames.push({ name: mesh.name, verts: mesh.geometry?.attributes?.position?.count });
+    const position = mesh.geometry?.attributes?.position;
+    if (!position?.array || !position.count) return;
+
+    const base = new Float32Array(position.array);
+    const weights = new Float32Array(position.count);
+    let maxWeight = 0;
+
+    let xMin=Infinity,xMax=-Infinity,yMin=Infinity,yMax=-Infinity,zMin=Infinity,zMax=-Infinity;
+    for (let index = 0; index < position.count; index += 1) {
+        const offset = index * 3;
+        xMin=Math.min(xMin,base[offset]); xMax=Math.max(xMax,base[offset]);
+        yMin=Math.min(yMin,base[offset+1]); yMax=Math.max(yMax,base[offset+1]);
+        zMin=Math.min(zMin,base[offset+2]); zMax=Math.max(zMax,base[offset+2]);
+    }
+    console.log('[JAW] vertex ranges x:', xMin.toFixed(3), xMax.toFixed(3), 'y:', yMin.toFixed(3), yMax.toFixed(3), 'z:', zMin.toFixed(3), zMax.toFixed(3));
+    window.__jawRanges = { x:[xMin,xMax], y:[yMin,yMax], z:[zMin,zMax] };
+
+    // Store signed jaw direction per vertex: +1 = upper jaw (move up), -1 = lower jaw (move down)
+    const jawDir = new Float32Array(position.count);
+    const mouthCenterZ = 0.85; // center of z range 0.25..1.45
+
+    for (let index = 0; index < position.count; index += 1) {
+        const offset = index * 3;
+        const x = base[offset];
+        const y = base[offset + 1];
+        const z = base[offset + 2];
+        // Only inner/edge vertices (not the outer flat faces at |y| ≈ 0.07)
+        const absY = Math.abs(y);
+        const yWeight = absY < 0.05 ? 1.0 : smoothStep(0.07, 0.045, absY);
+        const xWeight = rangeInfluence(x, -0.55, 0.18, 0.14);
+        const zWeight = rangeInfluence(z, 0.25, 1.45, 0.22);
+        const lowerJawWeight = smoothStep(0.45, 1.35, z);
+        const weight = yWeight * xWeight * zWeight * (0.35 + lowerJawWeight * 0.65);
+        weights[index] = weight;
+        jawDir[index] = z < mouthCenterZ ? -1 : 1; // lower half goes down, upper half goes up
+        maxWeight = Math.max(maxWeight, weight);
+    }
+    console.log('[JAW] maxWeight:', maxWeight.toFixed(6), 'verts:', position.count);
+
+    if (maxWeight <= 0) return;
+    position.setUsage(THREE.DynamicDrawUsage);
+    clippyInnerClipDeform = { mesh, position, base, weights, jawDir };
+    window.__clippyDeform = clippyInnerClipDeform;
+}
+
 function styleClippyMesh(object) {
     if (!object.isMesh) return;
+    window.__allMeshes = window.__allMeshes || [];
+    const mats = getObjectMaterialNames(object);
+    window.__allMeshes.push({ name: object.name, mats });
 
     const objectName = object.name.toLowerCase();
     const materialNames = getObjectMaterialNames(object);
@@ -605,6 +680,7 @@ function styleClippyMesh(object) {
             roughness: 0.26,
             envMapIntensity: 0.9,
         });
+        prepareClippyInnerClipDeform(object);
     } else if (object.material) {
         object.material.needsUpdate = true;
     }
@@ -725,6 +801,29 @@ function getClippyMotionConfig(mode, time) {
     return config;
 }
 
+function updateClippyInnerClipDeform(dt, time) {
+    const target = clippySpeaking ? 1 : 0;
+    const ease = 1 - Math.exp(-dt * (target ? 14 : 8));
+    clippyTalkEnvelope += (target - clippyTalkEnvelope) * ease;
+
+    if (!clippyInnerClipDeform) return;
+    const { mesh, position, base, weights } = clippyInnerClipDeform;
+    const values = position.array;
+
+    // Layered sines for natural speech cadence
+    const syllable = Math.max(0, Math.sin(time * 14) + Math.sin(time * 23) * 0.5 + Math.sin(time * 37) * 0.25) / 1.75;
+    const open = clippyTalkEnvelope * syllable;
+
+    // Push all mouth-area vertices in +Z only (opens upward, never exposes interior)
+    for (let i = 0; i < position.count; i++) {
+        const o = i * 3;
+        values[o]     = base[o];
+        values[o + 1] = base[o + 1];
+        values[o + 2] = base[o + 2] + open * weights[i] * 0.18;
+    }
+    position.needsUpdate = true;
+}
+
 function updateClippyModel(dt, now) {
     if (!clippyRoot || !isClippyAvatar()) return;
 
@@ -734,6 +833,7 @@ function updateClippyModel(dt, now) {
     clippyRoot.position.y = clippyBaseY + motion.bobY;
     clippyRoot.rotation.set(motion.rotX, motion.rotY, motion.rotZ);
     clippyRoot.scale.setScalar(clippyBaseScale * motion.scale);
+    updateClippyInnerClipDeform(dt, time);
 
     if (clippyMixer) {
         clippyMixer.timeScale = motion.timeScale;
@@ -777,7 +877,7 @@ function applyAvatarStyle({ enforceVoiceDefaults = false } = {}) {
         ttsEnabled = true;
         ttsEngine = 'voxtral';
         ttsEngineSelect.value = ttsEngine;
-        voxtralVoice = clippyVoxtralVoice || 'en_paul_cheerful';
+        voxtralVoice = clippyVoxtralVoice || CLIPPY_DEFAULT_VOXTRAL_VOICE;
         voxtralVoiceSource = 'myvoice';
         setRadioGroupValue('voxtral-voice-source', voxtralVoiceSource);
         if (clippyRefAudio) {
@@ -1883,7 +1983,7 @@ const VOXTRAL_VOICES_FALLBACK = [
     { slug: 'gb_jane_sarcasm',    name: 'Jane - Sarcasm'    },
 ];
 
-let ttsEnabled = false;
+let ttsEnabled = true;
 let ttsRate = 1.1;
 let ttsPitch = 1.0;
 let ttsVoiceName = null;
@@ -1895,7 +1995,7 @@ let voxtralApiKey = '';
 let voxtralVoice = 'en_paul_neutral';
 let voxtralVoiceSource = 'preset';
 let voxtralRefAudio = null;
-let clippyVoxtralVoice = 'en_paul_cheerful';
+let clippyVoxtralVoice = CLIPPY_DEFAULT_VOXTRAL_VOICE;
 let clippyRefAudio = null;
 let voxtralAudioPlayer = null;
 
@@ -1953,7 +2053,7 @@ if (savedTts.voxtralApiKey) {
 if (savedTts.voxtralVoice) {
     voxtralVoice = savedTts.voxtralVoice;
 }
-if (savedTts.clippyVoxtralVoice) {
+if (savedTts.clippyVoxtralVoice && savedTts.clippyVoxtralVoice !== CLIPPY_LEGACY_DEFAULT_VOXTRAL_VOICE) {
     clippyVoxtralVoice = savedTts.clippyVoxtralVoice;
 }
 if (savedTts.voxtralVoiceSource) {
@@ -2231,13 +2331,20 @@ function speakWebSpeech(text, { clippy = false } = {}) {
     speechSynthesis.speak(utterance);
 }
 
+function fallbackClippySpeech(text) {
+    if (!clippyRefAudio && !voxtralRefAudio) {
+        console.warn('Clippy Voxtral speech failed; falling back to Web Speech. Add a Voxtral API key or local server in settings for Clippy voice cloning.');
+    }
+    speakWebSpeech(text, { clippy: true });
+}
+
 async function speakVoxtral(text, { clippy = false } = {}) {
     try {
         const isCloud = voxtralBackend === 'cloud';
         const apiUrl = isCloud ? 'https://api.mistral.ai' : voxtralUrl;
         const model = isCloud ? 'voxtral-mini-tts-latest' : 'mistralai/Voxtral-4B-TTS-2603';
         const activeRefAudio = clippy ? (clippyRefAudio || voxtralRefAudio) : voxtralRefAudio;
-        const activeVoice = clippy ? (clippyVoxtralVoice || voxtralVoice || 'en_paul_cheerful') : voxtralVoice;
+        const activeVoice = clippy ? (clippyVoxtralVoice || voxtralVoice || CLIPPY_DEFAULT_VOXTRAL_VOICE) : voxtralVoice;
         const body = {
             input: text,
             model,
@@ -2261,6 +2368,7 @@ async function speakVoxtral(text, { clippy = false } = {}) {
         });
         if (!res.ok) {
             console.error('Voxtral TTS error:', res.status, await res.text());
+            if (clippy) fallbackClippySpeech(text);
             return;
         }
         // Mistral cloud returns { audio_data: "<base64 WAV>" }
@@ -2286,6 +2394,7 @@ async function speakVoxtral(text, { clippy = false } = {}) {
     } catch (err) {
         if (clippy) setClippySpeaking(false);
         console.error('Voxtral TTS failed:', err);
+        if (clippy) fallbackClippySpeech(text);
     }
 }
 
@@ -2308,7 +2417,13 @@ ttsToggleBtn.addEventListener('click', () => {
 });
 
 ttsSettingsBtn.addEventListener('click', () => {
-    ttsDropdown.classList.toggle('hidden');
+    toggleTtsSettings();
+});
+
+container.addEventListener('contextmenu', (event) => {
+    if (!isClippyAvatar()) return;
+    event.preventDefault();
+    setTtsSettingsOpen(true);
 });
 
 avatarStyleSelect.addEventListener('change', () => {
@@ -2402,7 +2517,7 @@ window.setTts = (enabled) => {
 };
 
 window.getTts = () => ttsEnabled;
-window.speak = (text) => speak(text);
+window.speak = (text) => speak(text, { clippy: true });
 window.speakClippySummary = (text) => speakClippySummary(text);
 window.setAvatarStyle = (style) => {
     avatarStyle = style === 'clippy' ? 'clippy' : 'copilot';
