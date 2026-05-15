@@ -54,7 +54,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Bump extension version
-        run: npm version "$VERSION" --no-git-tag-version --prefix "$EXTENSION_DIR"
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_version="$(node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(pkg.version || '');" "$EXTENSION_DIR/package.json")"
+          if [[ "$current_version" == "$VERSION" ]]; then
+            echo "Extension version already set to $VERSION."
+            exit 0
+          fi
+
+          npm version "$VERSION" --no-git-tag-version --prefix "$EXTENSION_DIR"
 
       - name: Commit version files
         id: commit_version_files
