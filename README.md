@@ -2,7 +2,7 @@
 
 ![Copilot Avatar Demo](assets/copilot-avatar-squad-demo.gif)
 
-A 3D animated Copilot avatar that lives in a native window alongside your terminal session. It shows the main Copilot avatar, visualizes sub-agents as a small squad, displays floating messages, and can read final responses aloud with text-to-speech.
+A 3D animated Copilot avatar that lives in a native window alongside your terminal session. It shows the main Copilot avatar, visualizes sub-agents beneath it, displays floating messages, and can read final responses aloud with text-to-speech.
 
 ## Why?
 
@@ -12,32 +12,16 @@ So I built this. A little friend that lives on your screen and actually talks to
 
 ## Features
 
-- **Main avatar + sub-agent squad view**: a large root Copilot avatar with dynamically spawned sub-agent avatars underneath it
-- **Optional Squad metadata integration**: when the current workspace has Squad metadata, the avatar shows Squad-ready status, uses Squad member names for labels, and applies role-based accents, motion personas, head tints, and idle badges
+- **Main avatar + sub-agent view**: a large root Copilot avatar with dynamically spawned sub-agent avatars underneath it
+- **Optional [Squad](https://github.com/bradygaster/squad) integration**: if Squad metadata is available, the avatar uses Squad names and role-based styling for those sub-agents
 - **Per-agent activity states**: writing, reading, running, thinking, and idle states route independently to the correct avatar
-- **Responsive squad layout**: sub-agents reflow into centered rows for smaller windows instead of disappearing off-screen
-- **Activity FX**
-  - Writing: green eyes, typing motion, floating binary glyphs
-  - Reading: blue eyes, scanning motion, soft scan beam
-  - Running: amber eyes, more energetic motion
-  - Thinking: purple eyes, calmer motion, orbiting dots
-- **Lifecycle reactions**
-  - Sub-agent completion confetti and success pulse
-  - Sub-agent failure flash and shake
-  - Root avatar success/failure reactions based on turn outcomes
-- **Live response display**: final root-agent messages appear as floating text near the avatar
-- **Working indicator**: pulsing `● Working…` status with current subtask/intent text
-- **Emotion reactions**: emoji-triggered expressions and motion for hearts, laughter, sparkle, raccoon mode, and idle sleep
-- **Text-to-Speech**: built-in TTS using the Web Speech API
-  - Toggle on/off with the 🔇/🔊 button
-  - Choose from available system voices
-  - Adjustable speech rate and pitch
-  - Markdown formatting is stripped before speech
-  - Settings persist in `.tts-settings.json`
+- **Responsive sub-agent layout**: sub-agents reflow into centered rows for smaller windows
+- **Lifecycle and message reactions**: success/failure reactions, floating responses, working state, and emoji-driven expressions
+- **Built-in TTS**: voice, speed, pitch, and persisted settings
 
 ## Releases
 
-GitHub Releases are the distribution channel for this extension. Each release publishes a ZIP asset named like `copilot-avatar-v0.1.0.zip` that contains the `copilot-avatar/` folder at the ZIP root, which you can extract and install directly.
+GitHub Releases are the distribution channel. Each release includes a `copilot-avatar-vX.Y.Z.zip` asset with the `copilot-avatar/` folder at the ZIP root.
 
 ## Installation
 
@@ -49,8 +33,6 @@ You need [Node.js](https://nodejs.org) installed.
 2. Extract the ZIP so you have a `copilot-avatar/` folder.
 3. Copy that folder to one of the extension locations below.
 4. Run `npm install` inside the copied `copilot-avatar` folder.
-
-### Install from source
 
 Clone or download this repo and copy the `copilot-avatar` folder from `.github/extensions/` to one of the locations below.
 
@@ -81,14 +63,6 @@ Then restart Copilot CLI so the extension loads.
 
 > **Important:** do not keep both a **global** and **per-project** copy enabled at the same time. If both exist, disable one so only the copy you want is active.
 
-## Creating a release
-
-Releases are created with the **Release extension** GitHub Actions workflow.
-
-1. Open **Actions** in GitHub and select **Release extension**.
-2. Run the workflow with a semantic version like `0.1.0` or `0.2.0`.
-3. The workflow updates `.github/extensions/copilot-avatar/package.json` and `package-lock.json` when needed, commits that version bump, creates the matching `vX.Y.Z` tag, builds `copilot-avatar-vX.Y.Z.zip`, and publishes a GitHub Release with GitHub-generated notes.
-
 ## Usage
 
 Open the avatar window when you want it, then let it react to the current session:
@@ -100,7 +74,7 @@ Open the avatar window when you want it, then let it react to the current sessio
 
 Sub-agents appear automatically when the current session emits sub-agent lifecycle events.
 
-If Squad is detected for the active workspace, the avatar keeps the normal Copilot event flow and passively enriches it with Squad roster and charter metadata. Names come from the Squad roster, while the visual treatment stays role-driven so the overall look remains a balanced mix instead of becoming character-specific. If Squad is not present, the extension behaves exactly as before.
+If [Squad](https://github.com/bradygaster/squad) is available for the workspace, the avatar keeps the normal Copilot flow and enriches those same sub-agents with Squad roster and charter metadata. Without Squad, it works as a normal Copilot avatar.
 
 ## Activity States
 
@@ -139,7 +113,7 @@ copilot-avatar/
 └── content/
     ├── index.html      # Webview page
     ├── style.css       # Styling for the window and overlays
-    ├── main.js         # 3D scene, squad logic, activity effects, TTS
+    ├── main.js         # 3D scene, sub-agent logic, activity effects, TTS
     └── model.glb       # 3D Copilot head model
 ```
 
