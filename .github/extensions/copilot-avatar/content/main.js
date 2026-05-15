@@ -1998,6 +1998,58 @@ let voxtralRefAudio = null;
 let clippyVoxtralVoice = CLIPPY_DEFAULT_VOXTRAL_VOICE;
 let clippyRefAudio = null;
 let voxtralAudioPlayer = null;
+let voxtralAudioCtx = null;
+
+function getVoxtralAudioCtx() {
+    if (!voxtralAudioCtx || voxtralAudioCtx.state === 'closed') {
+        voxtralAudioCtx = new AudioContext();
+    }
+    return voxtralAudioCtx;
+}
+
+function applyVoiceWarming(audio) {
+    try {
+        const ctx = getVoxtralAudioCtx();
+        if (ctx.state === 'suspended') ctx.resume();
+        const src = ctx.createMediaElementSource(audio);
+
+        // Warmth: boost low-mids for a fuller, less tinny sound
+        const warmth = ctx.createBiquadFilter();
+        warmth.type = 'lowshelf';
+        warmth.frequency.value = 320;
+        warmth.gain.value = 8;
+
+        // Presence: slight mid boost for clarity
+        const presence = ctx.createBiquadFilter();
+        presence.type = 'peaking';
+        presence.frequency.value = 2400;
+        presence.Q.value = 0.7;
+        presence.gain.value = 2;
+
+        // De-harsh: cut the sibilant/robotic highs
+        const deharsh = ctx.createBiquadFilter();
+        deharsh.type = 'highshelf';
+        deharsh.frequency.value = 5500;
+        deharsh.gain.value = -8;
+
+        // Compression: even out the voice dynamics
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -20;
+        comp.knee.value = 10;
+        comp.ratio.value = 3;
+        comp.attack.value = 0.004;
+        comp.release.value = 0.2;
+
+        src.connect(warmth);
+        warmth.connect(presence);
+        presence.connect(deharsh);
+        deharsh.connect(comp);
+        comp.connect(ctx.destination);
+    } catch (e) {
+        // If Web Audio fails (e.g. element already sourced), play unprocessed
+        console.warn('Voice warming unavailable:', e.message);
+    }
+}
 
 // Recording state
 let mediaRecorder = null;
@@ -2384,6 +2436,7 @@ async function speakVoxtral(text, { clippy = false } = {}) {
             audioSrc = `data:audio/wav;base64,${btoa(binary)}`;
         }
         const audio = new Audio(audioSrc);
+        applyVoiceWarming(audio);
         voxtralAudioPlayer = audio;
         if (clippy) {
             setClippySpeaking(true);
