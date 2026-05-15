@@ -13,6 +13,7 @@ So I built this. A little friend that lives on your screen and actually talks to
 ## Features
 
 - **Main avatar + sub-agent squad view**: a large root Copilot avatar with dynamically spawned sub-agent avatars underneath it
+- **Optional Squad metadata integration**: when the current workspace has Squad metadata, the avatar shows Squad-ready status, uses Squad member names for labels, and applies role-based accents, motion personas, head tints, and idle badges
 - **Per-agent activity states**: writing, reading, running, thinking, and idle states route independently to the correct avatar
 - **Responsive squad layout**: sub-agents reflow into centered rows for smaller windows instead of disappearing off-screen
 - **Activity FX**
@@ -34,9 +35,24 @@ So I built this. A little friend that lives on your screen and actually talks to
   - Markdown formatting is stripped before speech
   - Settings persist in `.tts-settings.json`
 
+## Releases
+
+GitHub Releases are the distribution channel for this extension. Each release publishes a ZIP asset named like `copilot-avatar-v0.1.0.zip` that contains the `copilot-avatar/` folder at the ZIP root, which you can extract and install directly.
+
 ## Installation
 
-You need [Node.js](https://nodejs.org) installed. Then clone or download this repo and copy the `copilot-avatar` folder from `.github/extensions/` to one of the locations below.
+You need [Node.js](https://nodejs.org) installed.
+
+### Install from a release ZIP
+
+1. Download the latest `copilot-avatar-vX.Y.Z.zip` asset from the GitHub Releases page.
+2. Extract the ZIP so you have a `copilot-avatar/` folder.
+3. Copy that folder to one of the extension locations below.
+4. Run `npm install` inside the copied `copilot-avatar` folder.
+
+### Install from source
+
+Clone or download this repo and copy the `copilot-avatar` folder from `.github/extensions/` to one of the locations below.
 
 **Per-project** (only active when you're inside that repo):
 
@@ -65,6 +81,14 @@ Then restart Copilot CLI so the extension loads.
 
 > **Important:** do not keep both a **global** and **per-project** copy enabled at the same time. If both exist, disable one so only the copy you want is active.
 
+## Creating a release
+
+Releases are created with the **Release extension** GitHub Actions workflow.
+
+1. Open **Actions** in GitHub and select **Release extension**.
+2. Run the workflow with a semantic version like `0.1.0` or `0.2.0`.
+3. The workflow updates `.github/extensions/copilot-avatar/package.json` and `package-lock.json`, commits that version bump, creates the matching `vX.Y.Z` tag, builds `copilot-avatar-vX.Y.Z.zip`, and publishes a GitHub Release with GitHub-generated notes.
+
 ## Usage
 
 Open the avatar window when you want it, then let it react to the current session:
@@ -75,6 +99,8 @@ Open the avatar window when you want it, then let it react to the current sessio
 - Use the `copilot_avatar_close` tool to close the window
 
 Sub-agents appear automatically when the current session emits sub-agent lifecycle events.
+
+If Squad is detected for the active workspace, the avatar keeps the normal Copilot event flow and passively enriches it with Squad roster and charter metadata. Names come from the Squad roster, while the visual treatment stays role-driven so the overall look remains a balanced mix instead of becoming character-specific. If Squad is not present, the extension behaves exactly as before.
 
 ## Activity States
 

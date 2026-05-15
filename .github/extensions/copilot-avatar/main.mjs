@@ -4,12 +4,28 @@ import { joinSession } from "@github/copilot-sdk/extension";
 import { join, basename } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import { CopilotWebview } from "./lib/copilot-webview.js";
+import { getSquadTitleSuffix, getSquadWindowContext, loadSquadContext, resolveSquadAgentMetadata } from "./lib/squad-context.mjs";
 
 const settingsPath = join(import.meta.dirname, ".tts-settings.json");
 let folderName = basename(process.cwd());
+let currentSessionCwd = process.cwd();
+let squadContext = {
+    active: false,
+    teamName: "",
+    coordinatorName: "",
+    idleStatusText: "",
+    idleSubtaskText: "",
+    agentsByKey: new Map(),
+    error: "",
+    squadPath: "",
+    clientName: "",
+};
+let lastSquadLogKey = "";
+let contextRefreshId = 0;
 
 function formatTitle() {
-    return `Copilot Avatar · ${folderName}`;
+    const squadTitleSuffix = getSquadTitleSuffix(squadContext);
+    return `Copilot Avatar · ${folderName}${squadTitleSuffix ? ` · ${squadTitleSuffix}` : ""}`;
 }
 
 async function loadSettings() {
@@ -52,6 +68,55 @@ async function evalWebview(expression, timeoutMs = 2000) {
 
 async function callWindowFunction(name, value, timeoutMs = 2000) {
     await evalWebview(`window.${name}(${JSON.stringify(value)})`, timeoutMs);
+}
+
+function getSquadLogKey(context) {
+    if (context?.error) {
+        return `error:${context.error}`;
+    }
+    if (!context?.active) {
+        return "";
+    }
+    return `active:${context.squadPath}:${context.teamName}:${context.clientName}`;
+}
+
+async function maybeLogSquadContext(context) {
+    const nextLogKey = getSquadLogKey(context);
+    if (!nextLogKey || nextLogKey === lastSquadLogKey) {
+        lastSquadLogKey = nextLogKey;
+        return;
+    }
+
+    lastSquadLogKey = nextLogKey;
+
+    if (context.error) {
+        await session.log(`[squad] Unable to load Squad metadata: ${context.error}`);
+        return;
+    }
+
+    const squadName = getSquadTitleSuffix(context);
+    const clientSuffix = context.clientName ? ` via ${context.clientName}` : "";
+    await session.log(`[squad] Linked ${squadName || "Squad"} metadata from ${context.squadPath}${clientSuffix}.`);
+}
+
+async function syncSquadContext() {
+    await callWindowFunction("setSquadContext", getSquadWindowContext(squadContext), 3000);
+}
+
+async function refreshSessionContext(cwd = process.cwd()) {
+    currentSessionCwd = cwd || process.cwd();
+    folderName = basename(currentSessionCwd);
+
+    const refreshId = ++contextRefreshId;
+    const nextSquadContext = await loadSquadContext(currentSessionCwd);
+    if (refreshId !== contextRefreshId) {
+        return;
+    }
+
+    squadContext = nextSquadContext;
+    await syncTitle();
+    await syncSquadContext();
+    await maybeLogSquadContext(nextSquadContext);
 }
 
 function getIntentText(event) {
@@ -107,6 +172,7 @@ const session = await joinSession({
                 try {
                     await webview.show({ reload });
                     await syncTitle();
+                    await syncSquadContext();
                     return reload ? "Avatar window refreshed." : "Avatar window opened.";
                 } catch (e) {
                     return `Error: ${e.message}`;
@@ -121,6 +187,7 @@ const session = await joinSession({
         handler: async () => {
             await webview.show();
             await syncTitle();
+            await syncSquadContext();
         },
     }],
     hooks: {
@@ -128,50 +195,66 @@ const session = await joinSession({
     },
 });
 
+await refreshSessionContext(currentSessionCwd);
+
 session.on("session.start", (event) => {
     if (event.data?.context?.cwd) {
-        folderName = basename(event.data.context.cwd);
-        void syncTitle();
+        void refreshSessionContext(event.data.context.cwd);
     }
 });
 
 session.on("session.resume", (event) => {
     if (event.data?.context?.cwd) {
-        folderName = basename(event.data.context.cwd);
-        void syncTitle();
+        void refreshSessionContext(event.data.context.cwd);
     }
 });
 
 session.on("session.context_changed", (event) => {
     if (event.data?.cwd) {
-        folderName = basename(event.data.cwd);
-        void syncTitle();
+        void refreshSessionContext(event.data.cwd);
     }
 });
 
 session.on("subagent.started", async (event) => {
+    const squadAgent = resolveSquadAgentMetadata(squadContext, {
+        agentName: event.data?.agentName,
+        agentDisplayName: event.data?.agentDisplayName,
+    });
     await callWindowFunction("addSubagent", {
         agentId: event.agentId ?? null,
         agentName: event.data?.agentName ?? "",
-        displayName: event.data?.agentDisplayName ?? event.data?.agentName ?? "",
-        description: event.data?.agentDescription ?? "",
+        displayName: event.data?.agentDisplayName ?? squadAgent?.displayName ?? event.data?.agentName ?? "",
+        description: event.data?.agentDescription ?? squadAgent?.description ?? "",
+        role: squadAgent?.role ?? "",
         toolCallId: event.data?.toolCallId ?? null,
     }, 3000);
 });
 
 session.on("subagent.completed", async (event) => {
+    const squadAgent = resolveSquadAgentMetadata(squadContext, {
+        agentName: event.data?.agentName,
+        agentDisplayName: event.data?.agentDisplayName,
+    });
     await callWindowFunction("completeSubagent", {
         agentId: event.agentId ?? null,
-        displayName: event.data?.agentDisplayName ?? event.data?.agentName ?? "",
+        displayName: event.data?.agentDisplayName ?? squadAgent?.displayName ?? event.data?.agentName ?? "",
+        description: event.data?.agentDescription ?? squadAgent?.description ?? "",
+        role: squadAgent?.role ?? "",
         durationMs: event.data?.durationMs ?? null,
         totalToolCalls: event.data?.totalToolCalls ?? null,
     }, 3000);
 });
 
 session.on("subagent.failed", async (event) => {
+    const squadAgent = resolveSquadAgentMetadata(squadContext, {
+        agentName: event.data?.agentName,
+        agentDisplayName: event.data?.agentDisplayName,
+    });
     await callWindowFunction("failSubagent", {
         agentId: event.agentId ?? null,
-        displayName: event.data?.agentDisplayName ?? event.data?.agentName ?? "",
+        displayName: event.data?.agentDisplayName ?? squadAgent?.displayName ?? event.data?.agentName ?? "",
+        description: event.data?.agentDescription ?? squadAgent?.description ?? "",
+        role: squadAgent?.role ?? "",
         error: event.data?.error ?? "",
     }, 3000);
 });

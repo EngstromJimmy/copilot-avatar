@@ -1,8 +1,13 @@
 {
+  "name": "copilot-avatar",
   "private": true,
   "type": "module",
   "dependencies": {
     "@webviewjs/webview": "^0.1.4",
     "ws": "^8.18.0"
-  }
+  },
+  "optionalDependencies": {
+    "@bradygaster/squad-sdk": "0.9.4"
+  },
+  "version": "0.1.0"
 }

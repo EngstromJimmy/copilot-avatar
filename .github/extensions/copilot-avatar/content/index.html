@@ -27,8 +27,13 @@
   <div id="emotion-bubble" aria-hidden="true"></div>
   <div id="tts-controls">
     <button id="tts-toggle" title="Toggle text-to-speech">🔇</button>
-    <button id="tts-settings-btn" title="TTS settings">⚙️</button>
+    <button id="tts-settings-btn" title="Avatar settings">⚙️</button>
     <div id="tts-dropdown" class="hidden">
+      <button id="run-demo-btn" type="button">Run demo sequence</button>
+      <label class="tts-checkbox-row" for="message-visibility-toggle">
+        <span>Show spoken text</span>
+        <input id="message-visibility-toggle" type="checkbox" checked />
+      </label>
       <label>Voice
         <select id="tts-voice-select"></select>
       </label>
