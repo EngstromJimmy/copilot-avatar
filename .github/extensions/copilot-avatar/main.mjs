@@ -7,6 +7,14 @@ import { CopilotWebview } from "./lib/copilot-webview.js";
 import { getSquadTitleSuffix, getSquadWindowContext, loadSquadContext, resolveSquadAgentMetadata } from "./lib/squad-context.mjs";
 
 const settingsPath = join(import.meta.dirname, ".tts-settings.json");
+const DEFAULT_SETTINGS = Object.freeze({
+    enabled: false,
+    rate: 1.1,
+    pitch: 1.0,
+    voice: null,
+    showSpokenText: true,
+    showModelBadges: false,
+});
 let folderName = basename(process.cwd());
 let currentSessionCwd = process.cwd();
 let squadContext = {
@@ -22,6 +30,16 @@ let squadContext = {
 };
 let lastSquadLogKey = "";
 let contextRefreshId = 0;
+const subagentIdsByToolCallId = new Map();
+const pendingModelsByToolCallId = new Map();
+
+function normalizeSettings(settings) {
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+        return { ...DEFAULT_SETTINGS };
+    }
+
+    return { ...DEFAULT_SETTINGS, ...settings };
+}
 
 function formatTitle() {
     const squadTitleSuffix = getSquadTitleSuffix(squadContext);
@@ -30,14 +48,14 @@ function formatTitle() {
 
 async function loadSettings() {
     try {
-        return JSON.parse(await readFile(settingsPath, "utf-8"));
+        return normalizeSettings(JSON.parse(await readFile(settingsPath, "utf-8")));
     } catch {
-        return { enabled: false, rate: 1.1, voice: null };
+        return { ...DEFAULT_SETTINGS };
     }
 }
 
 async function saveSettings(settings) {
-    await writeFile(settingsPath, JSON.stringify(settings), "utf-8");
+    await writeFile(settingsPath, JSON.stringify(normalizeSettings(settings)), "utf-8");
 }
 
 const webview = new CopilotWebview({
@@ -119,12 +137,39 @@ async function refreshSessionContext(cwd = process.cwd()) {
     await maybeLogSquadContext(nextSquadContext);
 }
 
+async function syncPendingModelForSubagent(agentId, toolCallId) {
+    if (!agentId || !toolCallId || !pendingModelsByToolCallId.has(toolCallId)) {
+        return;
+    }
+
+    const model = pendingModelsByToolCallId.get(toolCallId);
+    pendingModelsByToolCallId.delete(toolCallId);
+    await callWindowFunction("setAgentModel", { agentId, model }, 3000);
+}
+
 function getIntentText(event) {
     return event.data?.intent || event.data?.content || "";
 }
 
 function getToolLabel(toolName) {
     return (toolName || "").replace(/[_-]+/g, " ").trim();
+}
+
+function isDuckAgent(agentData = {}) {
+    const text = [
+        agentData.agentId,
+        agentData.agentName,
+        agentData.agentDisplayName,
+        agentData.agentDescription,
+    ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+    return text.includes("rubber-duck")
+        || text.includes("rubber duck")
+        || text.includes("rubberducky")
+        || text.includes("duck");
 }
 
 function normalizeTurnText(text) {
@@ -201,6 +246,9 @@ session.on("session.start", (event) => {
     if (event.data?.context?.cwd) {
         void refreshSessionContext(event.data.context.cwd);
     }
+    if (event.data?.selectedModel) {
+        void callWindowFunction("setAgentModel", { agentId: null, model: event.data.selectedModel }, 3000);
+    }
 });
 
 session.on("session.resume", (event) => {
@@ -216,6 +264,11 @@ session.on("session.context_changed", (event) => {
 });
 
 session.on("subagent.started", async (event) => {
+    const toolCallId = event.data?.toolCallId ?? null;
+    if (event.agentId && toolCallId) {
+        subagentIdsByToolCallId.set(toolCallId, event.agentId);
+    }
+
     const squadAgent = resolveSquadAgentMetadata(squadContext, {
         agentName: event.data?.agentName,
         agentDisplayName: event.data?.agentDisplayName,
@@ -226,8 +279,16 @@ session.on("subagent.started", async (event) => {
         displayName: event.data?.agentDisplayName ?? squadAgent?.displayName ?? event.data?.agentName ?? "",
         description: event.data?.agentDescription ?? squadAgent?.description ?? "",
         role: squadAgent?.role ?? "",
-        toolCallId: event.data?.toolCallId ?? null,
+        isDuck: isDuckAgent({
+            agentId: event.agentId,
+            agentName: event.data?.agentName,
+            agentDisplayName: event.data?.agentDisplayName,
+            agentDescription: event.data?.agentDescription,
+        }),
+        toolCallId,
     }, 3000);
+
+    await syncPendingModelForSubagent(event.agentId ?? null, toolCallId);
 });
 
 session.on("subagent.completed", async (event) => {
@@ -286,6 +347,43 @@ session.on("tool.execution_complete", async (event) => {
 
 session.on("assistant.reasoning", async (event) => {
     await callWindowFunction("setAgentThinking", event.agentId ?? null);
+});
+
+session.on("assistant.usage", async (event) => {
+    const model = event.data?.model ?? "";
+    if (!model) return;
+
+    if (event.agentId) {
+        await callWindowFunction("setAgentModel", {
+            agentId: event.agentId,
+            model,
+        }, 3000);
+        return;
+    }
+
+    const parentToolCallId = event.data?.parentToolCallId ?? null;
+    if (parentToolCallId) {
+        const agentId = subagentIdsByToolCallId.get(parentToolCallId);
+        if (agentId) {
+            await callWindowFunction("setAgentModel", {
+                agentId,
+                model,
+            }, 3000);
+        } else {
+            pendingModelsByToolCallId.set(parentToolCallId, model);
+        }
+        return;
+    }
+
+    await callWindowFunction("setAgentModel", { agentId: null, model }, 3000);
+});
+
+session.on("session.model_change", async (event) => {
+    if (!event.data?.newModel) return;
+    await callWindowFunction("setAgentModel", {
+        agentId: event.agentId ?? null,
+        model: event.data.newModel,
+    }, 3000);
 });
 
 session.on("assistant.intent", async (event) => {

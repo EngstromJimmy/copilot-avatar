@@ -14,6 +14,7 @@ So I built this. A little friend that lives on your screen and actually talks to
 
 - **Main avatar + sub-agent view**: a large root Copilot avatar with dynamically spawned sub-agent avatars underneath it
 - **Per-agent activity states**: writing, reading, running, thinking, and idle states route independently to the correct avatar
+- **Optional model badges**: show the current model for the main agent and sub-agents
 - **Responsive sub-agent layout**: sub-agents reflow into centered rows for smaller windows
 - **Lifecycle and message reactions**: success/failure reactions, floating responses, working state, and emoji-driven expressions
 - **Built-in TTS**: voice, speed, pitch, and persisted settings

@@ -195,12 +195,22 @@ const ROLE_HEAD_TINT_STRENGTH = {
     tester: 0.6,
     docs: 0.56,
 };
+const DUCK_BEAK_UPPER_COLOR = 0xffb347;
+const DUCK_BEAK_LOWER_COLOR = 0xff972f;
+const DUCK_BEAK_BRIDGE_COLOR = 0xffc95c;
+const DUCK_WATER_COLOR = 0x69b8ff;
 
 const container = document.getElementById('avatar-container');
 const overlayContainer = document.getElementById('subagent-overlays');
 const messageContainerEl = document.getElementById('message-container');
 const messageEl = document.getElementById('message-text');
 const statusEl = document.getElementById('status-indicator');
+const rootModelEl = document.getElementById('root-model');
+const rootModelNameEl = document.getElementById('root-model-name');
+const rootModelModelEl = document.getElementById('root-model-model');
+const rootModelBadgeEl = document.getElementById('root-model-badge');
+const rootModelBadgeIconEl = document.getElementById('root-model-badge-icon');
+const rootModelBadgeTextEl = document.getElementById('root-model-badge-text');
 const subtasksEl = document.getElementById('subtasks');
 const emotionBubbleEl = document.getElementById('emotion-bubble');
 
@@ -214,15 +224,18 @@ const ttsRateValue = document.getElementById('tts-rate-value');
 const ttsPitchInput = document.getElementById('tts-pitch-input');
 const ttsPitchValue = document.getElementById('tts-pitch-value');
 const messageVisibilityToggle = document.getElementById('message-visibility-toggle');
+const modelVisibilityToggle = document.getElementById('model-visibility-toggle');
 
 const avatars = new Map();
 const pendingSubagents = [];
+const pendingAgentModels = new Map();
 const particles = [];
 const DEMO_AGENT_IDS = ['demo-planner', 'demo-coder', 'demo-reviewer', 'demo-tester', 'demo-docs'];
 
 let rootWorking = false;
 let idleStatusText = '';
 let idleSubtaskText = '';
+let activeSubtaskText = '';
 let rootLastActivityAt = performance.now();
 let rootEmotion = { name: 'default', until: 0 };
 let fadeTimeout = null;
@@ -231,6 +244,7 @@ let demoSequenceRunId = 0;
 let animationStarted = false;
 let lastFrameTime = performance.now();
 let baseAsset = null;
+let duckBeakAsset = null;
 let layoutState = {
     columns: 1,
     rows: 0,
@@ -331,6 +345,7 @@ const eyeFragmentShader = `
 
 const eyeGeometry = new THREE.PlaneGeometry(0.12, 0.18);
 const maskGeometry = new THREE.PlaneGeometry(1, 1);
+const duckRippleGeometry = new THREE.RingGeometry(0.58, 1, 48);
 const particleTexture = createParticleTexture();
 const readingBeamTexture = createReadingBeamTexture();
 const heartGeometry = createHeartGeometry();
@@ -464,6 +479,98 @@ function createHeartEye() {
     return heart;
 }
 
+function createDuckBeak() {
+    const beak = new THREE.Group();
+    beak.visible = false;
+    beak.userData.materials = [];
+    beak.userData.geometries = [];
+
+    if (!duckBeakAsset?.geometries?.length) {
+        return beak;
+    }
+
+    const importedBeak = new THREE.Group();
+    const materials = [];
+    const geometries = [];
+
+    for (const sourceGeometry of duckBeakAsset.geometries) {
+        const geometry = sourceGeometry.clone();
+        const material = new THREE.MeshPhongMaterial({
+            color: DUCK_BEAK_UPPER_COLOR,
+            emissive: new THREE.Color(DUCK_BEAK_BRIDGE_COLOR),
+            emissiveIntensity: 0.1,
+            shininess: 22,
+            specular: new THREE.Color(0xffe28a),
+            transparent: true,
+            opacity: 0,
+            side: THREE.DoubleSide,
+            depthTest: true,
+            depthWrite: false,
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.renderOrder = 3;
+        importedBeak.add(mesh);
+        materials.push(material);
+        geometries.push(geometry);
+    }
+
+    beak.add(importedBeak);
+    beak.userData.materials = materials;
+    beak.userData.geometries = geometries;
+    beak.userData.isImported = true;
+    return beak;
+}
+
+function positionDuckBeak(beak) {
+    if (!beak) return;
+
+    beak.position.set(baseAsset.size.x * 0.01, baseAsset.eyeY - baseAsset.size.y * 0.12, baseAsset.eyeZ + baseAsset.size.z * 0.07);
+    beak.rotation.set(0.22, 0.01, 0);
+    beak.scale.setScalar(Math.max(baseAsset.size.x, baseAsset.size.y, baseAsset.size.z) * 0.31);
+    beak.userData.baseScale = beak.scale.clone();
+}
+
+function disposeDuckBeak(beak) {
+    if (!beak) return;
+    for (const material of beak.userData.materials || []) {
+        material.dispose();
+    }
+    for (const geometry of beak.userData.geometries || []) {
+        geometry.dispose();
+    }
+}
+
+function replaceAvatarDuckBeak(avatar) {
+    if (!avatar?.modelRoot) return;
+
+    const nextBeak = createDuckBeak();
+    positionDuckBeak(nextBeak);
+    nextBeak.visible = avatar.isDuck;
+
+    if (avatar.duckBeak) {
+        avatar.modelRoot.remove(avatar.duckBeak);
+        disposeDuckBeak(avatar.duckBeak);
+    }
+
+    avatar.duckBeak = nextBeak;
+    avatar.modelRoot.add(nextBeak);
+}
+
+function createDuckRipple() {
+    const ripple = new THREE.Mesh(duckRippleGeometry, new THREE.MeshBasicMaterial({
+        color: DUCK_WATER_COLOR,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+    }));
+    ripple.visible = false;
+    ripple.renderOrder = 0;
+    ripple.rotation.x = -Math.PI / 2;
+    return ripple;
+}
+
 function placeHeartEye(heartEye, x, y, z, scale = 0.1) {
     heartEye.position.set(x, y, z + 0.003);
     heartEye.userData.baseScale = scale;
@@ -562,6 +669,14 @@ function classifyTool(toolName) {
     return 'idle';
 }
 
+function formatToolLabel(toolName) {
+    return String(toolName || '')
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
 function getRoleStyle(data = {}) {
     const roleText = `${data.role || ''} ${data.displayName || ''} ${data.agentName || ''}`.toLowerCase();
     if (!roleText.trim()) return ROLE_STYLES.default;
@@ -635,6 +750,17 @@ function applyRoleStyle(avatar) {
     avatar.overlay.labelEl.style.setProperty('--role-accent-panel', roleStyle.accentPanel);
 }
 
+function applyOverlayRoleStyle(labelEl, nameEl, roleStyle) {
+    if (!labelEl || !nameEl) return;
+
+    labelEl.dataset.roleStyle = roleStyle.token;
+    nameEl.dataset.roleIcon = roleStyle.icon || '';
+    labelEl.style.setProperty('--role-accent', roleStyle.accent);
+    labelEl.style.setProperty('--role-accent-soft', roleStyle.accentSoft);
+    labelEl.style.setProperty('--role-accent-glow', roleStyle.accentGlow);
+    labelEl.style.setProperty('--role-accent-panel', roleStyle.accentPanel);
+}
+
 function cloneAvatarHeadMaterials(modelRoot) {
     const headMaterials = [];
 
@@ -702,7 +828,6 @@ function setRootEmotion(name, durationMs = EMOTION_HOLD_MS) {
 
 function getActiveRootEmotion(now = performance.now()) {
     if (rootEmotion.until > now) return rootEmotion.name;
-    if (!rootWorking && now - rootLastActivityAt >= IDLE_SLEEP_MS) return 'sleep';
     return 'default';
 }
 
@@ -805,6 +930,56 @@ function createBaseAsset(modelScene) {
     };
 }
 
+function createDuckBeakAsset(modelScene) {
+    if (!modelScene) return null;
+
+    const geometries = [];
+    const box = new THREE.Box3();
+    const partBox = new THREE.Box3();
+
+    modelScene.updateWorldMatrix(true, true);
+    modelScene.traverse((node) => {
+        if (!node.isMesh || !node.geometry) return;
+
+        const geometry = node.geometry.clone();
+        geometry.applyMatrix4(node.matrixWorld);
+        geometry.computeBoundingBox();
+        if (!geometry.boundingBox) {
+            geometry.dispose();
+            return;
+        }
+
+        geometries.push(geometry);
+        partBox.copy(geometry.boundingBox);
+        box.union(partBox);
+    });
+
+    if (!geometries.length || box.isEmpty()) return null;
+
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+
+    if (!Number.isFinite(maxDim) || maxDim <= 0) return null;
+
+    const translate = new THREE.Matrix4().makeTranslation(-center.x, -center.y, -box.min.z);
+    const scale = new THREE.Matrix4().makeScale(1 / maxDim, 1 / maxDim, 1 / maxDim);
+
+    for (const geometry of geometries) {
+        geometry.applyMatrix4(translate);
+        geometry.applyMatrix4(scale);
+        geometry.computeVertexNormals();
+        geometry.computeBoundingBox();
+        geometry.computeBoundingSphere();
+    }
+
+    return {
+        geometries,
+        size,
+        maxDim,
+    };
+}
+
 function createOverlay(agentId) {
     const labelEl = document.createElement('div');
     labelEl.className = 'subagent-label';
@@ -812,6 +987,9 @@ function createOverlay(agentId) {
 
     const nameEl = document.createElement('span');
     nameEl.className = 'agent-name';
+
+    const modelEl = document.createElement('span');
+    modelEl.className = 'agent-model';
 
     const badgeEl = document.createElement('span');
     badgeEl.className = 'agent-badge idle';
@@ -823,15 +1001,178 @@ function createOverlay(agentId) {
     badgeTextEl.className = 'agent-badge-text';
 
     badgeEl.append(badgeIconEl, badgeTextEl);
-    labelEl.append(nameEl, badgeEl);
+    labelEl.append(nameEl, modelEl, badgeEl);
     overlayContainer.appendChild(labelEl);
 
-    return { labelEl, nameEl, badgeEl, badgeIconEl, badgeTextEl };
+    return { labelEl, nameEl, modelEl, badgeEl, badgeIconEl, badgeTextEl };
 }
 
 function defaultDisplayName(agentId) {
     if (!agentId) return 'Agent';
     return agentId.length > 12 ? `agent-${agentId.slice(0, 6)}` : agentId;
+}
+
+function isDuckAgent(data = {}) {
+    if (data.isDuck === true) return true;
+
+    const text = [
+        data.agentId,
+        data.agentName,
+        data.displayName,
+        data.description,
+    ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+    return text.includes('rubber-duck')
+        || text.includes('rubber duck')
+        || text.includes('rubberducky')
+        || text.includes('duck');
+}
+
+function formatModelLabel(model) {
+    const value = String(model || '').trim();
+    if (!value) return '';
+
+    if (/^gpt-/i.test(value)) {
+        return `GPT-${value.slice(4)}`
+            .replace(/-mini\b/ig, ' mini')
+            .replace(/-codex\b/ig, ' codex');
+    }
+
+    if (/^claude-/i.test(value)) {
+        return `Claude ${value.slice(7).replace(/-/g, ' ')}`;
+    }
+
+    return value.replace(/-/g, ' ');
+}
+
+function updateAvatarModelDisplay(avatar) {
+    if (!avatar?.overlay?.modelEl) return;
+
+    avatar.overlay.modelEl.textContent = avatar.modelLabel || '';
+    avatar.overlay.modelEl.classList.toggle('visible', showModelBadges && !!avatar.modelLabel);
+}
+
+function getLatestToolEntry(avatar) {
+    if (!avatar?.activeTools?.size) return null;
+
+    let latest = null;
+    for (const entry of avatar.activeTools.values()) {
+        if (!latest || entry.startedAt > latest.startedAt) {
+            latest = entry;
+        }
+    }
+    return latest;
+}
+
+function getRootBadgeToolLabel() {
+    const rootAvatar = avatars.get(ROOT_AGENT_ID);
+    const toolName = getLatestToolEntry(rootAvatar)?.toolName || '';
+    return formatToolLabel(toolName);
+}
+
+function updateSubtaskDisplay() {
+    const fallbackText = activeSubtaskText || (rootWorking ? '' : idleSubtaskText);
+    const rootAvatar = avatars.get(ROOT_AGENT_ID);
+    const rootBadgeVisible = !!rootAvatar;
+    const rootToolLabel = getRootBadgeToolLabel();
+
+    subtasksEl.textContent = rootBadgeVisible && fallbackText && rootToolLabel && fallbackText === rootToolLabel
+        ? ''
+        : fallbackText;
+}
+
+function updateRootModelIndicator() {
+    const rootAvatar = avatars.get(ROOT_AGENT_ID);
+    const visible = !!rootAvatar;
+    const showModelLine = showModelBadges && !!rootAvatar?.modelLabel;
+    const activity = rootAvatar ? getResolvedActivity(rootAvatar) : 'idle';
+    const toolLabel = rootAvatar ? getRootBadgeToolLabel() : '';
+    const badge = ACTIVITY_BADGES[activity] || ACTIVITY_BADGES.idle;
+    const roleStyle = rootAvatar?.roleStyle || ROLE_STYLES.copilot;
+    const badgeText = toolLabel
+        || (rootAvatar?.intentText && rootAvatar.intentUntil > performance.now() ? rootAvatar.intentText : badge.text);
+
+    rootModelEl.className = 'subagent-label';
+    rootModelEl.classList.toggle('visible', visible);
+    applyOverlayRoleStyle(rootModelEl, rootModelNameEl, roleStyle);
+    rootModelNameEl.textContent = rootAvatar?.displayName || 'Copilot';
+    rootModelModelEl.textContent = showModelLine ? rootAvatar.modelLabel : '';
+    rootModelModelEl.classList.toggle('visible', showModelLine);
+    rootModelBadgeEl.className = `agent-badge ${activity}`;
+    rootModelBadgeIconEl.textContent = activity === 'idle'
+        ? rootAvatar?.isDuck
+            ? '🦆'
+            : roleStyle.icon || badge.icon
+        : badge.icon;
+    rootModelBadgeTextEl.textContent = badgeText;
+    rootModelEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    rootModelEl.style.opacity = visible ? '1' : '0';
+}
+
+function setRootModelPosition() {
+    const rootAvatar = avatars.get(ROOT_AGENT_ID);
+    if (!rootAvatar) {
+        rootModelEl.classList.remove('visible');
+        rootModelEl.style.opacity = '0';
+        return;
+    }
+
+    rootAvatar.group.updateWorldMatrix(true, true);
+    rootAvatar.group.localToWorld(worldVector.set(0, -baseAsset.size.y * 0.58, 0));
+    overlayVector.copy(worldVector).project(camera);
+
+    const onScreen = overlayVector.z > -1 && overlayVector.z < 1
+        && overlayVector.x > -1.45 && overlayVector.x < 1.45
+        && overlayVector.y > -1.45 && overlayVector.y < 1.45
+        && rootAvatar.presence > 0.05;
+
+    if (!onScreen) {
+        rootModelEl.classList.remove('visible');
+        rootModelEl.style.opacity = '0';
+        return;
+    }
+
+    const scale = layoutState.overlayScale * 1.02;
+    const rawX = (overlayVector.x * 0.5 + 0.5) * container.clientWidth;
+    const rawY = (-overlayVector.y * 0.5 + 0.5) * container.clientHeight + 10;
+    const labelWidth = (rootModelEl.offsetWidth || 120) * scale;
+    const labelHeight = (rootModelEl.offsetHeight || 22) * scale;
+    const minX = labelWidth * 0.5 + 8;
+    const maxX = container.clientWidth - labelWidth * 0.5 - 8;
+    const minY = 8;
+    const maxY = container.clientHeight - labelHeight - 10;
+    const clampedX = THREE.MathUtils.clamp(rawX, Math.min(minX, maxX), Math.max(minX, maxX));
+    const clampedY = THREE.MathUtils.clamp(rawY, Math.min(minY, maxY), Math.max(minY, maxY));
+    rootModelEl.style.transform = `translate3d(${clampedX}px, ${clampedY}px, 0) translate(-50%, 0) scale(${scale})`;
+    rootModelEl.classList.add('visible');
+    rootModelEl.style.opacity = `${Math.max(0, Math.min(1, rootAvatar.presence))}`;
+}
+
+function updateModelBadgeVisibility() {
+    modelVisibilityToggle.checked = showModelBadges;
+    for (const avatar of avatars.values()) {
+        updateAvatarModelDisplay(avatar);
+    }
+    updateRootModelIndicator();
+    updateSubtaskDisplay();
+}
+
+function applyAvatarModel(avatar, model) {
+    const modelName = String(model || '').trim();
+    const modelLabel = formatModelLabel(modelName);
+    if (!modelLabel) return;
+
+    avatar.modelName = modelName;
+    avatar.modelLabel = modelLabel;
+    updateAvatarModelDisplay(avatar);
+
+    if (avatar.isRoot) {
+        updateRootModelIndicator();
+        updateSubtaskDisplay();
+    }
 }
 
 function createAvatarInstance(agentId, data = {}) {
@@ -852,6 +1193,8 @@ function createAvatarInstance(agentId, data = {}) {
     const heartEyeR = createHeartEye();
     heartEyeL.rotation.z = Math.PI - 0.16;
     heartEyeR.rotation.z = Math.PI + 0.16;
+    const duckBeak = createDuckBeak();
+    const duckRipple = createDuckRipple();
 
     const raccoonMask = new THREE.Mesh(maskGeometry, new THREE.MeshBasicMaterial({
         color: 0x05070c,
@@ -869,7 +1212,11 @@ function createAvatarInstance(agentId, data = {}) {
     eyeR.position.set(baseAsset.eyeSpacing, baseAsset.eyeY, baseAsset.eyeZ);
     placeHeartEye(heartEyeL, -baseAsset.eyeSpacing * 0.98, baseAsset.eyeY, baseAsset.eyeZ, baseAsset.heartScale);
     placeHeartEye(heartEyeR, baseAsset.eyeSpacing * 0.98, baseAsset.eyeY, baseAsset.eyeZ, baseAsset.heartScale);
-    modelRoot.add(raccoonMask, eyeL, eyeR, heartEyeL, heartEyeR);
+    positionDuckBeak(duckBeak);
+    duckRipple.position.set(0, -baseAsset.size.y * 0.54, baseAsset.size.z * 0.02);
+    duckRipple.scale.set(baseAsset.size.x * 0.42, baseAsset.size.x * 0.42, 1);
+    duckRipple.userData.baseScale = duckRipple.scale.clone();
+    modelRoot.add(duckRipple, raccoonMask, eyeL, eyeR, heartEyeL, heartEyeR, duckBeak);
     const writingGlyphs = createWritingGlyphs();
     for (const glyph of writingGlyphs) {
         modelRoot.add(glyph.sprite);
@@ -894,6 +1241,9 @@ function createAvatarInstance(agentId, data = {}) {
         displayName: data.displayName || defaultDisplayName(agentId),
         description: data.description || '',
         role: data.role || '',
+        modelName: '',
+        modelLabel: '',
+        isDuck: isDuckAgent({ agentId, ...data }),
         roleStyle: getRoleStyle(data),
         motionPersona: getMotionPersona({ ...data, agentId, isRoot }),
         isRoot,
@@ -906,6 +1256,8 @@ function createAvatarInstance(agentId, data = {}) {
         eyeMatR,
         heartEyeL,
         heartEyeR,
+        duckBeak,
+        duckRipple,
         raccoonMask,
         writingGlyphs,
         activityEffects,
@@ -937,6 +1289,7 @@ function createAvatarInstance(agentId, data = {}) {
         currentEyeScaleY: 1,
         currentHeartPulse: 1,
         currentMaskOpacity: 0,
+        currentDuckRippleOpacity: 0,
         currentBobY: 0,
         currentRotX: 0,
         currentRotY: 0,
@@ -961,6 +1314,9 @@ function createAvatarInstance(agentId, data = {}) {
     scene.add(group);
     avatars.set(agentId, avatar);
     updateAvatarMetadata(avatar, data);
+    if (data.model) {
+        applyAvatarModel(avatar, data.model);
+    }
     updateAvatarBadge(avatar);
     return avatar;
 }
@@ -978,6 +1334,8 @@ function disposeAvatar(avatar) {
     avatar.heartEyeL.userData.core.material.dispose();
     avatar.heartEyeR.userData.glow.material.dispose();
     avatar.heartEyeR.userData.core.material.dispose();
+    disposeDuckBeak(avatar.duckBeak);
+    avatar.duckRipple.material.dispose();
     for (const glyph of avatar.writingGlyphs) {
         glyph.material.dispose();
     }
@@ -997,6 +1355,13 @@ function updateAvatarMetadata(avatar, data = {}) {
     if (data.displayName) avatar.displayName = data.displayName;
     if (data.description) avatar.description = data.description;
     if (data.role) avatar.role = data.role;
+    avatar.isDuck = avatar.isDuck || isDuckAgent({
+        isDuck: data.isDuck,
+        agentId: avatar.agentId,
+        agentName: data.agentName || avatar.agentName,
+        displayName: data.displayName || avatar.displayName,
+        description: data.description || avatar.description,
+    });
     avatar.roleStyle = getRoleStyle(avatar);
     applyMotionPersona(avatar);
     applyRoleHeadTint(avatar);
@@ -1008,6 +1373,14 @@ function updateAvatarMetadata(avatar, data = {}) {
     if (avatar.overlay) {
         avatar.overlay.nameEl.textContent = avatar.displayName;
         applyRoleStyle(avatar);
+        updateAvatarModelDisplay(avatar);
+    }
+
+    avatar.duckBeak.visible = avatar.isDuck;
+    avatar.duckRipple.visible = false;
+
+    if (avatar.isRoot) {
+        updateRootModelIndicator();
     }
 }
 
@@ -1026,12 +1399,19 @@ function ensureAvatar(agentId, payload = {}) {
     if (avatars.has(resolvedId)) {
         const avatar = avatars.get(resolvedId);
         updateAvatarMetadata(avatar, payload);
+        if (payload.model) {
+            applyAvatarModel(avatar, payload.model);
+        }
         updateAvatarBadge(avatar);
         return avatar;
     }
 
     const data = resolvedId === ROOT_AGENT_ID ? payload : consumePendingSubagent(payload);
     const avatar = createAvatarInstance(resolvedId, data);
+    if (!payload.model && pendingAgentModels.has(resolvedId)) {
+        applyAvatarModel(avatar, pendingAgentModels.get(resolvedId));
+        pendingAgentModels.delete(resolvedId);
+    }
     if (!avatar.isRoot) {
         layoutSubagents();
     }
@@ -1540,15 +1920,8 @@ function layoutSubagents() {
 }
 
 function getResolvedActivity(avatar, now = performance.now()) {
-    if (avatar.activeTools.size > 0) {
-        let latest = null;
-        for (const entry of avatar.activeTools.values()) {
-            if (!latest || entry.startedAt > latest.startedAt) {
-                latest = entry;
-            }
-        }
-        return latest?.activity || 'idle';
-    }
+    const latestTool = getLatestToolEntry(avatar);
+    if (latestTool) return latestTool.activity || 'idle';
 
     if (avatar.thinkingUntil > now) {
         return 'thinking';
@@ -1593,7 +1966,13 @@ function updateAvatarBadge(avatar, now = performance.now()) {
             ? avatar.role
             : badge.text;
     avatar.overlay.badgeEl.className = `agent-badge ${activity}`;
-    avatar.overlay.badgeIconEl.textContent = activity === 'idle' && avatar.role ? roleStyle.icon : badge.icon;
+    avatar.overlay.badgeIconEl.textContent = activity === 'idle'
+        ? avatar.isDuck
+            ? '🦆'
+            : avatar.role
+                ? roleStyle.icon
+                : badge.icon
+        : badge.icon;
     avatar.overlay.badgeTextEl.textContent = badgeText;
 }
 
@@ -1609,6 +1988,7 @@ function finalizeAvatar(agentId) {
     if (!avatar || avatar.isRoot) return;
     disposeAvatar(avatar);
     avatars.delete(agentId);
+    pendingAgentModels.delete(agentId);
 }
 
 function spawnParticleBurst(avatar, count = 34) {
@@ -1833,6 +2213,8 @@ function getVisualConfig(avatar, mode, dt) {
         rotX: 0,
         rotY: 0,
         rotZ: 0,
+        duckRippleOpacity: 0,
+        duckRippleScale: 1,
     };
 
     switch (mode) {
@@ -1977,6 +2359,13 @@ function getVisualConfig(avatar, mode, dt) {
         base.color = ACTIVITY_COLORS.failed;
     }
 
+    if (avatar.isDuck) {
+        base.bobY += Math.sin(avatar.anim.idleTime * 1.6) * 0.013 + Math.sin(avatar.anim.idleTime * 0.9 + 0.8) * 0.008;
+        base.rotX += -0.012 + Math.cos(avatar.anim.idleTime * 1.1) * 0.012;
+        base.rotY += Math.sin(avatar.anim.idleTime * 0.95) * 0.03;
+        base.rotZ += Math.sin(avatar.anim.idleTime * 1.45 + 0.6) * 0.07;
+    }
+
     base.bobY *= motionPersona.bobScale;
     base.rotX *= motionPersona.rotationScale;
     base.rotY *= motionPersona.rotationScale;
@@ -2057,6 +2446,18 @@ function updateAvatar(avatar, dt, now) {
     avatar.currentMaskOpacity += (visual.maskOpacity - avatar.currentMaskOpacity) * (1 - Math.exp(-dt * 10));
     avatar.raccoonMask.visible = avatar.currentMaskOpacity > 0.01;
     avatar.raccoonMask.material.opacity = avatar.currentMaskOpacity;
+    avatar.currentDuckRippleOpacity += (0 - avatar.currentDuckRippleOpacity) * (1 - Math.exp(-dt * 8));
+    avatar.duckBeak.visible = avatar.isDuck;
+    for (const material of avatar.duckBeak.userData.materials || []) {
+        material.opacity = avatar.isDuck ? Math.max(0.48, avatar.presence) : 0;
+    }
+    if (avatar.isDuck) {
+        const beakScale = avatar.duckBeak.userData.baseScale;
+        const beakPulse = 1 + Math.sin(avatar.anim.idleTime * 2.2) * 0.025;
+        avatar.duckBeak.scale.set(beakScale.x * beakPulse, beakScale.y, beakScale.z * (1 + Math.sin(avatar.anim.idleTime * 1.7 + 0.4) * 0.03));
+    }
+    avatar.duckRipple.visible = false;
+    avatar.duckRipple.material.opacity = 0;
     for (const glyph of avatar.writingGlyphs) {
         const writingOpacity = avatar.currentWritingFx * (0.38 + (Math.sin(avatar.anim.idleTime * 4.6 * glyph.speed + glyph.phase) + 1) * 0.18);
         glyph.sprite.visible = writingOpacity > 0.03;
@@ -2094,7 +2495,11 @@ function updateAvatar(avatar, dt, now) {
 
     updateBlinkState(avatar, visual, dt, now);
     updateAvatarBadge(avatar, now);
-    setOverlayPosition(avatar);
+    if (avatar.isRoot) {
+        setRootModelPosition();
+    } else {
+        setOverlayPosition(avatar);
+    }
 }
 
 function animate(now) {
@@ -2137,7 +2542,7 @@ function updateCamera(layout = layoutState) {
 }
 
 function initializeRootAvatar() {
-    ensureAvatar(ROOT_AGENT_ID, { displayName: 'Copilot' });
+    ensureAvatar(ROOT_AGENT_ID, { displayName: 'Copilot', agentName: '@copilot' });
 }
 
 function clearDemoAgents() {
@@ -2186,7 +2591,6 @@ function runDemoSequence() {
 
     scheduleDemoStep(runId, startAt, () => {
         window.setWorking(true);
-        window.setSubtask('Coordinating a demo squad');
         setRootEmotion('sparkle', 1200);
     });
 
@@ -2201,7 +2605,6 @@ function runDemoSequence() {
     });
 
     scheduleDemoStep(runId, startAt + 1700, () => {
-        window.setSubtask('Planner maps the repo while the others start working');
         window.setAgentActivity({ agentId: 'demo-planner', toolName: 'view' });
         window.setAgentIntent({ agentId: 'demo-planner', intent: 'Mapping the codebase' });
         window.setAgentActivity({ agentId: 'demo-coder', toolName: 'edit' });
@@ -2213,49 +2616,41 @@ function runDemoSequence() {
     });
 
     scheduleDemoStep(runId, startAt + 4200, () => {
-        window.setSubtask('The coder gets a little love');
         setRootEmotion('heart', 1700);
         window.setAgentExpression({ agentId: 'demo-coder', expression: 'heart', durationMs: 2200 });
     });
 
     scheduleDemoStep(runId, startAt + 6200, () => {
-        window.setSubtask('Planner wraps up the initial map');
         window.clearAgentActivity({ agentId: 'demo-planner', toolName: 'view' });
         window.completeSubagent({ agentId: 'demo-planner', totalToolCalls: 3 });
     });
 
     scheduleDemoStep(runId, startAt + 7200, () => {
-        window.setSubtask('A little confetti for progress');
         setRootEmotion('party', 1800);
         triggerRootBurst('party');
     });
 
     scheduleDemoStep(runId, startAt + 8200, () => {
-        window.setSubtask('Docs joins to write the summary');
         window.addSubagent({ agentId: 'demo-docs', displayName: 'Docs', role: 'Writer' });
         window.setAgentActivity({ agentId: 'demo-docs', toolName: 'edit' });
         window.setAgentIntent({ agentId: 'demo-docs', intent: 'Writing release notes' });
     });
 
     scheduleDemoStep(runId, startAt + 10400, () => {
-        window.setSubtask('Tester finds a smoke test failure');
         window.clearAgentActivity({ agentId: 'demo-tester', toolName: 'powershell' });
         window.failSubagent({ agentId: 'demo-tester', error: 'Smoke test failed' });
     });
 
     scheduleDemoStep(runId, startAt + 12200, () => {
-        window.setSubtask('Reviewer signs off on the approach');
         window.completeSubagent({ agentId: 'demo-reviewer', totalToolCalls: 2 });
     });
 
     scheduleDemoStep(runId, startAt + 14000, () => {
-        window.setSubtask('Docs finishes the release notes');
         window.clearAgentActivity({ agentId: 'demo-docs', toolName: 'edit' });
         window.completeSubagent({ agentId: 'demo-docs', totalToolCalls: 1 });
     });
 
     scheduleDemoStep(runId, startAt + 15600, () => {
-        window.setSubtask('Coder ships the fix');
         window.clearAgentActivity({ agentId: 'demo-coder', toolName: 'edit' });
         window.setAgentExpression({ agentId: 'demo-coder', expression: 'sparkle', durationMs: 1600 });
         window.completeSubagent({ agentId: 'demo-coder', totalToolCalls: 4 });
@@ -2303,21 +2698,23 @@ window.setWorking = (active) => {
     if (active) {
         registerRootActivity();
     } else {
-        subtasksEl.textContent = idleSubtaskText;
+        activeSubtaskText = '';
     }
     updateStatusIndicator();
+    updateSubtaskDisplay();
 };
 
 window.setSubtask = (text) => {
     if (text) registerRootActivity();
-    subtasksEl.textContent = text || (rootWorking ? '' : idleSubtaskText);
+    activeSubtaskText = text || '';
+    updateSubtaskDisplay();
 };
 
 window.setSquadContext = (payload = {}) => {
     idleStatusText = payload.active ? (payload.statusText || '● Squad ready') : '';
     idleSubtaskText = payload.active ? (payload.detailText || '') : '';
     if (!rootWorking) {
-        subtasksEl.textContent = idleSubtaskText;
+        updateSubtaskDisplay();
     }
     updateStatusIndicator();
 };
@@ -2377,7 +2774,11 @@ window.setAgentActivity = (payload = {}) => {
         startedAt: performance.now(),
     });
     avatar.effectState = 'idle';
-    if (avatar.isRoot) registerRootActivity();
+    if (avatar.isRoot) {
+        registerRootActivity();
+        updateRootModelIndicator();
+        updateSubtaskDisplay();
+    }
 };
 
 window.clearAgentActivity = (payload = {}) => {
@@ -2395,13 +2796,21 @@ window.clearAgentActivity = (payload = {}) => {
             }
         }
     }
+
+    if (avatar.isRoot) {
+        updateRootModelIndicator();
+        updateSubtaskDisplay();
+    }
 };
 
 window.setAgentThinking = (agentId) => {
     const avatar = ensureAvatar(agentId || ROOT_AGENT_ID);
     if (!avatar.isRoot && (avatar.effectState === 'success' || avatar.effectState === 'failed')) return;
     avatar.thinkingUntil = performance.now() + THINKING_HOLD_MS;
-    if (avatar.isRoot) registerRootActivity();
+    if (avatar.isRoot) {
+        registerRootActivity();
+        updateRootModelIndicator();
+    }
 };
 
 window.setAgentIntent = (payload = {}) => {
@@ -2409,7 +2818,10 @@ window.setAgentIntent = (payload = {}) => {
     if (!avatar.isRoot && (avatar.effectState === 'success' || avatar.effectState === 'failed')) return;
     avatar.intentText = payload.intent || '';
     avatar.intentUntil = performance.now() + INTENT_HOLD_MS;
-    if (avatar.isRoot) registerRootActivity();
+    if (avatar.isRoot) {
+        registerRootActivity();
+        updateRootModelIndicator();
+    }
 };
 
 window.setAgentExpression = (payload = {}) => {
@@ -2424,6 +2836,7 @@ let ttsRate = 1.1;
 let ttsPitch = 1.0;
 let ttsVoiceName = null;
 let showSpokenText = true;
+let showModelBadges = false;
 
 let savedTts = {};
 try {
@@ -2451,8 +2864,12 @@ if (savedTts.enabled) {
 if (savedTts.showSpokenText != null) {
     showSpokenText = !!savedTts.showSpokenText;
 }
+if (savedTts.showModelBadges != null) {
+    showModelBadges = !!savedTts.showModelBadges;
+}
 updateTtsButton();
 updateMessageVisibility();
+updateModelBadgeVisibility();
 
 function saveTtsSettings() {
     copilot.saveSettings({
@@ -2461,6 +2878,7 @@ function saveTtsSettings() {
         pitch: ttsPitch,
         voice: ttsVoiceName,
         showSpokenText,
+        showModelBadges,
     }).catch(() => {});
 }
 
@@ -2499,6 +2917,12 @@ messageVisibilityToggle.addEventListener('change', () => {
     showSpokenText = messageVisibilityToggle.checked;
     if (fadeTimeout) clearTimeout(fadeTimeout);
     updateMessageVisibility();
+    saveTtsSettings();
+});
+
+modelVisibilityToggle.addEventListener('change', () => {
+    showModelBadges = modelVisibilityToggle.checked;
+    updateModelBadgeVisibility();
     saveTtsSettings();
 });
 
@@ -2555,6 +2979,7 @@ window.getTtsSettings = () => JSON.stringify({
     pitch: ttsPitch,
     voice: ttsVoiceName,
     showSpokenText,
+    showModelBadges,
 });
 
 window.setMessageTextVisible = (visible) => {
@@ -2566,6 +2991,19 @@ window.setMessageTextVisible = (visible) => {
 };
 
 window.getMessageTextVisible = () => showSpokenText;
+window.setAgentModel = (payload = {}) => {
+    const model = String(payload.model || '').trim();
+    if (!model) return;
+
+    const resolvedId = payload.agentId || ROOT_AGENT_ID;
+    if (resolvedId !== ROOT_AGENT_ID && !avatars.has(resolvedId)) {
+        pendingAgentModels.set(resolvedId, model);
+        return;
+    }
+
+    const avatar = ensureAvatar(payload.agentId || ROOT_AGENT_ID, payload);
+    applyAvatarModel(avatar, model);
+};
 window.runDemoSequence = () => runDemoSequence();
 window.stopDemoSequence = () => {
     resetDemoSequence();
@@ -2626,5 +3064,20 @@ try {
 initializeRootAvatar();
 layoutSubagents();
 updateStatusIndicator();
+updateModelBadgeVisibility();
 updateCamera();
 startAnimation();
+
+void (async () => {
+    try {
+        const loader = new GLTFLoader();
+        const gltf = await loader.loadAsync('duck-bill.glb');
+        duckBeakAsset = createDuckBeakAsset(gltf.scene);
+        for (const avatar of avatars.values()) {
+            if (!avatar.isDuck || avatar.duckBeak?.userData.isImported) continue;
+            replaceAvatarDuckBeak(avatar);
+        }
+    } catch {
+        duckBeakAsset = null;
+    }
+})();
