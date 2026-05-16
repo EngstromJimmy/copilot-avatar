@@ -1182,4 +1182,36 @@ When Copilot emits a real `subagent.started` event with weak identity fields, th
 - `subagent.started` remains the only visibility owner for non-root cards.
 - `subagent.selected` is metadata-only enrichment and must not create, suppress, or gate cards by itself.
 - Once bound to `agentId`, the Copilot-owned hint should be reused for later sync/update events so reconnects keep the human name instead of falling back to an unnamed card.
+---
+
+### 2026-05-16T23:51:24.513+02:00: Subagent Duplicate Card Seam — Fixed
+
+**By:** Tony Stark (Builder)
+
+**What:** Fix duplicate Copilot-owned subagent cards by invoking the collapse function on card creation and identity update. Two root causes: dedup was never called, and empty identity keys allowed duplicates to slip through.
+
+**Why:** The dedup mechanism existed but was not invoked. Empty fallback keys allowed agents spawned before metadata loads to create cards without matching identity keys.
+
+**Implementation:**
+1. Call dedup in window.addSubagent after avatar creation
+2. Call dedup in updateAvatarMetadata when identity changes
+3. Add displayName as fallback to ensure every card has a meaningful identity key
+
+**Impact:** Exactly 2 visible cards at any time (Tony Stark + Howard the Duck + root Copilot), no duplicates.
+
+**Validation:** node --check passed; no breaking changes to public APIs.
+
+---
+
+### 2026-05-16T23:51:24.513+02:00: Sub-agent fallback duplicates must collapse on both sides
+
+**By:** Vision (Platform Dev)
+
+**What:** Invoke stable-identity collapse helpers wherever a visible card can be (re)introduced: extension first-render, rehydrate, and webview addSubagent. When identity is missing, fallback only to human labels (displayName / agentName) that pass low-confidence filters.
+
+**Why:** Preserves cached metadata during reconnects so a third generic card is not minted beside the two real Copilot-owned agents.
+
+**Guardrails:** Keep Copilot SDK as visibility/lifecycle owner; Squad enrichment metadata stays metadata-only.
+
+---
 
