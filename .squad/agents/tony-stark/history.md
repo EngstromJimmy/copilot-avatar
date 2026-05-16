@@ -29,6 +29,18 @@
 - **Finding 3 — Confirmed secondary risk: `session.resume` has no subagent reset.** Unlike `session.start` and `session.context_changed`, the `session.resume` handler calls `refreshSessionContext` WITHOUT `resetSubagents: true`. If agents were mid-work at suspend time (no `subagent.completed` delivered), they'd still be in the maps as `active` and `syncKnownSubagents` would replay them as ghosts. This is a separate latent bug, not the reported symptom.
 - **Recommendation — smallest correct fix:** Fix is upstream, not in the extension. Squad agents should exit cleanly when they complete a task rather than remaining in idle state. Clean exits prevent `subagent.started` reactivation events on the next command. Extension-only fix for `session.resume` edge case: add `resetSubagents: true` to that handler.
 
+### 2026-05-16T22:06:13.919+02:00 — Sub-agent Metadata Bypass & First-Render Debounce Decisions
+
+**Scribe Cross-Agent Update:**
+
+Two decisions recorded and merged to `decisions.md`:
+
+1. **Sub-agent metadata must bypass top-level Squad UI gating** — The new top-level Squad UI gate is valid for root-level visuals and status text, but it accidentally starved sub-agent naming of cast metadata. Now resolves Squad roster/casting context even when visible Squad chrome is gated off for non-Squad coordinators. Keeps stableIdentityKey resolution strong while preserving background-task visibility gating and duplicate collapse logic.
+
+2. **Sub-agent first-render debounce (750ms)** — Implemented debounce on hidden sub-agent card rendering instead of trusting `subagent.started` or intent/reasoning traffic alone. Waits 750ms after first non-`task` tool start before `addSubagent`, unless `tool.execution_progress` arrives first. Tradeoff: very fast agents finishing within debounce window stay invisible, but solves prompt-start clutter from rapid IDE wake-up noise.
+
+**Implementation Context:** Complements Peter Parker's concurrent-identity work to keep UI focused on agents with real sustained work.
+
 ## Archived Work
 
 Earlier sessions documented in `history-archive.md`:
@@ -46,6 +58,9 @@ Earlier sessions documented in `history-archive.md`:
 - 2026-05-16T21:21:35.376+02:00 — Read-only trace confirmed the live gate is still narrow: `subagent.started` only seeds runtime state, tool execution sets `hasCurrentTurnWork` and unlocks first visibility, and replay only re-adds active visible agents with that evidence. Badge fallback remains `live activity > live intent > clipped task summary > status/default`, with a separate model row and two-line badge clamp preserving readable task text on compact cards.
 - 2026-05-16T21:23:20.636+02:00 — Stable naming alone is not enough. If visible sub-agent cards are still owned by runtime `agentId`, two live instances that both resolve to the same cast identity can render duplicate cards (for example dual Tony Stark). Keep runtime state per instance, but collapse visible-card ownership by a high-confidence stable identity key and evict the older card when ownership shifts.
 - 2026-05-16T21:23:20.636+02:00 — Duplicate identity and role-text badge regressions were the same seam. When the visible card drifts onto the wrong runtime instance, live activity stays on one agent while the rendered card falls back to metadata from another; if task fallback reads Squad charter/role copy, the badge looks like a role regression. Keep a dedicated task-summary field separate from roster description, and choose the visible identity owner by strongest live work signal rather than raw start order.
+- 2026-05-16T22:06:13.919+02:00 — Do not reuse a top-level Squad visibility gate for sub-agent naming. `getVisibleSquadContext()` can legitimately blank Squad chrome when the coordinator is a personal agent, but sub-agent identity resolution still needs `resolvedSquadContext` so cast names and stable identity keys survive.
+- 2026-05-16T22:06:13.919+02:00 — A CLI/background-task count can exceed visible avatar cards for two intentional seams: hidden agents stay suppressed until `hasCurrentTurnWork` is true from a non-weak tool signal, and visible cards collapse by `stableIdentityKey` so parallel instances of the same cast identity render as one owner.
+- 2026-05-16T22:02:45.479+02:00 — The current SDK seam still does not expose a trustworthy per-instance idle/background flag before render. `subagent.started` gives identity, `toolCallId`, and optional `model`; `subagent.selected` is selection-level only; `session.background_tasks_changed` carries no payload. If transient agents still flash, the practical fix is a first-render debounce on sustained non-`task` tool work, with `tool.execution_progress` allowed to promote immediately.
 
 ## 2026-05-16T19:23:20Z — Sub-Agent Visibility + Duplicate Identity Fix Cycle
 

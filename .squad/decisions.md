@@ -52,6 +52,65 @@
 
 ---
 
+### 2026-05-16T22:06:13.919+02:00: Do not collapse actively working duplicate identities into one card
+
+**By:** Peter Parker
+
+**What:** For the avatar extension, stable-identity dedupe should only fold away inactive siblings. If two runtime instances that resolve to the same cast identity both still have live tool activity, keep both cards visible. When dedupe does collapse back to one owner, merge the richest shared identity metadata into the survivor first.
+
+**Why:** The regression path was over-collapsing real concurrent work: two live background tasks with the same stable identity could collapse to one visible card, and the winner could be the fresher runtime instance with weaker naming data. That made the UI undercount active work and sometimes blanked the surviving card name.
+
+**Implementation Notes:**
+- `.github/extensions/copilot-avatar/main.mjs` now keeps concurrent live same-identity states visible, while still hiding idle siblings.
+- The same file now merges better `displayName`, `agentName`, `role`, `description`, and `taskSummary` metadata into the preferred owner before hiding stale duplicates.
+- `.github/extensions/copilot-avatar/content/main.js` now treats active same-identity avatars as legitimate coexistence and only prunes duplicates once they are no longer both doing live work.
+
+---
+
+### 2026-05-16T22:06:13.919+02:00: Sub-agent metadata must bypass top-level Squad UI gating
+
+**By:** Tony Stark
+
+**What:** Use the resolved Squad roster/casting context for sub-agent identity lookup even when the visible Squad chrome is gated off for a non-Squad top-level coordinator.
+
+**Why:** The new top-level gate is valid for root-only visuals and status text, but it accidentally starved sub-agent naming of cast metadata. That dropped Tony/Peter/Howard-style names and weakened `stableIdentityKey` resolution, while background-task visibility gating (`hasCurrentTurnWork`) and duplicate collapse should remain unchanged.
+
+---
+
+### 2026-05-16T22:02:45.479+02:00: Treat `report_intent` as weak first-visibility evidence
+
+**By:** Peter Parker
+
+**What:** For hidden sub-agents, treat `report_intent` the same way as the `task` wrapper: cache any intent text it carries, but do not render a card from that tool alone. Visible cards may still consume it as metadata, and a later stronger tool can use the cached text.
+
+**Context:** The avatar already suppresses hidden sub-agent cards on `subagent.started`, `assistant.reasoning`, `assistant.intent`, and the parent `task` wrapper. Prompt-start floods can still happen because reactivated idle agents often emit a fast `report_intent` tool call before they do any substantive work.
+
+**Why:** This matches the user-visible symptom: cards appear briefly and then retire about a second later, which lines up with weak launch-time tools being promoted and then retired after `tool.execution_complete`. Suppressing those weak tool-only activations keeps the UI focused on agents that actually started visible work.
+
+---
+
+### 2026-05-16T22:02:45.479+02:00: Sub-agent first-render debounce
+
+**By:** Tony Stark
+
+**What:** Use a first-render debounce for hidden sub-agent cards instead of trusting `subagent.started` or intent/reasoning traffic. Hidden agents now wait 750 ms after the first non-`task` tool start before `addSubagent`, unless `tool.execution_progress` arrives first and proves sustained live work.
+
+**Why:** The SDK/runtime seam available to the extension does not provide a trustworthy "this is just an idle/background agent" bit before render:
+- `subagent.started` exposes identity metadata, `toolCallId`, and optional `model`, but no idle/background state.
+- `subagent.selected` is selection-level metadata (`agentName`, `agentDisplayName`, `tools`) and is not a safe per-instance visibility gate.
+- Current generated SDK types expose `session.background_tasks_changed`, but its payload is empty, so it cannot tell us which specific agent should be suppressed.
+
+Given that gap, render debounce is the smallest safe filter for short-lived wake-up noise.
+
+**Tradeoff:** Very fast sub-agents that only emit `tool.execution_start` + `tool.execution_complete` and never emit progress will stay invisible if they finish inside the debounce window. That is acceptable here because the user complaint is prompt-start clutter, and long-lived or actively reporting agents still surface quickly.
+
+**Validation:**
+- `node --check .github/extensions/copilot-avatar/main.mjs`
+- `node --check .github/extensions/copilot-avatar/lib/squad-context.mjs`
+- `node --check .github/extensions/copilot-avatar/content/main.js`
+
+---
+
 ### 2026-05-16T15:42:38.842+02:00: Sub-Agent Display Name Lookup Fix
 
 **By:** Vision (Platform Dev)

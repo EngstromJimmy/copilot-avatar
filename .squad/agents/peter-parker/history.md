@@ -45,6 +45,8 @@ Solution: Load the latest casting snapshot into the roster lookup to keep avatar
 - 2026-05-16T21:04:02.794+02:00 — In `.github/extensions/copilot-avatar/main.mjs`, hidden sub-agents stay stable when `assistant.intent` only updates cached badge text and never flips visibility evidence; first visibility should come from stronger current-turn signals like tool execution, while reasoning and replay stay non-promoting.
 - 2026-05-16T21:23:20.636+02:00 — Keep badge fallback on a dedicated task summary instead of roster/charter description, and retire visible sub-agents shortly after their last tool clears if no terminal event arrives; that stops same-turn ghost cards and prevents role text from leaking into the lower badge.
 - 2026-05-16T21:40:19.370+02:00 — In `.github/extensions/copilot-avatar/main.mjs`, treat the parent `task` wrapper as spawn metadata for hidden agents, not first-visibility evidence. Let it keep names/briefs warm in state, but wait for a non-`task` tool before rendering the card so wake-up pings do not flash a wall of sub-agents.
+- 2026-05-16T22:02:45.479+02:00 — `report_intent` tool calls can be just as weak as the `task` wrapper for first visibility. They often fire from reactivated idle Squad agents during prompt startup, so cache the gerund text but keep hidden cards suppressed until a stronger tool arrives.
+- 2026-05-16T22:06:13.919+02:00 — Stable-identity dedupe needs a live-work escape hatch. If two runtime instances with the same cast identity are both actively running tools, keep both cards; when collapse is still needed, merge the richest shared metadata into the surviving owner so the visible name does not blank out.
 
 ## 2026-05-16T19:23:20Z — Sub-Agent Visibility + Duplicate Identity Fix Cycle
 
@@ -73,3 +75,19 @@ Solution: Load the latest casting snapshot into the roster lookup to keep avatar
 - Cards appear only after non-`task` tool proves actual work
 
 **Effect:** No more card wall on new Squad prompts during handoff phase.
+
+## 2026-05-16T22:06:13.919+02:00 — Concurrent Identity & Weak Signal Decisions Recorded
+
+**Scribe Cross-Agent Update:**
+
+Two critical decisions merged to `decisions.md`:
+
+1. **Do not collapse actively working duplicate identities into one card** — Fixed the visible undercount regression where cards were collapsing purely by stable identity, squashing two real live tasks into one and letting the survivor inherit weaker metadata. Now: keep same-identity cards visible while both have live work; when collapse is still needed, merge the richest available name/role/description metadata into the surviving owner so the card name doesn't blank.
+
+2. **Treat `report_intent` as weak first-visibility evidence** — For hidden sub-agents, handle `report_intent` like the `task` wrapper: cache any intent text it carries, but do not render a card. Prevents prompt-start card floods from idle-agent reactivation events that emit `report_intent` before real work.
+
+**Implementation Impact:** 
+- `.github/extensions/copilot-avatar/main.mjs` — concurrent live same-identity states now coexist; metadata merge preserves best names during collapse
+- `.github/extensions/copilot-avatar/content/main.js` — only prunes duplicates once both are no longer doing live work
+
+**Status:** Decisions recorded. Ready for implementation or integration with Tony Stark's debounce work.
