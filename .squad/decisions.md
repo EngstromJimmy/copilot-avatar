@@ -349,6 +349,23 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 
 ---
 
+### 2026-05-16T20:03:34.127+02:00: Squad Root Mic — Dark Graphite Finish, Ear-to-Mouth Boom Arc
+
+**By:** Shuri
+
+**What:** The Squad root mic-boom accessory has been updated from Squad pink (`#f778ba`) to dark graphite (`0x1c1c1c`). The boom curve has been extended from 4 to 6 CatmullRom control points so it now arcs from the temple/ear region (slightly above eye level, at max lateral head width) down around the cheek to the mouth capsule — mimicking a real broadcast boom mic path without adding an anchor ring or bilateral headset geometry.
+
+**Rationale:**
+- Pink was too visually loud against the avatar face; dark graphite reads as professional comms gear.
+- User wanted the boom to visually "run back up to the ear" — achieved by prepending two control points at the temple (`+0.04y`, `0.245x`) and ear level (`0.235x, eyeY`) before the existing cheek–mouth arc.
+- No ear-anchor mesh added; the tube itself terminating at the temple gives the implied ear connection without adding a separate ring piece.
+
+**Scope:** Only `createSquadMicBoom()` in `.github/extensions/copilot-avatar/content/main.js` changed. Gating (`updateRootSquadMicBoom`, `window.setSquadContext`), root-only lifecycle, and all other Squad UI are unchanged.
+
+**Status:** Implemented.
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus

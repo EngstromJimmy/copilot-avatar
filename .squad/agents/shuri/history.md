@@ -141,3 +141,31 @@
   - Remove ear-anchor, keep face-side boom plus capsule
   - Apply Squad pink (#f778ba)
   - Preserve root-only + visible-Squad gating
+
+## 2026-05-16T18:07:10Z — Session: Squad Root Mic Capsule Enlargement
+
+**Status:** ✅ Complete and validated
+
+**Coordinator:** Jimmy Engstrom
+
+**Task:** Slightly enlarge the Squad-only root mic capsule while preserving the black finish, boom path to the ear, subtle silhouette, and existing root-only visible-Squad gating.
+
+**Work Summary:**
+- Increased Squad root mic capsule radius from `0.016` to `0.020` and length from `0.032` to `0.042` (~25% increase in each dimension)
+- Better readability at normal viewing distance
+- Black/dark graphite finish, boom path, and Squad-gating all preserved
+- Boom curve extended to arc from temple/ear region to mouth (per prior graphite-boom decision)
+
+**Implementation:**
+- Updated `.github/extensions/copilot-avatar/content/main.js` in `createSquadMicBoom()` function
+- Validation: `node --check` passed for extension files
+
+**Key Decisions:**
+- **2026-05-16T20:03:34.127+02:00** — Squad Root Mic — Dark Graphite Finish, Ear-to-Mouth Boom Arc
+  - Recolored from Squad pink to dark graphite (`0x1c1c1c`)
+  - Extended boom curve from 4 to 6 CatmullRom control points
+  - Now arcs from temple/ear region down to mouth capsule
+
+**Decision Captured:**
+- **2026-05-16T20:03:34.127+02:00** — Squad Root Mic — Dark Graphite Finish, Ear-to-Mouth Boom Arc (merged to decisions.md)
+
