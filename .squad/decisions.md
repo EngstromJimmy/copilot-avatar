@@ -366,6 +366,45 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 
 ---
 
+### 2026-05-16T20:11:12.638+02:00: Reset Subagent State at Directive Boundary (assistant.turn_start)
+
+**By:** Tony Stark (Lead)
+
+**What:** Every root `assistant.turn_start` event is a directive boundary. Any subagents still in `subagentStateById` at that point are stale — they belong to the previous directive and should be cleared before the new one begins.
+
+**Decision:** In the `assistant.turn_start` handler, call `resetSubagentRuntimeState({ clearUi: true })` before `refreshVisibleSquadContext()`.
+
+**Rationale:**
+- `session.start` and `session.context_changed` already call `resetSubagentRuntimeState` — the pattern is established.
+- `assistant.turn_start` is the intra-session directive boundary but had no such reset, causing agents from directive N to survive into directive N+1.
+- The critical case: the SDK does not always fire `subagent.completed`; agents can stay "active" in the maps indefinitely. The CLI considers them gone but the extension does not.
+- The guard `if (event.agentId) return` ensures only root (top-level) turns trigger the reset; subagent-owned sub-turns are untouched.
+- `subagent.started` for the new directive fires AFTER `assistant.turn_start`, so there is no race: the clear happens before any new agent registers.
+
+**Defense layers now in place:**
+1. **Directive boundary reset** (this decision): `resetSubagentRuntimeState` on root `assistant.turn_start`.
+2. **Active-only sync filter**: `syncKnownSubagents` skips completed/failed agents.
+3. **Post-completion prune timer**: `scheduleSubagentPrune` removes completed/failed entries from maps after hold+fade buffer.
+
+---
+
+### 2026-05-16T20:11:12.638+02:00: Stale Subagent Pruning Strategy
+
+**By:** Tony Stark (Lead)
+
+**What:** Completed and failed subagents must NOT be replayed by `syncKnownSubagents()`. Once a sub-agent reaches a terminal state, its UI lifecycle is over and re-adding it on every turn start creates ghost cards.
+
+**Decision:** Two-part fix applied in `main.mjs`:
+1. `syncKnownSubagents` filters to `status === "active"` only.
+2. `scheduleSubagentPrune(agentId, expectedStatus, delayMs)` — after `subagent.completed` (3000ms) or `subagent.failed` (2200ms), the backend map entry is deleted (guarded by expected-status so a restarted agent isn't pruned).
+
+Timing constants (`SUBAGENT_COMPLETION_PRUNE_MS`, `SUBAGENT_FAILURE_PRUNE_MS`) are defined in main.mjs and must stay in sync with `COMPLETION_HOLD_MS` / `FAILURE_HOLD_MS` in `content/main.js` if those ever change.
+
+**Rationale:**
+`syncKnownSubagents` is a webview-reconnect safety net for *active* agents. Terminal-state agents have already fired their animations; re-syncing them creates the visual artifact where Scribe (or any completed agent) re-appears on every turn. This pattern costs nothing and eliminates the ghost-card problem without a second state system.
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus

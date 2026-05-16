@@ -170,3 +170,29 @@
 **Decision Captured:**
 - **2026-05-16T20:03:34.127+02:00** — Squad Root Mic — Dark Graphite Finish, Ear-to-Mouth Boom Arc (merged to decisions.md)
 
+## 2026-05-16T20:11:12.638+02:00 — Session: Extend Mic Boom & Enlarge Capsule
+
+**Status:** ✅ Complete and validated
+
+**Coordinator:** Jimmy Engstrom  
+**Requested by:** Jimmy Engstrom
+
+**Task:** Extend the Squad root mic farther toward the ear and make the mic capsule slightly larger while preserving the dark graphite finish and existing Squad-only gating.
+
+**Work Summary:**
+- Extended boom curve anchor points further toward the ear:
+  - Temple point x-factor: 0.245 → 0.268
+  - Ear-level point: 0.235 → 0.258
+- Enlarged mic capsule:
+  - Capsule radius: 0.020 → 0.024
+  - Capsule length: 0.042 → 0.052
+  - Total increase: ~20% in each dimension
+- Dark graphite finish (`0x1c1c1c`), mouth-end position, and Squad-only gating all preserved unchanged
+
+**Implementation:**
+- Updated `.github/extensions/copilot-avatar/content/main.js` in `createSquadMicBoom()` function
+- Validation: `node --check` ✅ passed for all extension files
+
+**Key Learning:**
+- Boom curve geometry responds well to fine-tuning control point positions; small adjustments (±0.02 in x) visibly extend the reach toward the ear without breaking the mouth-end anchor
+- Capsule scaling should stay proportional (radius + length) for visual consistency
