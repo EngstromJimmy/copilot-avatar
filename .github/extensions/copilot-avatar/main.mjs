@@ -12,9 +12,22 @@ const DEFAULT_SETTINGS = Object.freeze({
     rate: 1.1,
     pitch: 1.0,
     voice: null,
+    avatarStyle: 'copilot',
+    engine: 'webspeech',
+    voxtralBackend: 'cloud',
+    voxtralUrl: 'http://localhost:18000',
+    voxtralApiKey: '',
+    voxtralVoice: 'en_paul_neutral',
+    voxtralVoiceSource: 'preset',
+    voxtralRefAudio: null,
+    clippyVoxtralVoice: 'en_paul_excited',
+    clippyRefAudio: null,
     showSpokenText: true,
+    showAvatarBadges: true,
     showModelBadges: false,
 });
+const clippyDefaultVoxtralVoice = 'en_paul_excited';
+const retroClippySampleText = "It looks like you're writing some code. Need a hand? I can help with that.";
 let folderName = basename(process.cwd());
 let currentSessionCwd = process.cwd();
 let squadContext = {
@@ -58,16 +71,35 @@ async function saveSettings(settings) {
     await writeFile(settingsPath, JSON.stringify(normalizeSettings(settings)), "utf-8");
 }
 
+async function generateRetroClippyVoice() {
+    const params = new URLSearchParams({
+        text: retroClippySampleText,
+        voice: "Sam",
+        pitch: "160",
+        speed: "165",
+    });
+    const response = await fetch(`https://www.tetyys.com/SAPI4/SAPI4?${params}`);
+    if (!response.ok) {
+        throw new Error(`SAPI4 voice generation failed (${response.status})`);
+    }
+    const contentType = response.headers.get("content-type") || "audio/wav";
+    const bytes = Buffer.from(await response.arrayBuffer());
+    return `data:${contentType};base64,${bytes.toString("base64")}`;
+}
+
 const webview = new CopilotWebview({
     extensionName: "copilot_avatar",
     contentDir: join(import.meta.dirname, "content"),
     title: formatTitle(),
     width: 600,
     height: 800,
+    transparent: true,
+    alwaysOnTop: true,
     callbacks: {
         log: (msg, opts) => session.log(msg, opts),
         loadSettings: () => loadSettings(),
         saveSettings: (settings) => saveSettings(settings),
+        generateRetroClippyVoice: () => generateRetroClippyVoice(),
     },
 });
 

@@ -4,7 +4,7 @@
 // Public API:
 //   bootstrap(extDir)
 //       Installs npm deps if package-lock is missing/stale. Logs via the SDK.
-//   new CopilotWebview({ extensionName, contentDir, callbacks?, title?, width?, height? })
+//   new CopilotWebview({ extensionName, contentDir, callbacks?, title?, width?, height?, transparent?, alwaysOnTop? })
 //       One window per instance. Properties / methods:
 //         .tools                 → array of tool defs (`<extensionName>_show`,
 //                                  `<extensionName>_eval`, `<extensionName>_close`)
@@ -91,7 +91,7 @@ export async function bootstrap(extDir) {
     await session.disconnect();
 }
 
-async function showWebview({ dir, title = "Copilot Webview", width = 900, height = 700, callbacks = {} } = {}) {
+async function showWebview({ dir, title = "Copilot Webview", width = 900, height = 700, callbacks = {}, transparent = false, alwaysOnTop = false } = {}) {
     if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new Error(`directory does not exist: ${dir}`);
     if (!existsSync(join(dir, "index.html"))) throw new Error(`${dir} does not contain an index.html file`);
     const { WebSocketServer } = await import("ws");
@@ -130,7 +130,7 @@ async function showWebview({ dir, title = "Copilot Webview", width = 900, height
     const url = `http://127.0.0.1:${server.address().port}/`;
 
     const userDataDir = process.platform === "win32" ? join(tmpdir(), `copilot-webview-${id}`) : null;
-    const childEnv = { ...process.env, CW_URL: url, CW_TITLE: title, CW_WIDTH: String(width), CW_HEIGHT: String(height) };
+    const childEnv = { ...process.env, CW_URL: url, CW_TITLE: title, CW_WIDTH: String(width), CW_HEIGHT: String(height), CW_TRANSPARENT: transparent ? "1" : "", CW_ALWAYS_ON_TOP: alwaysOnTop ? "1" : "" };
     if (userDataDir) childEnv.WEBVIEW2_USER_DATA_FOLDER = userDataDir;
 
     const child = spawn("node", [join(__dirname, "webview-child.mjs")], {
@@ -169,7 +169,7 @@ async function showWebview({ dir, title = "Copilot Webview", width = 900, height
 }
 
 export class CopilotWebview {
-    constructor({ extensionName, contentDir, callbacks = {}, title, width, height } = {}) {
+    constructor({ extensionName, contentDir, callbacks = {}, title, width, height, transparent = false, alwaysOnTop = false } = {}) {
         if (!extensionName || typeof extensionName !== "string") {
             throw new Error("CopilotWebview: `extensionName` is required (used to prefix tool names).");
         }
@@ -183,6 +183,8 @@ export class CopilotWebview {
         this.title = title;
         this.width = width;
         this.height = height;
+        this.transparent = transparent;
+        this.alwaysOnTop = alwaysOnTop;
         this._handle = null;
         this.close = this.close.bind(this);
     }
@@ -197,6 +199,8 @@ export class CopilotWebview {
             title: this.title,
             width: this.width,
             height: this.height,
+            transparent: this.transparent,
+            alwaysOnTop: this.alwaysOnTop,
             callbacks: this.callbacks,
         });
         this._handle = handle;
