@@ -39,3 +39,21 @@
 Solution: Load the latest casting snapshot into the roster lookup to keep avatar labels human-readable without leaking transient IDs.
 
 **Outcome:** Shuri's approved implementation incorporates this design; casting alias loading now wired into `resolveSquadAgentMetadata()` in `squad-context.mjs`.
+
+## Learnings
+
+- 2026-05-16T21:04:02.794+02:00 — In `.github/extensions/copilot-avatar/main.mjs`, hidden sub-agents stay stable when `assistant.intent` only updates cached badge text and never flips visibility evidence; first visibility should come from stronger current-turn signals like tool execution, while reasoning and replay stay non-promoting.
+- 2026-05-16T21:23:20.636+02:00 — Keep badge fallback on a dedicated task summary instead of roster/charter description, and retire visible sub-agents shortly after their last tool clears if no terminal event arrives; that stops same-turn ghost cards and prevents role text from leaking into the lower badge.
+
+## 2026-05-16T19:23:20Z — Sub-Agent Visibility + Duplicate Identity Fix Cycle
+
+**Cycle Status:** Complete
+**Contributors:** Tony Stark (lead), Howard the Duck (review), Peter Parker (implementation)
+
+**Key Decisions:**
+- Stale sub-agent cards retire on work completion (no terminal event required)
+- Visible sub-agent identities collapse to single stable identity
+- Badge metadata removed from role text, kept in task-summary/activity text
+
+**Tests:** All smoke checks and regression assertions passed.
+**Next:** Integration ready.

@@ -157,3 +157,16 @@ Copilot SDK event                Extension handlers              Webview
 - Approved by Howard the Duck and Tony Stark
 
 **Key lesson:** Use stable identity fields for roster joins; keep opaque instance IDs out of metadata lookups. This fix maintains the correct seam between runtime state tracking (agentId) and human-readable naming (stable identity + Squad roster).
+
+## 2026-05-16T19:23:20Z — Sub-Agent Visibility + Duplicate Identity Fix Cycle
+
+**Cycle Status:** Complete
+**Contributors:** Tony Stark (lead), Howard the Duck (review), Peter Parker (implementation)
+
+**Key Decisions:**
+- Stale sub-agent cards retire on work completion (no terminal event required)
+- Visible sub-agent identities collapse to single stable identity
+- Badge metadata removed from role text, kept in task-summary/activity text
+
+**Tests:** All smoke checks and regression assertions passed.
+**Next:** Integration ready.
