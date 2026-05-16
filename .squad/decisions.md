@@ -1111,3 +1111,75 @@ That wrapper is often just the orchestration handoff that wakes or assigns an ag
 - Skip first-time `ensureSubagentVisible()` on hidden agents when the active tool resolves to `task`.
 - Let the card appear once a non-`task` tool event proves the agent is actually working.
 
+
+
+### 2026-05-16T23:33:39.835+02:00: Scribe UI Name-Loss Repro — Metadata Loss in syncKnownSubagents()
+
+---
+date: 2026-05-16T23:33:39.835+02:00
+agent: Howard the Duck
+type: qa-findings
+status: repro-identified
+---
+
+# Scribe UI Name-Loss Repro: Metadata Loss in `syncKnownSubagents()`
+
+## Symptom
+A named sub-agent like "Scribe" is active and running according to backend logic, but the avatar UI displays an unnamed card showing only the internal agentId (e.g., "agent-xyz") instead of the agent's human-readable display name.
+
+## Root Cause
+**Metadata loss during `syncKnownSubagents()` rehydration.**
+
+In `.github/extensions/copilot-avatar/main.mjs`, the `syncKnownSubagents()` function rehydrates visible sub-agent cards after context changes or window reopen. It calls:
+
+```javascript
+const freshState = upsertSubagentState(state.agentId);  // NO metadata passed
+await callWindowFunction("addSubagent", buildSubagentPayload(freshState), 3000);
+```
+
+When `upsertSubagentState()` is called with only the `agentId` (no `agentData` or `extra` metadata), `resolveSubagentState()` recomputes state from scratch. If the original `event.data` from the `subagent.started` event has not been cached, the agent's displayName, agentName, and role are lost.
+
+The fallback chain in `buildSubagentPayload()` then collapses to raw agentId:
+
+```javascript
+displayName: cleanText(overrides.displayName ?? state.displayName) || cleanText(state.agentId)
+```
+
+Result: The webview receives `{ agentId: "agent-xyz", displayName: "agent-xyz" }` instead of `{ agentId: "agent-xyz", displayName: "Scribe" }`.
+
+## Reproduction Seam
+**File:** `.github/extensions/copilot-avatar/main.mjs`
+**Function:** `syncKnownSubagents()`
+**Lines:** ~440–450
+
+The fix requires either:
+1. Preserving agent metadata in the stored state after `subagent.started` completes
+2. Passing cached metadata to `upsertSubagentState()` so it is not recomputed with missing context
+
+## Impact
+- Named agents lose their identities when the avatar window rehydrates
+- Affects workflow clarity; users see internal IDs instead of agent names
+- Regression vector: any context change or window reopen can strip agent names
+
+## For Vision
+Target `.github/extensions/copilot-avatar/main.mjs`, `syncKnownSubagents()` function. When rehydrating visible agents, preserve or pass the cached metadata so displayName is not lost in the fallback chain.
+
+
+---
+
+### 2026-05-16T23:33:39.835+02:00: Copilot Runtime Sub-Agent Identity Hints
+
+---
+date: 2026-05-16T23:33:39.835+02:00
+agent: Vision
+topic: copilot-runtime-subagent-hints
+---
+
+# Copilot runtime sub-agent identity hints
+
+When Copilot emits a real `subagent.started` event with weak identity fields, the extension may borrow the most recent `subagent.selected` metadata as a short-lived naming hint, then immediately bind that hint to the concrete runtime `agentId`.
+
+- `subagent.started` remains the only visibility owner for non-root cards.
+- `subagent.selected` is metadata-only enrichment and must not create, suppress, or gate cards by itself.
+- Once bound to `agentId`, the Copilot-owned hint should be reused for later sync/update events so reconnects keep the human name instead of falling back to an unnamed card.
+
