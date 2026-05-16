@@ -15,6 +15,8 @@
 - 2026-05-16T21:04:02.794+02:00 — QA verdict on Tony's visibility revision: blocking bare `assistant.reasoning` and replay-only rehydration is the right direction, but hidden agents still promote from intent-only traffic. In `.github/extensions/copilot-avatar/main.mjs`, `assistant.intent` marks `hasCurrentTurnWork` for any non-generic intent, so common launch-time summaries like `Exploring codebase` or `Creating parser tests` can still make freshly spawned or reactivated stale agents flood the list before any tool activity lands.
 - 2026-05-16T21:23:20.636+02:00 — Duplicate-identity review: the cross-directive reset path is no longer the main leak. The remaining flood comes from sub-agents that never emit `subagent.completed` / `subagent.failed`; `.github/extensions/copilot-avatar/main.mjs` handles `tool.execution_complete` by clearing activity only, while `.github/extensions/copilot-avatar/content/main.js` keeps avatars keyed by runtime `agentId` with no cast-identity dedupe, so later runtime instances can leave dual `Tony Stark` cards visible in the same directive. Validation used `node --check` on `main.mjs` and `content/main.js` plus a targeted static probe for terminal transitions, runtime-id keying, and missing identity collapse.
 - 2026-05-16T21:23:20.636+02:00 — Follow-up reviewer read on role text relapse: duplicate `Tony Stark` cards and role-ish badge text are cousins, not twins. The shared enabler is the same stale visible card surviving after `tool.execution_complete` clears activity without retiring the agent, but the lower badge line specifically falls back through `getAvatarBadgeText()` to `avatar.description`, and `.github/extensions/copilot-avatar/lib/squad-context.mjs` builds that description role-first from charter metadata. So fixing stale-card survival should cut the symptom rate, but a complete polish pass also needs badge fallback/preference cleanup.
+- 2026-05-16T21:40:19.370+02:00 — Prompt-start flash review: the old flood path was weak-signal promotion, not CSS voodoo. In `.github/extensions/copilot-avatar/main.mjs`, hidden cards now stay gated because only tool start/progress set `hasCurrentTurnWork`; `assistant.intent` and `assistant.reasoning` only update cards that are already visible, `assistant.turn_start` clears runtime state before `refreshVisibleSquadContext()` can replay anything, and `tool.execution_complete` schedules stale-card retirement for agents that never send terminal events. Syntax smoke checks plus static source probes passed, so Peter's current fix set looks sufficient for the start-of-prompt flicker described here.
+- 2026-05-16T21:39:14.337+02:00 — Live read-only avatar probe across `.github/extensions/copilot-avatar/main.mjs`, `content/main.js`, and `content/style.css` passed `node --check` plus targeted source assertions for reset, stale-retire, badge fallback, pending-model, and two-line badge layout. The real avatar window still settled with duplicate `Howard the Duck` cards and one blank idle card visible, so static/source probes are not enough to clear ghost-card regressions without a live DOM poll.
 
 ## 2026-05-16T14:02:40.457Z — Session Complete: Approved Sub-Agent Identity & Badge Fix
 
@@ -104,3 +106,15 @@
 
 **Tests:** All smoke checks and regression assertions passed.
 **Next:** Integration ready.
+
+## 2026-05-16T19:55:02Z — Flash-Flood Fix Approval & Cross-Agent Decisions Merged
+
+**Status:** ✅ Approved — no further action on weak-signal path
+
+**Session Work:** Reviewed Peter Parker's visibility gate fix and confirmed it addresses the prompt-start sub-agent flood.
+
+**Finding:** The previous weak-signal promotion path (via `assistant.intent` / `assistant.reasoning` on stale agents) is now properly gated. Hidden cards stay hidden until tool execution proves real work.
+
+**Verdict:** If UI still flickers post-merge, next investigation should target real tool-start bursts or animation/layout polish, not visibility logic.
+
+**Note:** Future sub-agent visibility sign-offs require live avatar-window poll in addition to static source checks; regression probes alone are not sufficient.

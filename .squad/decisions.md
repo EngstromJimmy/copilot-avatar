@@ -609,3 +609,60 @@ Fix: add `{ resetSubagents: true }` to the `session.resume` call, OR clear `acti
 - **Route the "too many agents" fix to whoever owns coordinator/Squad agent lifecycle** — agents should call `process.exit()` (or equivalent) when their task completes.
 - **Track `session.resume` ghost replay as a separate issue** — assign to whoever does the next extension maintenance pass.
 
+
+
+---
+
+## Approved Decisions
+
+---
+
+# Howard the Duck — Live Avatar Probe
+
+- **Date:** 2026-05-16T21:39:14.337+02:00
+- **Decision:** Do not trust static avatar regression probes alone for sub-agent visibility sign-off.
+- **Evidence:** A real read-only probe against `.github/extensions/copilot-avatar/main.mjs`, `content/main.js`, and `content/style.css` passed syntax and source assertions, but the live avatar UI still showed `Howard the Duck` twice plus one blank idle card after the check settled.
+- **Implication:** Any future approval on sub-agent visibility needs one live avatar-window poll in addition to source checks. If the team wants this cleaned up, a runtime/UI agent other than the reviewer should revise the stale-card retirement or identity-dedupe path.
+
+
+---
+
+## 2026-05-16T21:40:19.370+02:00 — Howard the Duck review: prompt-start sub-agent flash path
+
+**Reviewer:** Howard the Duck
+
+**Verdict:** Approved for this bug. The most likely flash path was weak-signal promotion from launch-time sub-agent traffic, especially `assistant.intent` / `assistant.reasoning` hitting agents that had stale runtime state or had only just spawned.
+
+**Why this looks fixed now:**
+- `.github/extensions/copilot-avatar/main.mjs` only treats tool execution start/progress as first-visibility evidence via `hasCurrentTurnWork`.
+- `assistant.intent` and `assistant.reasoning` route through `ensureSubagentVisibleIfEligible()` and bail if the card is still hidden.
+- `assistant.turn_start` clears sub-agent runtime state before `refreshVisibleSquadContext()` can replay old cards.
+- `tool.execution_complete` schedules a fallback retire, so agents that never emit `subagent.completed` / `subagent.failed` do not sit around waiting to haunt the next prompt.
+
+**Reviewer note:** I do not see a remaining same-path flash where stale or intent-only agents are rendered first and culled second. If the UI still flickers after this, I would look next at real tool-start bursts or animation/layout polish, not stale visibility logic.
+
+
+---
+
+---
+date: 2026-05-16T21:40:19.370+02:00
+author: Peter Parker
+topic: task-wrapper-visibility
+---
+
+# Decision: Keep hidden sub-agent cards behind non-task work
+
+## What
+
+For hidden sub-agents in the avatar extension, the parent `task` wrapper tool should seed runtime metadata only. It should not be enough to render a visible card.
+
+## Why
+
+That wrapper is often just the orchestration handoff that wakes or assigns an agent. If we surface cards on `task` wrapper start/progress, a new prompt can briefly light up a bunch of agents that never do any real visible work and then disappear a moment later.
+
+## Implementation seam
+
+- Keep `task` wrapper state in the runtime maps so agent identity, model joins, and spawn hints still work.
+- Skip first-time `ensureSubagentVisible()` on hidden agents when the active tool resolves to `task`.
+- Let the card appear once a non-`task` tool event proves the agent is actually working.
+
