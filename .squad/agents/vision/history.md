@@ -8,6 +8,29 @@
 ## Learnings
 
 - Day-1 context: CopilotAvatar is a Copilot CLI extension for a 3D avatar experience with Squad integration.
+- 2026-05-16T16:02:40.457+02:00 — Squad name resolution should join on stable identity fields only, but the lookup map should be enriched with casting slot aliases from `.squad/casting/history.json` and `.squad/casting/registry.json` so names like `lead`, `tester`, and `backend-dev` resolve to `Tony Stark`, `Howard the Duck`, and `Peter Parker`. Key files: `.github/extensions/copilot-avatar/lib/squad-context.mjs`, `.github/extensions/copilot-avatar/main.mjs`, `.squad/casting/history.json`, `.squad/casting/registry.json`.
+
+## 2026-05-16T14:02:40.457Z — Session Complete: Approved Sub-Agent Identity & Badge Fix
+
+**Status:** ✅ Approved by Howard the Duck
+
+**Team:** Tony Stark (Lead), Vision, Peter Parker, Shuri, Howard the Duck (QA)
+
+**Role:** Specified display-name resolver contract with agentId lookup and casting alias enrichment.
+
+**Summary:** Part of multi-agent identity & badge system fix. Defined Squad display-name resolver contract that stays on stable identity fields (`agentName`, `agentDisplayName`) while enriching the Squad lookup map with casting-slot aliases. This ensures Squad metadata remains optional enrichment, not a hard dependency.
+
+**Key Contribution:**
+- Designed resolver contract to try agentDisplayName → Squad roster (by stable fields) → agentName → agentId
+- Specified casting alias enrichment for `lead`, `tester`, `backend-dev` → cast names
+- Ensured no hidden coupling between transient runtime IDs and human-readable labels
+- Maintained graceful degradation when Squad absent
+
+**Files Modified:**
+- `.github/extensions/copilot-avatar/lib/squad-context.mjs` — resolver enhancement
+- `.github/extensions/copilot-avatar/main.mjs` — payload consumption
+
+**Validation:** Syntax smoke tests passed; targeted lookup probes passed; approved by Howard the Duck.
 
 ## 2026-05-16T15:42:38.842+02:00 — Squad Sub-Agent Display Integration Analysis
 

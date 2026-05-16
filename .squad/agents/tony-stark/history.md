@@ -73,6 +73,47 @@
 - Display-name fallback should treat `""` as missing for both Squad and non-Squad events; otherwise empty SDK fields short-circuit the chain and the UI falls back to internal ids.
 - Key files: `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/lib/squad-context.mjs`, `.squad/team.md`.
 
+---
+
+## 2026-05-16T16:02:40.457+02:00 — Design Review: Multi-Agent Identity & Badge System
+
+**What:** Comprehensive design review for displaying agent names, activity in badges, and model information in sub-agents while maintaining non-Squad compatibility.
+
+**Key Findings:**
+
+1. **Name Resolution Broken at Seam:** `resolveSquadAgentMetadata()` only tries `agentName`/`agentDisplayName`, never tries `agentId`. Must extend lookup to include ID-based roster search.
+
+2. **Badge Content Missing Activity Detail:** Badge shows activity type ("Running commands") but not what tool is actually running. Should prioritize: Intent > Tool Name > Role > Activity Badge.
+
+3. **Model Sync Race Condition:** If `assistant.usage` fires before `subagent.started`, model is queued in `pendingModelsByToolCallId` but entry is deleted after first use. Switch to `pendingModelsByAgentId` and sync on avatar creation.
+
+4. **Squad Context Not Reaching Sub-Agents:** Team name and coordinator are loaded but never sent in `addSubagent` payload. Should add optional `squadTeamName` and `squadCoordinator` fields.
+
+5. **Non-Squad Sessions Must Work:** All Squad fields must be optional; system should gracefully degrade to agentId-based names and generic badges when Squad absent.
+
+**Architectural Decisions:**
+
+- **Centralized name resolver** in main.mjs: `resolveAgentDisplayName()` tries agentDisplayName → Squad roster (with agentId lookup) → agentName → agentId (never empty)
+- **Dynamic badge content** in content/main.js: Show intent when active, tool name when running, role when idle
+- **Agent-based model queuing** in main.mjs: Use agentId as key, not toolCallId (eliminates race conditions)
+- **Optional Squad enrichment:** All Squad fields in payloads are optional; UI skips when undefined
+
+**Owner & Sequencing:**
+
+- Squad specialist: Extend `resolveSquadAgentMetadata()` in squad-context.mjs (Phase 1)
+- Tony Stark: Refactor main.mjs event handlers, name resolver, model sync (Phase 2)
+- Fenster: Update badge rendering logic, optional Squad UI (Phase 3)
+- All: Integration testing (Phase 4)
+
+**Key Files:**
+- `lib/squad-context.mjs`: Extend name lookup to include agentId
+- `main.mjs`: Create `resolveAgentDisplayName()`, refactor subagent event handlers, fix model sync queuing
+- `content/main.js`: Dynamic badge text priority (intent → tool → role → activity)
+
+**Non-Breaking:** All changes are additive; existing Squad-absent sessions unchanged. SQuAD-specific code gated by `squadContext.active` checks or optional payload fields.
+
+**Detailed spec:** `.squad/decisions/inbox/tony-stark-avatar-squad-identity-design-review.md`
+
 ## 2026-05-16T13:42:38.842Z — Approved Shuri's Sub-Agent Name-Mapping Revision
 
 **Status:** ✅ Approved
@@ -89,3 +130,40 @@
 - Validated trim-aware handling of blank strings prevents empty strings from blocking fallback chain
 
 **Key decision:** This is the correct seam. Runtime instance IDs stay for live state tracking; human labels come from stable identity first, with blanks normalized away before fallback selection.
+
+## 2026-05-16T16:02:40.457+02:00 — Runtime State Sync for Squad Sub-Agents
+
+- Centralized sub-agent identity, model, tool activity, and completion state in `.github/extensions/copilot-avatar/main.mjs` so every lifecycle event resolves through one state map before talking to the webview.
+- Guarded Squad naming against placeholder SDK labels like `General Purpose Agent`; when Squad metadata exists, stable roster/casting names now win while `agentId` stays an emergency label only.
+- Added richer activity payloads (`activityLabel`) plus `tool.execution_progress` handling so sub-agent badges can show real work-in-flight text instead of generic running states.
+- Carried model state per agent and injected it into `addSubagent` / `setAgentModel` flows, which makes sub-agent model badges survive ordering races between `assistant.usage`, `session.model_change`, and `subagent.started`.
+- Key files: `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/lib/squad-context.mjs`.
+
+## 2026-05-16T14:02:40.457Z — Session Complete: Approved Sub-Agent Identity & Badge Fix
+
+**Status:** ✅ Approved by Howard the Duck
+
+**Team:** Tony Stark (Lead), Vision, Peter Parker, Shuri, Howard the Duck (QA)
+
+**Summary:** Tony Stark led comprehensive design review for multi-agent identity & badge system. Vision specified display-name resolver contract with agentId lookup. Shuri enhanced badge content to prefer live work details. Peter Parker cleared stale sub-agent state on session/context boundaries. Howard the Duck revalidated and approved final implementation.
+
+**Key Outcomes:**
+- Squad aliases now resolve to cast names (Tony Stark, Peter Parker, Howard the Duck)
+- Per-subagent model updates fire correctly
+- Badge text tracks current activity (intent → tool name → role → activity)
+- Non-Squad sessions stay generic without Squad label leakage
+- No stale Squad cards replay after context changes
+
+**Deliverables:**
+- Multi-agent identity & badge system design spec (Tony Stark)
+- Squad display-name resolver contract (Vision)
+- Runtime state reset mechanism (Peter Parker)
+- Badge content prioritization (Shuri)
+- QA validation and approval (Howard the Duck)
+
+**Files Modified:**
+- `.github/extensions/copilot-avatar/main.mjs` — event consolidation, name resolver, model sync
+- `.github/extensions/copilot-avatar/lib/squad-context.mjs` — agentId lookup, casting alias enrichment
+- `.github/extensions/copilot-avatar/content/main.js` — badge prioritization, webview clear hook
+
+**Validation:** All QA gates passed; syntax smoke tests; targeted regression probes; no breaking changes to non-Squad sessions.
