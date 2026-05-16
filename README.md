@@ -79,7 +79,7 @@ Open the avatar window when you want it, then let it react to the current sessio
 
 Sub-agents appear automatically when the current session emits sub-agent lifecycle events.
 
-Select **Avatar → Clippy** in settings to show the animated grey `clippy.glb` paperclip on a transparent background. Clippy mode forces Voxtral speech, hides response/status overlays, and speaks a short Clippy-style summary of the final Copilot response instead of reading the message verbatim. Import or record a Voxtral reference clip while Clippy is selected to save it as the default Clippy voice. You can also use **Generate retro Clippy sample** to fetch a short SAPI4/TruVoice-style reference WAV at setup time instead of bundling an audio file.
+Select **Avatar → Clippy** in settings to show the animated grey `clippy.glb` paperclip on a transparent background. Clippy mode prefers Voxtral speech with the more animated `Paul - Excited` preset, hides response/status overlays, and speaks a short Clippy-style summary of the final Copilot response instead of reading the message verbatim. Import or record a Voxtral reference clip while Clippy is selected to save it as the default Clippy voice. You can also use **Generate retro Clippy sample** to fetch a short pitched-up Microsoft Sam-style SAPI4 reference WAV at setup time instead of bundling an audio file.
 
 ## Activity States
 
@@ -103,7 +103,7 @@ The root avatar uses the same activity-state system even when there are no sub-a
 | Engine dropdown | Choose Web Speech or Voxtral |
 | Voice dropdown | Select a system voice |
 | Voxtral backend | Choose Mistral Cloud or local vLLM |
-| Generate retro Clippy sample | Fetch and save a SAPI4-style Voxtral reference clip for Clippy |
+| Generate retro Clippy sample | Fetch and save a pitched-up Microsoft Sam-style Voxtral reference clip for Clippy |
 | Import prerecorded voice | Save reference audio for Voxtral voice cloning |
 | Speed slider | Adjust rate from 0.5× to 3.0× |
 | Pitch slider | Adjust pitch from 0.5 to 2.0 |

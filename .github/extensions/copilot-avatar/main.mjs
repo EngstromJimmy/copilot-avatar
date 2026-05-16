@@ -6,7 +6,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { CopilotWebview } from "./lib/copilot-webview.js";
 
 const settingsPath = join(import.meta.dirname, ".tts-settings.json");
-const retroClippySampleText = "It looks like you're working on some code. Would you like a hand?";
+const clippyDefaultVoxtralVoice = 'en_paul_excited';
+const retroClippySampleText = "It looks like you're writing some code. Need a hand? I can help with that.";
 let folderName = basename(process.cwd());
 
 function formatTitle() {
@@ -17,7 +18,7 @@ async function loadSettings() {
     try {
         return JSON.parse(await readFile(settingsPath, "utf-8"));
     } catch {
-        return { enabled: false, rate: 1.1, voice: null, avatarStyle: 'copilot', engine: 'webspeech', voxtralBackend: 'cloud', voxtralUrl: 'http://localhost:18000', voxtralApiKey: '', voxtralVoice: 'en_paul_neutral', voxtralVoiceSource: 'preset', clippyVoxtralVoice: 'en_paul_cheerful', clippyRefAudio: null };
+        return { enabled: false, rate: 1.1, voice: null, avatarStyle: 'copilot', engine: 'webspeech', voxtralBackend: 'cloud', voxtralUrl: 'http://localhost:18000', voxtralApiKey: '', voxtralVoice: 'en_paul_neutral', voxtralVoiceSource: 'preset', clippyVoxtralVoice: clippyDefaultVoxtralVoice, clippyRefAudio: null };
     }
 }
 
@@ -28,9 +29,9 @@ async function saveSettings(settings) {
 async function generateRetroClippyVoice() {
     const params = new URLSearchParams({
         text: retroClippySampleText,
-        voice: "Adult Male #2, American English (TruVoice)",
-        pitch: "140",
-        speed: "157",
+        voice: "Sam",
+        pitch: "160",
+        speed: "165",
     });
     const response = await fetch(`https://www.tetyys.com/SAPI4/SAPI4?${params}`);
     if (!response.ok) {

@@ -332,8 +332,12 @@ body.tiny-layout .agent-badge {
   transition: opacity 0.18s ease;
 }
 
-body.avatar-clippy #tts-controls:not(:hover):not(:focus-within) {
+body.avatar-clippy #tts-controls:not(.settings-open):not(:hover):not(:focus-within) {
   opacity: 0;
+}
+
+body.avatar-clippy #tts-controls.settings-open {
+  opacity: 1;
 }
 
 #tts-toggle,
