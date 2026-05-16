@@ -2,6 +2,42 @@
 
 ## Active Decisions
 
+### 2026-05-16T23:25:38.850+02:00: User directive — remove first-render gate for sub-agent visibility
+
+**By:** Jimmy Engstrom (via Copilot)
+
+**What:** When using Copilot SDK, sub-agent presence alone should be enough to show the sub-agent; remove the first-render gate. Keep visibility limited to Copilot-owned sub-agents, while Squad SDK remains metadata-only for names, roles, and related enrichment.
+
+**Why:** User request — captured for team memory.
+
+**Implementation:** Copilot-owned sub-agents render on `subagent.started` without requiring extra tool or debounce evidence.
+
+---
+
+### 2026-05-16T23:25:38.850+02:00: Copilot-owned sub-agents render on `subagent.started`
+
+**By:** Vision (Platform Dev)
+
+**What:** Remove the first-render evidence gate. Once Copilot emits `subagent.started` for a runtime `agentId`, the extension should mark that sub-agent visible immediately.
+
+**Why:** Visibility ownership already lives with the Copilot SDK lifecycle. Requiring extra tool or debounce evidence after `subagent.started` creates false negatives and hides legitimate helpers.
+
+**Guardrails:** Squad roster and casting data stay metadata-only enrichment for Copilot-owned cards, and update-only webview calls must still no-op unless `addSubagent` created the non-root avatar.
+
+---
+
+### 2026-05-16T23:01:57.563+02:00: Hidden Squad chrome keeps metadata lookup alive
+
+**By:** Vision (Platform Dev)
+
+**What:** When the top-level gate hides Squad chrome, the extension should keep the loaded Squad roster/casting metadata attached to the hidden context instead of replacing it with an empty shell.
+
+**Why:** Sub-agent name and role resolution is a different seam from root-only Squad chrome. If hidden contexts drop `agentsByKey` or metadata-only fields, Copilot-owned cards can stay visible but regress to generic labels or internal names even though the Squad roster was already loaded.
+
+**Implementation note:** Metadata lookup now keys off loaded lookup presence rather than `context.active`, and sub-agent scope also follows loaded Squad metadata instead of visible chrome state.
+
+---
+
 ### 2026-05-16T23:01:57.563+02:00: Copilot-owned sub-agent visibility
 
 **By:** Vision (Platform Dev)

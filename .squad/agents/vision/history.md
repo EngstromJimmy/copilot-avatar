@@ -10,6 +10,8 @@
 - Day-1 context: CopilotAvatar is a Copilot CLI extension for a 3D avatar experience with Squad integration.
 - 2026-05-16T16:02:40.457+02:00 — Squad name resolution should join on stable identity fields only, but the lookup map should be enriched with casting slot aliases from `.squad/casting/history.json` and `.squad/casting/registry.json` so names like `lead`, `tester`, and `backend-dev` resolve to `Tony Stark`, `Howard the Duck`, and `Peter Parker`. Key files: `.github/extensions/copilot-avatar/lib/squad-context.mjs`, `.github/extensions/copilot-avatar/main.mjs`, `.squad/casting/history.json`, `.squad/casting/registry.json`.
 - 2026-05-16T23:01:57.563+02:00 — When avatar cards must mirror live Copilot sub-agents, visibility should stay keyed to Copilot runtime `agentId` and lifecycle events only; Squad roster/casting data remains metadata-only enrichment, and webview update calls must not create non-root cards by themselves.
+- 2026-05-16T23:01:57.563+02:00 — If Squad chrome is hidden, keep the loaded roster/casting lookup map on the hidden context and let metadata resolution key off lookup presence, not `active`, so cast names still resolve for Copilot-owned cards.
+- 2026-05-16T23:25:38.850+02:00 — If Copilot SDK already emitted `subagent.started`, that presence is enough to render the card. First-render evidence gates and debounces only hide legitimate Copilot-owned agents; keep Squad metadata strictly as display enrichment.
 
 ## 2026-05-16T14:02:40.457Z — Session Complete: Approved Sub-Agent Identity & Badge Fix
 
@@ -190,3 +192,20 @@ Copilot SDK event                Extension handlers              Webview
 - `.github/extensions/copilot-avatar/content/main.js` — Webview card-creation gate
 - `.squad/decisions.md` — Architecture decision recorded
 
+## 2026-05-16T21:25:38.850Z — First-Render Gate Removed: Copilot Subagent Start Visibility
+
+**Status:** ✅ Implemented and documented
+
+**Role:** Removed the first-render evidence gate so Copilot sub-agent presence alone is enough for initial visibility.
+
+**Summary:** Removed the first-render evidence gate that was hiding legitimate Copilot-owned sub-agents. Visibility now responds directly to Copilot SDK `subagent.started` without requiring extra tool activity or debounce gates:
+- Sub-agents render immediately on `subagent.started` event
+- First-render gates suppressed legitimate Copilot-owned agents unnecessarily
+- Squad roster/casting data remains enrichment-only, no card creation or suppression
+- Webview update-only calls continue to no-op if Copilot-owned card not yet created
+
+**Impact:** Sub-agents become visible as soon as Copilot marks them started, providing better user experience for Squadron delegation and background tasks.
+
+**Files Affected:**
+- `.github/extensions/copilot-avatar/main.mjs` — First-render gate removed from visibility logic
+- `.squad/decisions.md` — Team decisions merged and archived
