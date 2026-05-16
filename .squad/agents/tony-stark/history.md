@@ -63,3 +63,29 @@
 **Rationale:** If Squad is running with agents, the avatar should be visible. The cost of always showing the window is justified by the visibility benefit. Users who don't want Squad metadata loaded wouldn't have Squad in their cwd anyway.
 
 **Next action:** Frontend specialist implements in main.mjs, one method that checks squadContext.active and calls webview.show() early in session lifecycle.
+
+---
+
+## 2026-05-16T15:42:38.842+02:00 — Review: Stable Agent Identity for Naming
+
+- Copilot SDK defines `agentId` as a sub-agent **instance identifier**; it is the right key for runtime avatar state, not for Squad roster enrichment.
+- Squad metadata joins should stay on stable identity fields (`agentName`, `agentDisplayName`, roster-derived ids) and should normalize blank strings before fallback selection.
+- Display-name fallback should treat `""` as missing for both Squad and non-Squad events; otherwise empty SDK fields short-circuit the chain and the UI falls back to internal ids.
+- Key files: `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/lib/squad-context.mjs`, `.squad/team.md`.
+
+## 2026-05-16T13:42:38.842Z — Approved Shuri's Sub-Agent Name-Mapping Revision
+
+**Status:** ✅ Approved
+
+**What:** Shuri's centralized resolver in `main.mjs` with correct fallback order:
+1. `agentDisplayName` from event (trimmed)
+2. `displayName` from Squad roster (stable identity fields only)
+3. `agentName` from event (trimmed)
+4. Raw `agentId` (final fallback)
+
+**Validation:**
+- Confirmed centralized resolver handles `subagent.started`, `subagent.completed`, `subagent.failed` consistently
+- Verified `agentId` excluded from roster joins (emergency label only)
+- Validated trim-aware handling of blank strings prevents empty strings from blocking fallback chain
+
+**Key decision:** This is the correct seam. Runtime instance IDs stay for live state tracking; human labels come from stable identity first, with blanks normalized away before fallback selection.

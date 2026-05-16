@@ -117,3 +117,20 @@ Copilot SDK event                Extension handlers              Webview
 **Effect:** Sub-agents are now correctly matched to their Squad roster entries by ID, and fallback to agentId (rather than empty string) if no roster match is found. UI now displays proper names instead of internal identifiers.
 
 **Next Upstream Issue:** The synchronization seam issue (webview not open when events fire) remains. Recommend Tony Stark's Option A (auto-show on Squad detection) be implemented in refreshSessionContext().
+
+## 2026-05-16T13:42:38.842Z — Initial Fix Rejected; Approved Revision by Shuri Replaces It
+
+**Status:** ❌ Rejected
+
+**Why:** Initial approach added `agentId` to Squad roster lookups, but `agentId` is a per-instance identifier, not a stable roster key. Analysis showed:
+- Direct `agentId` lookups still fail for opaque internal IDs (e.g., `agent-call_H` → `howard-the-duck` mapping missing)
+- Worst-case fallback still resolves to opaque ID users were complaining about
+- Does not solve the root issue of distinguishing stable identity from transient handles
+
+**Approved Revision (by Shuri):** Centralized sub-agent display metadata resolution in `main.mjs` using stable identity fields (`agentName`, `agentDisplayName`) for Squad roster joins, with `agentId` as final emergency fallback only. Shuri's implementation:
+- Single trim-aware resolver across all lifecycle handlers
+- Casting slot aliases bridge runtime names to Squad roster
+- Correct fallback order enforced
+- Approved by Howard the Duck and Tony Stark
+
+**Key lesson:** Use stable identity fields for roster joins; keep opaque instance IDs out of metadata lookups. This fix maintains the correct seam between runtime state tracking (agentId) and human-readable naming (stable identity + Squad roster).
