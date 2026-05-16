@@ -7,6 +7,7 @@
 
 ## Learnings
 
+- 2026-05-16T20:27:24.094+02:00 — Squad root mic-boom top anchor points pushed even closer to the ear: temple x-factor 0.268→0.292, ear-level x-factor 0.258→0.282. Capsule radius 0.024→0.0264, length 0.052→0.0572 (~10% larger). Mouth-end position, dark graphite finish, and Squad-only gating unchanged.
 - 2026-05-16T20:11:12.638+02:00 — Squad root mic-boom anchor points extended further toward the ear: temple point x-factor 0.245→0.268, ear-level point 0.235→0.258. Capsule radius 0.020→0.024, length 0.042→0.052 (~20% bigger). Dark graphite finish, gating, and mouth-end position unchanged.
 - 2026-05-16T20:03:34.127+02:00 — Squad root mic-boom recolored from Squad pink (`#f778ba`) to dark graphite (`0x1c1c1c`); boom curve extended from 4 to 6 CatmullRom control points so it now arcs up to the temple/ear region before curving down to the mouth capsule. Gating and root-only lifecycle unchanged.
 - 2026-05-16T20:03:34.127+02:00 — Squad root mic capsule radius increased from `0.016` to `0.020` and length from `0.032` to `0.042` (~25% in each dimension) for better readability at normal viewing distance. Boom tube, finish, and Squad-gating unchanged.
@@ -196,3 +197,28 @@
 **Key Learning:**
 - Boom curve geometry responds well to fine-tuning control point positions; small adjustments (±0.02 in x) visibly extend the reach toward the ear without breaking the mouth-end anchor
 - Capsule scaling should stay proportional (radius + length) for visual consistency
+
+## 2026-05-16T18:29:01Z — Session: Squad Root Mic ~10% Enlargement & Closer Ear Reach
+
+**Status:** ✅ Complete and validated
+
+**Coordinator:** Jimmy Engstrom
+
+**Task:** Make the Squad root mic about 10% larger and move the boom even closer to the ear while preserving the dark graphite finish and existing root-only visible-Squad gating.
+
+**Work Summary:**
+- Enlarged mic capsule: radius 0.024 → 0.0264, length 0.052 → 0.0572 (~10% in each dimension)
+- Extended boom control points closer to ear:
+  - Temple x-factor: 0.268 → 0.292
+  - Ear-level x-factor: 0.258 → 0.282
+- Dark graphite finish (`0x1c1c1c`) and Squad-only gating unchanged
+
+**Implementation:**
+- Updated `.github/extensions/copilot-avatar/content/main.js` in `createSquadMicBoom()` function
+- No changes to boom mouth-end anchor or to Sub-Agent identity systems
+
+**Validation:**
+- ✓ `node --check` passed on `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/lib/squad-context.mjs`, `.github/extensions/copilot-avatar/content/main.js`
+- ✓ Root-only gating verified (requires `window.setSquadContext(payload.active)`)
+- ✓ Dark graphite finish preserved
+- ✓ Boom curve smooth and proportional
