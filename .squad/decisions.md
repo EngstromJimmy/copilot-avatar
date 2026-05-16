@@ -708,6 +708,307 @@ topic: Live avatar visibility fallback
 - **Why:** The source seams and background-agent activity can both look healthy while the live overlay still renders no sub-agent cards. For “show me Tony and Howard” requests, a deterministic UI fallback is cheaper than pretending the runtime pipeline proved itself.
 - **Guardrail:** This staged overlay is a visibility demo only. Do not treat it as sign-off on the runtime event path; keep using live-window polling plus source review for actual regression approval.
 
+---
+date: 2026-05-16T23:01:57.563+02:00
+title: Sub-Agent Visibility & Name Resolution Seams — Read-Only Architecture Pass
+author: Tony Stark
+status: documented
+topic: subagent-pipeline-architecture
+---
+
+# Read-Only Architecture Pass: Sub-Agent Visibility & Squad Metadata Seams
+
+## Problem Statement
+
+Jimmy reports:
+- Sub-agents disappear too fast
+- Names are not always resolved
+- Sub-agents visible in Copilot SDK should stay visible in the avatar
+
+## Required Architecture
+
+**Source-of-Truth Split:**
+1. **Visibility (Copilot SDK)** — Which sub-agents exist and how long they stay visible
+2. **Metadata (Squad SDK)** — Names, roles, cast aliases for visible Copilot sub-agents
+3. **Non-Copilot Guard** — Do not show Squad-only agents; only enrich Copilot SDK agents
+
+---
+
+## Findings: Current Architecture
+
+### 1. Visibility Source (Copilot SDK) — CORRECT
+
+**Lifecycle Events (the authoritative source):**
+- `subagent.started` — seals runtime agentId
+- `tool.execution_start/progress` — gates first visibility (`hasCurrentTurnWork`)
+- `subagent.completed/failed` — ends active state, schedules prune
+- `assistant.turn_start` — directive boundary reset
+
+**Main.mjs flow:**
+```
+subagent.started
+  → upsertSubagentState(agentId, agentData)
+  → [PROVISIONAL — no card yet]
+
+tool.execution_start (for agentId)
+  → activeToolStatesByToolCallId[toolCallId] = { agentId, ... }
+  → upsertSubagentState(..., { hasCurrentTurnWork: true })
+  → scheduleSubagentFirstRender(agentId)  [GATED ON DEBOUNCE]
+  → [750ms debounce, can be flushed early by tool.execution_progress]
+
+tool.execution_progress
+  → clearPendingSubagentFirstRender(agentId)
+  → ensureSubagentVisible(agentId)  [IMMEDIATE PROMOTION]
+
+subagent.completed / subagent.failed
+  → scheduleSubagentPrune(agentId, status, MS)
+  → pruneSubagentRuntimeEntry() deletes from maps after fade
+
+assistant.turn_start
+  → resetSubagentRuntimeState({ clearUi: true })
+  → clearSubagentStateMaps()
+  → callWindowFunction("clearSubagents", { preserveRoot: true })
+```
+
+✅ **Assessment:** Copilot SDK presence drives visibility correctly.
+
+---
+
+### 2. Name Resolution (Squad SDK) — ARCHITECTURAL VIOLATION FOUND
+
+**Current flow in `main.mjs`:**
+
+```javascript
+// Line ~86-91
+function getSubagentMetadataContext() {
+    return resolvedSquadContext?.active ? resolvedSquadContext : squadContext;
+}
+
+// Line ~513-595
+function resolveSubagentState(agentId, agentData = {}, extra = {}) {
+    const metadataContext = getSubagentMetadataContext();
+    
+    const squadAgent = resolveSquadAgentMetadata(metadataContext, {
+        agentId,
+        agentName: lookupAgentName,
+        agentDisplayName: lookupDisplayName,
+    });
+    // ... fallback chain uses squadAgent?.displayName, role, description
+}
+```
+
+**The violation:**
+
+In `squad-context.mjs` line 564-582:
+```javascript
+export function resolveSquadAgentMetadata(context, agentData = {}) {
+    if (!context?.active || !(context.agentsByKey instanceof Map)) {
+        return null;  // ← METADATA LOOKUP FAILS IF SQUAD IS NOT ACTIVE
+    }
+    
+    const keys = [
+        normalizeAgentKey(agentData.agentName),
+        normalizeAgentKey(agentData.agentDisplayName),
+        isOpaqueRuntimeAgentId(agentData.agentId) ? "" : normalizeAgentKey(agentData.agentId),
+    ].filter(Boolean);
+    
+    for (const key of keys) {
+        if (context.agentsByKey.has(key)) {
+            return context.agentsByKey.get(key);
+        }
+    }
+    return null;
+}
+```
+
+**The seam:**
+- When top-level coordinator is a personal agent (Tony Stark, not Squad), `isSquadTopLevelAgent()` returns true, but `getVisibleSquadContext()` blanks out `agentsByKey` (line 68-84).
+- `getSubagentMetadataContext()` checks `resolvedSquadContext?.active` — but if visible Squad chrome is gated off, the metadata context is empty.
+- Sub-agents lose their Squad names even though the casting/roster is fully loaded in `resolvedSquadContext`.
+
+**Current (broken) flow:**
+```
+Main coordinator: Tony Stark (not Squad)
+  → isSquadTopLevelAgent(topLevelAgentState) = true
+  → getVisibleSquadContext() blanks agentsByKey
+  → squadContext.agentsByKey is now empty
+  → getSubagentMetadataContext() returns squadContext (also empty after gating)
+  → resolveSquadAgentMetadata() returns null
+  → sub-agent displayName falls back to agentId or task hint (loses cast names)
+```
+
+✅ **Decision already made (2026-05-16T22:06:13.919+02:00):**
+> Sub-agent metadata must bypass top-level Squad UI gating. ... Sub-agent identity resolution still needs the underlying roster/casting metadata so cast names survive when the coordinator is a personal agent like Tony Stark.
+
+❌ **Current code does NOT follow the decision.**
+
+---
+
+### 3. Fast Disappearance — ROOT CAUSE IDENTIFIED
+
+Two mechanisms working together:
+
+#### A. First-Render Debounce (750ms) + Fast Tool Completion
+
+**Line 673:**
+```javascript
+const SUBAGENT_FIRST_RENDER_DEBOUNCE_MS = 0;
+```
+
+⚠️ **This is set to ZERO, which disables the debounce.**
+
+**Should be:** At least 750ms per decision history line 42:
+> Waits 750ms after first non-`task` tool start before `addSubagent`, unless `tool.execution_progress` arrives first.
+
+**Impact:** Agents that start and complete before the timer fires never become visible.
+
+#### B. Completion-Prune Timing
+
+**Line 671-672:**
+```javascript
+const SUBAGENT_COMPLETION_PRUNE_MS = 3000;
+const SUBAGENT_FAILURE_PRUNE_MS = 2200;
+```
+
+These trigger **after** the webview fade animation. But the prune deletes from runtime maps:
+
+**Line 1342-1345:**
+```javascript
+if (state?.isVisible) {
+    await callWindowFunction("completeSubagent", { ... });
+}
+scheduleSubagentPrune(agentId, "completed", SUBAGENT_COMPLETION_PRUNE_MS);
+```
+
+**Problem:** When the next `assistant.turn_start` fires (new directive), it calls:
+```javascript
+await resetSubagentRuntimeState({ clearUi: true });  // Line 1621
+```
+
+Which unconditionally clears all maps **before** syncKnownSubagents replays visible agents. If an agent completed but not yet pruned, it may still be in `subagentStateById` with `status === "completed"`, and `syncKnownSubagents` filters it out:
+
+**Line 1101:**
+```javascript
+const replayableStates = [...subagentStateById.values()]
+    .filter((state) => state.status === "active" && state.isVisible && ...)
+```
+
+Only agents with `status === "active"` replay. But the agent already had its visible animation, so it won't flash.
+
+---
+
+## Concrete Seams: The Authoritative Visibility Path
+
+### Copilot SDK Presence — Definitive
+
+**Functions that surface Copilot sub-agents:**
+
+1. `ensureSubagentVisible(agentId)` — Line 1045
+   - Checks `subagentStateById.get(agentId)?.isVisible`
+   - Calls `addSubagent(payload)` for first visibility
+   - Collapses identity duplicates before rendering
+   - **Guard:** Only called after `hasCurrentTurnWork` is true
+
+2. `scheduleSubagentFirstRender(agentId)` — Line 896
+   - Waits N ms for sustained non-`task` tool work
+   - Bypassed by `tool.execution_progress`
+   - **Problem:** `SUBAGENT_FIRST_RENDER_DEBOUNCE_MS = 0` disables the wait
+
+3. `syncKnownSubagents()` — Line 1090
+   - Replays only `status === "active"` visible agents
+   - Respects identity collapse by `stableIdentityKey`
+   - Triggered by `assistant.turn_start` after reset
+   - **Correct filter:** Prevents stale/completed agents from reappearing
+
+### Squad SDK Metadata — Currently Blocked
+
+**Functions that supply names/roles:**
+
+1. `resolveSquadAgentMetadata(context, agentData)` — Line 564 in squad-context.mjs
+   - **Requires:** `context?.active === true` (gates it off)
+   - Should be called with `resolvedSquadContext` even when visible Squad chrome is gated
+
+2. `resolveSubagentState(agentId, agentData, extra)` — Line 513 in main.mjs
+   - **Calls:** `getSubagentMetadataContext()` (line 515)
+   - **Should use:** `resolvedSquadContext` directly, not gated version
+
+3. `getSubagentMetadataContext()` — Line 86 in main.mjs
+   - **Current:** Returns gated context
+   - **Should be:** Always prefer `resolvedSquadContext` if Squad SDK loaded it
+
+---
+
+## Violations Summary
+
+| Issue | Location | Impact | Violation |
+|-------|----------|--------|-----------|
+| Squad metadata gated by visible Squad chrome | `main.mjs` L86-91 | Sub-agents lose names when coordinator is personal | Violates 2026-05-16T22:06:13 decision |
+| First-render debounce disabled | `main.mjs` L673 | Fast agents vanish before visibility gate | Violates history note L40 (750ms debounce) |
+| No Squad-only agent guard | Both files | N/A if only Copilot SDK drives visibility | Implicitly correct (not violated) |
+
+---
+
+## Recommended Fixes (Not Implemented — Architecture Only)
+
+### Fix 1: Decouple Metadata from Visible Chrome
+
+In `main.mjs`, line 86-91:
+
+```javascript
+// Current (WRONG):
+function getSubagentMetadataContext() {
+    return resolvedSquadContext?.active ? resolvedSquadContext : squadContext;
+}
+
+// Should be:
+function getSubagentMetadataContext() {
+    return resolvedSquadContext?.active ? resolvedSquadContext : squadContext;
+}
+
+// ... but in resolveSubagentState, always use resolvedSquadContext for metadata lookup:
+// (not the gated squadContext)
+```
+
+Actually, the call site should change:
+```javascript
+// In resolveSubagentState (line 515):
+// OLD: const metadataContext = getSubagentMetadataContext();
+// NEW: const metadataContext = resolvedSquadContext?.active ? resolvedSquadContext : (squadContext?.active ? squadContext : null);
+```
+
+### Fix 2: Re-enable First-Render Debounce
+
+In `main.mjs`, line 673:
+```javascript
+// OLD: const SUBAGENT_FIRST_RENDER_DEBOUNCE_MS = 0;
+// NEW: const SUBAGENT_FIRST_RENDER_DEBOUNCE_MS = 750;
+```
+
+---
+
+## Seams to Enforce Going Forward
+
+1. **Visibility source:** Only Copilot SDK events (`subagent.started`, `tool.execution_*`, `subagent.completed/failed`) decide which agents appear.
+
+2. **Metadata enrichment:** Squad SDK provides names/roles/aliases for any Copilot sub-agent, even when visible Squad chrome is gated.
+
+3. **Guard against Squad-only agents:** `resolveSquadAgentMetadata()` should never create a card. It only enriches sub-agents that Copilot SDK already reported via `subagent.started`.
+
+4. **First-render timing:** Debounce hidden agents until 750ms of sustained work unless `tool.execution_progress` arrives first.
+
+5. **Completion lifecycle:** Completed/failed agents prune after fade animation; `assistant.turn_start` reset happens before replay, so only `status === "active"` agents survive.
+
+---
+
+## Conclusion
+
+The architecture is **nearly correct** but has two concrete violations:
+
+1. **Metadata lookup is gated by visible Squad chrome** — Should always use loaded roster/casting, even for non-Squad coordinators.
+2. **First-render debounce is disabled** — Set to 0 instead of 750ms, causing fast agents to vanish before they become visible.
+
+Both are fixable without changing the event pipeline or visibility contracts.
+
 
 ## Approved Decisions
 
