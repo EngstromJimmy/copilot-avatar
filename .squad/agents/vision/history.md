@@ -9,6 +9,7 @@
 
 - Day-1 context: CopilotAvatar is a Copilot CLI extension for a 3D avatar experience with Squad integration.
 - 2026-05-16T16:02:40.457+02:00 — Squad name resolution should join on stable identity fields only, but the lookup map should be enriched with casting slot aliases from `.squad/casting/history.json` and `.squad/casting/registry.json` so names like `lead`, `tester`, and `backend-dev` resolve to `Tony Stark`, `Howard the Duck`, and `Peter Parker`. Key files: `.github/extensions/copilot-avatar/lib/squad-context.mjs`, `.github/extensions/copilot-avatar/main.mjs`, `.squad/casting/history.json`, `.squad/casting/registry.json`.
+- 2026-05-16T23:01:57.563+02:00 — When avatar cards must mirror live Copilot sub-agents, visibility should stay keyed to Copilot runtime `agentId` and lifecycle events only; Squad roster/casting data remains metadata-only enrichment, and webview update calls must not create non-root cards by themselves.
 
 ## 2026-05-16T14:02:40.457Z — Session Complete: Approved Sub-Agent Identity & Badge Fix
 
@@ -170,3 +171,22 @@ Copilot SDK event                Extension handlers              Webview
 
 **Tests:** All smoke checks and regression assertions passed.
 **Next:** Integration ready.
+
+## 2026-05-16T21:01:57.563Z — Copilot-owned Sub-Agent Visibility (Architecture Codification)
+
+**Status:** ✅ Implemented and documented
+
+**Role:** Implemented the Copilot-owned visibility seam to ensure cards persist until Copilot ends them and Squad-only agents cannot surface.
+
+**Summary:** Codified the architectural split between Copilot SDK (visibility owner) and Squad SDK (enrichment-only):
+- Copilot `subagent.started` triggers card creation; terminal events and session resets retire it
+- Squad roster/casting data enriches display name, role, description, stable identity — but does NOT create cards, suppress present cards, or collapse multiple live instances
+- Webview isolation: `addSubagent` is the only permitted card-creation entrypoint; all updates must no-op if the card wasn't created yet
+
+**Impact:** Enables Squad identity and metadata enrichment without risking duplicate cards, visibility drift, or Squad-only "ghost agents" surfacing in non-Squad contexts.
+
+**Files Affected:**
+- `.github/extensions/copilot-avatar/main.mjs` — Copilot visibility seam enforcement
+- `.github/extensions/copilot-avatar/content/main.js` — Webview card-creation gate
+- `.squad/decisions.md` — Architecture decision recorded
+

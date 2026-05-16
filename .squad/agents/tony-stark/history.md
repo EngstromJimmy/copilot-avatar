@@ -41,6 +41,18 @@ Two decisions recorded and merged to `decisions.md`:
 
 **Implementation Context:** Complements Peter Parker's concurrent-identity work to keep UI focused on agents with real sustained work.
 
+### 2026-05-16T23:01:57.563+02:00 — Copilot-owned sub-agent visibility (Architecture Decision)
+
+**Scribe Cross-Agent Update:**
+
+Established the source-of-truth architectural split between Copilot SDK and Squad SDK visibility ownership:
+
+- **Copilot SDK owns visibility & lifecycle:** A non-root avatar becomes renderable on Copilot `subagent.started`, stays visible while Copilot tracks the agent as present, and retires on terminal lifecycle events or explicit session/context resets.
+- **Squad SDK is enrichment-only:** Roster and casting data improve display name, role, description, and stable identity labeling, but do NOT create a card, suppress a still-present Copilot card, or collapse multiple live Copilot runtime agents into one visible card.
+- **Webview seam isolation:** `addSubagent` is the only webview entrypoint allowed to create a non-root avatar. Update-only calls must no-op when the Copilot-owned card hasn't been created yet.
+
+This split preserves Copilot's control over visibility while enabling Squad's identity and metadata enrichment layer.
+
 ## Archived Work
 
 Earlier sessions documented in `history-archive.md`:
@@ -48,6 +60,26 @@ Earlier sessions documented in `history-archive.md`:
 - Multi-agent identity & badge system design review (with Vision, Shuri, Peter Parker, Howard the Duck)
 - Runtime/event-bridge revision & casting-slot alias resolution
 - Model sync race fixes and state centralization
+
+## 2026-05-16T23:01:57.563+02:00 — Sub-Agent Visibility & Name Resolution Seams (Read-Only Architecture Pass)
+
+**Finding 1: Squad Metadata Lookup is Gated by Visible Squad Chrome**
+
+The `getSubagentMetadataContext()` function (line 86) returns the gated `squadContext` instead of the fully-loaded `resolvedSquadContext` when the top-level coordinator is a personal agent like Tony Stark. This violates the 2026-05-16T22:06:13 decision that metadata lookup must bypass top-level Squad UI gating. Result: Sub-agents lose their Squad-sourced names (displayName, role, cast aliases) even though the roster/casting is fully loaded and available.
+
+**Fix path:** In `resolveSubagentState()` line 515, use `resolvedSquadContext` directly instead of `getSubagentMetadataContext()`, so cast names survive when coordinator is non-Squad.
+
+**Finding 2: First-Render Debounce is Disabled**
+
+Line 673 sets `SUBAGENT_FIRST_RENDER_DEBOUNCE_MS = 0`, which disables the 750ms debounce that was supposed to gate first visibility until sustained work is proven. This causes fast agents to start, complete, and vanish before the visibility check ever fires. History note line 40 documents the 750ms debounce decision; current code does not follow it.
+
+**Fix path:** Change line 673 to `const SUBAGENT_FIRST_RENDER_DEBOUNCE_MS = 750;`
+
+**Copilot SDK Visibility Path (Correct):** Sealing events (`subagent.started` → `tool.execution_start` → `hasCurrentTurnWork=true` → `ensureSubagentVisible()`) correctly gate which agents become visible, and `syncKnownSubagents()` correctly filters to `status === "active"` only. The event pipeline is sound.
+
+**Squad-Only Guard (Implicitly Correct):** Since `ensureSubagentVisible()` only surfaces agents that Copilot SDK reported via `subagent.started`, Squad-only agents never appear. No explicit guard needed.
+
+**Authorized by:** Architecture pass (read-only). No implementation changes made. Seams documented in `.squad/decisions/inbox/tony-stark-subagent-visibility-seam.md`.
 
 ## Learnings
 

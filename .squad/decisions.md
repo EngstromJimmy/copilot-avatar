@@ -2,6 +2,18 @@
 
 ## Active Decisions
 
+### 2026-05-16T23:01:57.563+02:00: Copilot-owned sub-agent visibility
+
+**By:** Vision (Platform Dev)
+
+**What:** Visible sub-agent cards are owned by Copilot runtime lifecycle only. A non-root avatar becomes renderable on Copilot `subagent.started`, stays visible while Copilot still considers that runtime agent present, and retires on Copilot terminal lifecycle events or explicit session/context resets.
+
+**Metadata contract:** Squad roster and casting data are enrichment-only for Copilot-owned cards. They may improve display name, role, description, and stable identity labeling, but they must not create a card, suppress a still-present Copilot card, or collapse multiple live Copilot runtime agents into one visible card.
+
+**Webview seam:** `addSubagent` is the only webview entrypoint allowed to create a non-root avatar. Update-only calls such as activity, intent, and thinking must no-op when the Copilot-owned card has not been created yet, so visibility cannot drift away from the extension lifecycle seam.
+
+---
+
 ### 2026-05-16: Sub-agent visibility during Squad spinup — initialization strategy decision
 
 **By:** Tony Stark (Lead)
