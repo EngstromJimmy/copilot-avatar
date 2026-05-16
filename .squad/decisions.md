@@ -242,6 +242,99 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
   - Per-subagent model sync hooks remain wired
   - Badge text still prioritizes current activity
 
+### 2026-05-16T16:40:39.107+02:00: Prefer specific agent names over generic card labels
+
+**By:** Shuri
+
+**What:** Sub-agent card rendering now treats generic placeholder display names and opaque agent-id labels as low-confidence text, so a specific `agentName` like "Tony Stark" can replace them. Existing generic non-Squad labels still render when no better name exists.
+
+**Why:** The card UI was trusting `displayName` too hard. That let generic runtime labels mask resolved Squad cast names even when a better human name was already present in the payload.
+
+**Status:** Implemented and approved.
+
+---
+
+### 2026-05-16T16:40:39.107+02:00: Stable runtime agentId alias fallback for Squad names
+
+**By:** Vision
+
+**What:** Allow Squad metadata resolution to use the top-level runtime `agentId` only when it looks like a stable alias such as `lead` or `tony-stark`, while still refusing opaque handles like `agent-call_H`.
+
+**Why:** Some runtime events can arrive with generic placeholder labels in `agentDisplayName`, so ignoring a stable-looking `agentId` lets placeholders outrank cast names. Guarded fallback keeps non-Squad behavior intact and avoids reintroducing the rejected opaque-id join.
+
+**Status:** Implemented and approved.
+
+---
+
+### 2026-05-16T16:40:39.107+02:00: Stable runtime agentId alias fallback for Squad names
+
+**By:** Vision
+
+**What:** Allow Squad metadata resolution to use the top-level runtime `agentId` only when it looks like a stable alias such as `lead` or `tony-stark`, while still refusing opaque handles like `agent-call_H`.
+
+**Why:** Some runtime events can arrive with generic placeholder labels in `agentDisplayName`, so ignoring a stable-looking `agentId` lets placeholders outrank cast names. Guarded fallback keeps non-Squad behavior intact and avoids reintroducing the rejected opaque-id join.
+
+**Status:** Implemented and approved.
+
+---
+
+### 2026-05-16T17:28:38.428+02:00: Runtime/Event-Bridge Revision — Live Sub-Agent Naming Fix (APPROVED & MERGED)
+
+**By:** Tony Stark (Implementation), Howard the Duck (QA & Approval)
+
+**What:** Implemented guarded runtime/event-bridge revision enabling live task subtasks to inherit meaningful Squad display names from spawn metadata while preserving Squad precedence hierarchy and non-Squad fallback robustness.
+
+**Root Cause of Initial Rejection:** Howard the Duck identified a runtime naming bug in the initial design review. The multi-agent identity & badge system achieved Squad name resolution at the architectural level but missed a critical runtime seam: the `agentId` lookup was too permissive and risked accepting opaque handles (e.g., `agent-call_H`) as valid Squad roster keys, potentially allowing placeholder SDK labels to outrank actual cast names.
+
+**Implementation & Resolution:**
+
+1. **Guarded agentId Fallback** — Extended `squad-context.mjs` and `main.mjs` to accept stable-looking agentId values (e.g., `tony-stark`, `lead`, `tester`) for roster lookup while explicitly rejecting opaque identifiers
+2. **Casting-Slot Alias Resolution** — Squad metadata now resolves slot aliases (e.g., `lead` → `Tony Stark`, `tester` → `Howard the Duck`) in addition to explicit agent names
+3. **Centralized Display-Name Contract** — All subagent lifecycle events (`started`, `completed`, `failed`) use the same resolution path, ensuring consistency and enabling easier validation
+4. **Complementary State Reset** — Leveraged Peter Parker's prior stale-state reset work (session/context boundaries) to prevent Squad-backed names from leaking into non-Squad or post-context-change views
+
+**Files Modified:**
+- `.github/extensions/copilot-avatar/lib/squad-context.mjs` — Extended agentId lookup with stable-alias filtering
+- `.github/extensions/copilot-avatar/main.mjs` — Guarded fallback logic and centralized display-name resolution
+- `.github/extensions/copilot-avatar/content/main.js` — Badge system validated compatible with resolved Squad names
+
+**Validation (All Passed):**
+✓ Squad casting-slot aliases resolve to correct human names (Tony Stark, Peter Parker, Howard the Duck)
+✓ Opaque agentId values like `agent-call_H` do not bypass Squad roster joins
+✓ Non-Squad sessions display generic labels without Squad metadata pollution
+✓ Stale Squad-backed cards do not replay into later contexts (validated with Peter Parker's reset mechanism)
+✓ Badge text prioritizes live activity alongside resolved Squad names
+✓ Model updates sync correctly across event-order races
+✓ Syntax validation passed; targeted regression probes covered all critical seams
+
+**Decision:** ✅ **Approved and merged** by Howard the Duck. The runtime/event-bridge revision closes the naming seam while maintaining graceful degradation for non-Squad sessions.
+
+**Key Architectural Insight:** Squad roster lookups must stay anchored to stable identity fields (`agentName`, `agentDisplayName`, casting-slot aliases) rather than opaque runtime instance IDs. This keeps Squad metadata optional and graceful while preventing transient labels from short-circuiting the display-name resolution chain.
+
+---
+
+### 2026-05-16T19:27:16.955+02:00 — Gate Squad root accessories from visible Squad context
+
+**By:** Shuri
+
+**What:** Squad-only visuals on the root avatar should hang off the existing `window.setSquadContext(payload)` signal and be attached only to the root avatar mesh, rather than inferring Squad directly from cwd inside the webview.
+
+**Why:** `main.mjs` already reduces Squad visibility through `getVisibleSquadContext()`, so `payload.active` reaches the page only when Squad metadata is present and the active top-level agent is actually Squad. Reusing that seam keeps normal Copilot sessions visually unchanged and avoids a second frontend detection path that could drift.
+
+**Affected files:** `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/content/main.js`
+
+---
+
+### 2026-05-16T19:48:28.844+02:00 — Root Squad comms accessory should stay mic-boom light
+
+**By:** Shuri
+
+**What:** Replace the old chunky Squad root headset with a lighter single-sided mic-boom silhouette: small ear anchor, thin curved arm, compact capsule near the mouth.
+
+**Why:** The Squad signal should read as subtle comms gear, not a costume piece. Keeping it root-only and still driven by `window.setSquadContext(payload.active)` preserves the existing non-Squad boundary while making the avatar feel cleaner and more stable in motion.
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus

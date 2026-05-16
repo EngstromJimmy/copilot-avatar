@@ -11,6 +11,9 @@
 - 2026-05-16T16:02:40.457+02:00 — Sub-agent cards now resolve display names through shared extension-side event mapping in `.github/extensions/copilot-avatar/main.mjs`, then render richer live badge text and per-agent model lines in `.github/extensions/copilot-avatar/content/main.js`.
 - 2026-05-16T16:02:40.457+02:00 — For avatar overlays, the stable UX pattern is: preferred Squad/cast name first, live model line on the card, and badge text driven by current tool activity or active intent instead of static role text.
 - 2026-05-16T16:02:40.457+02:00 — Key files for sub-agent UI work: `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/lib/squad-context.mjs`, `.github/extensions/copilot-avatar/content/main.js`, and `.github/extensions/copilot-avatar/content/style.css`.
+- 2026-05-16T19:27:16.955+02:00 — Squad-only root avatar flair should reuse the existing visible Squad context from `.github/extensions/copilot-avatar/main.mjs`; in the webview, gate `modelRoot` accessories from `window.setSquadContext(payload.active)` instead of re-detecting Squad from cwd.
+- 2026-05-16T19:27:16.955+02:00 — Root accessory work stays surgical in `.github/extensions/copilot-avatar/content/main.js`: attach geometry in `createAvatarInstance()`, dispose it in `disposeAvatar()`, and keep the root-only visibility toggle isolated in a helper like `updateRootSquadMicBoom()`.
+- 2026-05-16T19:48:28.844+02:00 — Squad-only root comms flair reads better as a single-sided ear anchor, thin curved boom, and compact mouth capsule than as a full headset; keep the silhouette light so it feels like status, not costume.
 
 ## 2026-05-16T14:02:40.457Z — Session Complete: Approved Sub-Agent Identity & Badge Fix
 
@@ -85,3 +88,29 @@
 - Reviewer-approved seam: keep Squad roster joins on stable fields (`agentName`, `agentDisplayName`) and never on runtime `agentId`, which is only safe as a last-resort UI label.
 - Frontend pattern: centralize sub-agent display metadata resolution in `.github/extensions/copilot-avatar/main.mjs` so started/completed/failed handlers share the same trim-aware fallback chain.
 - Key paths for future avatar-label work: `.github/extensions/copilot-avatar/main.mjs` and `.github/extensions/copilot-avatar/lib/squad-context.mjs`.
+
+## 2026-05-16T17:53:47Z — Session: Squad Root Accessory Consolidation & Decision Capture
+
+**Status:** ✅ Decisions captured and orchestration logged
+
+**Work Summary:**
+- Completed root Squad mic-boom accessory implementation (lighter, single-sided silhouette replacing chunky headset)
+- Merged 2 decision entries from inbox into decisions.md
+- Validated gating: Squad accessories attach only when `window.setSquadContext(payload.active)` is true
+- Confirmed root-only creation and toggle wiring in `.github/extensions/copilot-avatar/content/main.js`
+
+**Decisions Captured:**
+1. **2026-05-16T19:27:16.955+02:00** — Gate Squad root accessories from visible Squad context (Shuri)
+   - Root avatar flair reuses existing `getVisibleSquadContext()` signal from main.mjs
+   - Avoids second frontend detection path; keeps non-Squad sessions unchanged
+
+2. **2026-05-16T19:48:28.844+02:00** — Root Squad comms accessory should stay mic-boom light (Shuri)
+   - Single-sided ear anchor, thin curved boom, compact mouth capsule
+   - Reads as subtle comms gear, not costume piece
+   - Preserves existing non-Squad boundary while improving avatar motion stability
+
+**Key Learnings:**
+- Squad-only root visuals should gate from `window.setSquadContext(payload.active)` rather than re-detecting Squad in webview
+- Keeping accessory light and subtle improves avatar stability in motion and visual consistency
+- Root-only creation path in `createAvatarInstance()` and cleanup in `disposeAvatar()` keep implementation surgical
+
