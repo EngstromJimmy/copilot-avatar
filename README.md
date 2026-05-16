@@ -17,6 +17,7 @@ So I built this. A little friend that lives on your screen and actually talks to
 - **Optional model badges**: show the current model for the main agent and sub-agents
 - **Responsive sub-agent layout**: sub-agents reflow into centered rows for smaller windows
 - **Lifecycle and message reactions**: success/failure reactions, floating responses, working state, and emoji-driven expressions
+- **RoboDuck variant**: duck agents use the normal avatar head with a separate GLB duckbill attachment
 - **Built-in TTS**: voice, speed, pitch, and persisted settings
 
 ## Squad Integration
@@ -84,6 +85,12 @@ Sub-agents appear automatically when the current session emits sub-agent lifecyc
 
 If Squad is available for the workspace, the avatar uses that metadata automatically. Without Squad, it works as a normal Copilot avatar.
 
+## RoboDuck Asset Notes
+
+- The duckbill is loaded from `content/duck-bill.glb`.
+- The current setup keeps the normal avatar head and only swaps in the separate duckbill mesh.
+- If you replace `duck-bill.glb`, prefer a clean beak-shaped mesh centered for face attachment. Large mask-like or heavily quantized exports may need placement or import adjustments in `content/main.js`.
+
 ## Activity States
 
 | State | Trigger | Visual |
@@ -122,7 +129,8 @@ copilot-avatar/
     ├── index.html      # Webview page
     ├── style.css       # Styling for the window and overlays
     ├── main.js         # 3D scene, sub-agent logic, activity effects, TTS
-    └── model.glb       # 3D Copilot head model
+    ├── model.glb       # 3D Copilot head model
+    └── duck-bill.glb   # Optional RoboDuck beak asset
 ```
 
 ## Dependencies

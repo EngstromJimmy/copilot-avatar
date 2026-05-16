@@ -933,6 +933,33 @@ function createBaseAsset(modelScene) {
 function createDuckBeakAsset(modelScene) {
     if (!modelScene) return null;
 
+    const toFloatAttribute = (attribute) => {
+        if (!attribute || !('count' in attribute) || !attribute.itemSize) return attribute;
+        if (attribute.array instanceof Float32Array && !attribute.normalized) return attribute;
+
+        const values = new Float32Array(attribute.count * attribute.itemSize);
+        for (let i = 0; i < attribute.count; i++) {
+            const base = i * attribute.itemSize;
+            values[base] = attribute.getX(i);
+            if (attribute.itemSize > 1) values[base + 1] = attribute.getY(i);
+            if (attribute.itemSize > 2) values[base + 2] = attribute.getZ(i);
+            if (attribute.itemSize > 3) values[base + 3] = attribute.getW(i);
+        }
+
+        return new THREE.BufferAttribute(values, attribute.itemSize, false);
+    };
+
+    const dequantizeGeometry = (geometry) => {
+        const position = geometry.getAttribute('position');
+        if (position) geometry.setAttribute('position', toFloatAttribute(position));
+
+        const normal = geometry.getAttribute('normal');
+        if (normal) geometry.setAttribute('normal', toFloatAttribute(normal));
+
+        const uv = geometry.getAttribute('uv');
+        if (uv) geometry.setAttribute('uv', toFloatAttribute(uv));
+    };
+
     const geometries = [];
     const box = new THREE.Box3();
     const partBox = new THREE.Box3();
@@ -942,6 +969,7 @@ function createDuckBeakAsset(modelScene) {
         if (!node.isMesh || !node.geometry) return;
 
         const geometry = node.geometry.clone();
+        dequantizeGeometry(geometry);
         geometry.applyMatrix4(node.matrixWorld);
         geometry.computeBoundingBox();
         if (!geometry.boundingBox) {
@@ -968,7 +996,9 @@ function createDuckBeakAsset(modelScene) {
     for (const geometry of geometries) {
         geometry.applyMatrix4(translate);
         geometry.applyMatrix4(scale);
-        geometry.computeVertexNormals();
+        if (!geometry.getAttribute('normal')) {
+            geometry.computeVertexNormals();
+        }
         geometry.computeBoundingBox();
         geometry.computeBoundingSphere();
     }
