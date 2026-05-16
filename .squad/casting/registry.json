@@ -1,0 +1,39 @@
+{
+  "agents": {
+    "tony-stark": {
+      "persistent_name": "Tony Stark",
+      "universe": "Marvel Cinematic Universe",
+      "created_at": "2026-05-16T15:34:40.135+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "shuri": {
+      "persistent_name": "Shuri",
+      "universe": "Marvel Cinematic Universe",
+      "created_at": "2026-05-16T15:34:40.135+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "vision": {
+      "persistent_name": "Vision",
+      "universe": "Marvel Cinematic Universe",
+      "created_at": "2026-05-16T15:34:40.135+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "peter-parker": {
+      "persistent_name": "Peter Parker",
+      "universe": "Marvel Cinematic Universe",
+      "created_at": "2026-05-16T15:34:40.135+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "howard-the-duck": {
+      "persistent_name": "Howard the Duck",
+      "universe": "Marvel Cinematic Universe",
+      "created_at": "2026-05-16T15:34:40.135+02:00",
+      "legacy_named": false,
+      "status": "active"
+    }
+  }
+}
