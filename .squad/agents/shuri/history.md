@@ -7,6 +7,7 @@
 
 ## Learnings
 
+- 2026-05-16T20:11:12.638+02:00 — Squad root mic-boom anchor points extended further toward the ear: temple point x-factor 0.245→0.268, ear-level point 0.235→0.258. Capsule radius 0.020→0.024, length 0.042→0.052 (~20% bigger). Dark graphite finish, gating, and mouth-end position unchanged.
 - 2026-05-16T20:03:34.127+02:00 — Squad root mic-boom recolored from Squad pink (`#f778ba`) to dark graphite (`0x1c1c1c`); boom curve extended from 4 to 6 CatmullRom control points so it now arcs up to the temple/ear region before curving down to the mouth capsule. Gating and root-only lifecycle unchanged.
 - 2026-05-16T20:03:34.127+02:00 — Squad root mic capsule radius increased from `0.016` to `0.020` and length from `0.032` to `0.042` (~25% in each dimension) for better readability at normal viewing distance. Boom tube, finish, and Squad-gating unchanged.
 

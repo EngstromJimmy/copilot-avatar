@@ -652,15 +652,15 @@ function createSquadMicBoom() {
 
     // Boom runs from ear region (temple) around the cheek down to the mouth capsule.
     const boomCurve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(baseAsset.size.x * 0.245, baseAsset.eyeY + baseAsset.size.y * 0.04, baseAsset.eyeZ - baseAsset.size.z * 0.01),
-        new THREE.Vector3(baseAsset.size.x * 0.235, baseAsset.eyeY,                            baseAsset.eyeZ + baseAsset.size.z * 0.03),
+        new THREE.Vector3(baseAsset.size.x * 0.268, baseAsset.eyeY + baseAsset.size.y * 0.04, baseAsset.eyeZ - baseAsset.size.z * 0.01),
+        new THREE.Vector3(baseAsset.size.x * 0.258, baseAsset.eyeY,                            baseAsset.eyeZ + baseAsset.size.z * 0.03),
         new THREE.Vector3(baseAsset.size.x * 0.215, baseAsset.eyeY - baseAsset.size.y * 0.055, baseAsset.eyeZ + baseAsset.size.z * 0.05),
         new THREE.Vector3(baseAsset.size.x * 0.195, baseAsset.eyeY - baseAsset.size.y * 0.11,  baseAsset.eyeZ + baseAsset.size.z * 0.085),
         new THREE.Vector3(baseAsset.size.x * 0.145, baseAsset.eyeY - baseAsset.size.y * 0.155, baseAsset.eyeZ + baseAsset.size.z * 0.13),
         new THREE.Vector3(baseAsset.size.x * 0.082, baseAsset.eyeY - baseAsset.size.y * 0.178, baseAsset.eyeZ + baseAsset.size.z * 0.156),
     ]);
     const boomGeometry = new THREE.TubeGeometry(boomCurve, 28, baseAsset.size.x * 0.0055, 8, false);
-    const micGeometry = new THREE.CapsuleGeometry(baseAsset.size.x * 0.020, baseAsset.size.x * 0.042, 4, 10);
+    const micGeometry = new THREE.CapsuleGeometry(baseAsset.size.x * 0.024, baseAsset.size.x * 0.052, 4, 10);
     micBoom.userData.geometries.push(boomGeometry, micGeometry);
 
     const boom = new THREE.Mesh(boomGeometry, boomMaterial);
