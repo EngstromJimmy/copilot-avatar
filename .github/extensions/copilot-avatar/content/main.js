@@ -224,6 +224,7 @@ const ttsRateValue = document.getElementById('tts-rate-value');
 const ttsPitchInput = document.getElementById('tts-pitch-input');
 const ttsPitchValue = document.getElementById('tts-pitch-value');
 const messageVisibilityToggle = document.getElementById('message-visibility-toggle');
+const badgeVisibilityToggle = document.getElementById('badge-visibility-toggle');
 const modelVisibilityToggle = document.getElementById('model-visibility-toggle');
 
 const avatars = new Map();
@@ -1082,7 +1083,7 @@ function updateAvatarModelDisplay(avatar) {
     if (!avatar?.overlay?.modelEl) return;
 
     avatar.overlay.modelEl.textContent = avatar.modelLabel || '';
-    avatar.overlay.modelEl.classList.toggle('visible', showModelBadges && !!avatar.modelLabel);
+    avatar.overlay.modelEl.classList.toggle('visible', showAvatarBadges && showModelBadges && !!avatar.modelLabel);
 }
 
 function getLatestToolEntry(avatar) {
@@ -1106,7 +1107,7 @@ function getRootBadgeToolLabel() {
 function updateSubtaskDisplay() {
     const fallbackText = activeSubtaskText || (rootWorking ? '' : idleSubtaskText);
     const rootAvatar = avatars.get(ROOT_AGENT_ID);
-    const rootBadgeVisible = !!rootAvatar;
+    const rootBadgeVisible = showAvatarBadges && !!rootAvatar;
     const rootToolLabel = getRootBadgeToolLabel();
 
     subtasksEl.textContent = rootBadgeVisible && fallbackText && rootToolLabel && fallbackText === rootToolLabel
@@ -1116,8 +1117,8 @@ function updateSubtaskDisplay() {
 
 function updateRootModelIndicator() {
     const rootAvatar = avatars.get(ROOT_AGENT_ID);
-    const visible = !!rootAvatar;
-    const showModelLine = showModelBadges && !!rootAvatar?.modelLabel;
+    const visible = showAvatarBadges && !!rootAvatar;
+    const showModelLine = visible && showModelBadges && !!rootAvatar?.modelLabel;
     const activity = rootAvatar ? getResolvedActivity(rootAvatar) : 'idle';
     const toolLabel = rootAvatar ? getRootBadgeToolLabel() : '';
     const badge = ACTIVITY_BADGES[activity] || ACTIVITY_BADGES.idle;
@@ -1144,7 +1145,7 @@ function updateRootModelIndicator() {
 
 function setRootModelPosition() {
     const rootAvatar = avatars.get(ROOT_AGENT_ID);
-    if (!rootAvatar) {
+    if (!showAvatarBadges || !rootAvatar) {
         rootModelEl.classList.remove('visible');
         rootModelEl.style.opacity = '0';
         return;
@@ -1181,7 +1182,8 @@ function setRootModelPosition() {
     rootModelEl.style.opacity = `${Math.max(0, Math.min(1, rootAvatar.presence))}`;
 }
 
-function updateModelBadgeVisibility() {
+function updateBadgeVisibility() {
+    badgeVisibilityToggle.checked = showAvatarBadges;
     modelVisibilityToggle.checked = showModelBadges;
     for (const avatar of avatars.values()) {
         updateAvatarModelDisplay(avatar);
@@ -1381,6 +1383,8 @@ function disposeAvatar(avatar) {
 }
 
 function updateAvatarMetadata(avatar, data = {}) {
+    const wasDuck = avatar.isDuck;
+
     if (data.agentName) avatar.agentName = data.agentName;
     if (data.displayName) avatar.displayName = data.displayName;
     if (data.description) avatar.description = data.description;
@@ -1404,6 +1408,10 @@ function updateAvatarMetadata(avatar, data = {}) {
         avatar.overlay.nameEl.textContent = avatar.displayName;
         applyRoleStyle(avatar);
         updateAvatarModelDisplay(avatar);
+    }
+
+    if (avatar.isDuck && (!wasDuck || !avatar.duckBeak?.userData.isImported) && duckBeakAsset?.geometries?.length) {
+        replaceAvatarDuckBeak(avatar);
     }
 
     avatar.duckBeak.visible = avatar.isDuck;
@@ -2099,6 +2107,12 @@ function humanizeError(error) {
 
 function setOverlayPosition(avatar) {
     if (!avatar.overlay) return;
+
+    if (!showAvatarBadges) {
+        avatar.overlay.labelEl.classList.remove('visible');
+        avatar.overlay.labelEl.style.opacity = '0';
+        return;
+    }
 
     avatar.group.updateWorldMatrix(true, true);
     avatar.group.localToWorld(worldVector.copy(baseAsset.overlayOffset));
@@ -2866,6 +2880,7 @@ let ttsRate = 1.1;
 let ttsPitch = 1.0;
 let ttsVoiceName = null;
 let showSpokenText = true;
+let showAvatarBadges = true;
 let showModelBadges = false;
 
 let savedTts = {};
@@ -2894,12 +2909,15 @@ if (savedTts.enabled) {
 if (savedTts.showSpokenText != null) {
     showSpokenText = !!savedTts.showSpokenText;
 }
+if (savedTts.showAvatarBadges != null) {
+    showAvatarBadges = !!savedTts.showAvatarBadges;
+}
 if (savedTts.showModelBadges != null) {
     showModelBadges = !!savedTts.showModelBadges;
 }
 updateTtsButton();
 updateMessageVisibility();
-updateModelBadgeVisibility();
+updateBadgeVisibility();
 
 function saveTtsSettings() {
     copilot.saveSettings({
@@ -2908,6 +2926,7 @@ function saveTtsSettings() {
         pitch: ttsPitch,
         voice: ttsVoiceName,
         showSpokenText,
+        showAvatarBadges,
         showModelBadges,
     }).catch(() => {});
 }
@@ -2950,9 +2969,15 @@ messageVisibilityToggle.addEventListener('change', () => {
     saveTtsSettings();
 });
 
+badgeVisibilityToggle.addEventListener('change', () => {
+    showAvatarBadges = badgeVisibilityToggle.checked;
+    updateBadgeVisibility();
+    saveTtsSettings();
+});
+
 modelVisibilityToggle.addEventListener('change', () => {
     showModelBadges = modelVisibilityToggle.checked;
-    updateModelBadgeVisibility();
+    updateBadgeVisibility();
     saveTtsSettings();
 });
 
@@ -3009,6 +3034,7 @@ window.getTtsSettings = () => JSON.stringify({
     pitch: ttsPitch,
     voice: ttsVoiceName,
     showSpokenText,
+    showAvatarBadges,
     showModelBadges,
 });
 
@@ -3094,7 +3120,7 @@ try {
 initializeRootAvatar();
 layoutSubagents();
 updateStatusIndicator();
-updateModelBadgeVisibility();
+updateBadgeVisibility();
 updateCamera();
 startAnimation();
 
