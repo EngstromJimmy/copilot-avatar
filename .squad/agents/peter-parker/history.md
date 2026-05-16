@@ -47,6 +47,9 @@ Solution: Load the latest casting snapshot into the roster lookup to keep avatar
 - 2026-05-16T21:40:19.370+02:00 — In `.github/extensions/copilot-avatar/main.mjs`, treat the parent `task` wrapper as spawn metadata for hidden agents, not first-visibility evidence. Let it keep names/briefs warm in state, but wait for a non-`task` tool before rendering the card so wake-up pings do not flash a wall of sub-agents.
 - 2026-05-16T22:02:45.479+02:00 — `report_intent` tool calls can be just as weak as the `task` wrapper for first visibility. They often fire from reactivated idle Squad agents during prompt startup, so cache the gerund text but keep hidden cards suppressed until a stronger tool arrives.
 - 2026-05-16T22:06:13.919+02:00 — Stable-identity dedupe needs a live-work escape hatch. If two runtime instances with the same cast identity are both actively running tools, keep both cards; when collapse is still needed, merge the richest shared metadata into the surviving owner so the visible name does not blank out.
+- 2026-05-16T22:45:02.806+02:00 — If visibility heuristics regress into an empty avatar, bias back toward rendering on `subagent.started` and any tracked tool activity first, then let duplicate collapse and metadata cleanup keep the UI sane. In this extension, undercounting active agents is a worse UX failure than briefly showing extra cards.
+- 2026-05-16T22:45:02.806+02:00 — Fallback retirement is safer at root `assistant.turn_end` than per-tool completion. A sub-agent can finish one tool and still be actively running the broader task, so clearing its card on `tool.execution_complete` makes live work disappear mid-turn.
+- 2026-05-16T22:45:02.806+02:00 — For this avatar, stale-active cards are less harmful than disappearing live work. If the runtime has not sent `subagent.completed` / `subagent.failed` yet, keep the card visible and let the next directive-boundary reset clean up leftovers instead of guessing from quiet gaps.
 
 ## 2026-05-16T19:23:20Z — Sub-Agent Visibility + Duplicate Identity Fix Cycle
 
@@ -91,3 +94,16 @@ Two critical decisions merged to `decisions.md`:
 - `.github/extensions/copilot-avatar/content/main.js` — only prunes duplicates once both are no longer doing live work
 
 **Status:** Decisions recorded. Ready for implementation or integration with Tony Stark's debounce work.
+
+## 2026-05-16T22:03:54Z — Cross-Agent Update: Avatar Visibility Model Documentation
+
+**From:** Vision (Platform Dev)
+
+**What:** README updated to document the sub-agent visibility model:
+- Copilot SDK owns all visibility and lifecycle events
+- Squad metadata enriches visible cards only (no creation/suppression)
+- Ghost/fallback duplicates eliminated; rendered agents match active Copilot set
+
+**Why:** Clarify contract with users and maintainers about ownership model.
+
+**Team Impact:** All agents now have clear reference for how Copilot and Squad interact in sub-agent visibility.

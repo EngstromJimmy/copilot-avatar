@@ -62,3 +62,16 @@ Older work documented in `history-archive.md`:
 - Result: Exactly 2 visible cards maintained
 
 **Team impact:** Vision's fallback-collapse work now has complement fix; full seam sealed.
+
+## 2026-05-16T22:03:54Z — Cross-Agent Update: Avatar Visibility Model Documentation
+
+**From:** Vision (Platform Dev)
+
+**What:** README updated to document the sub-agent visibility model:
+- Copilot SDK owns all visibility and lifecycle events
+- Squad metadata enriches visible cards only (no creation/suppression)
+- Ghost/fallback duplicates eliminated; rendered agents match active Copilot set
+
+**Why:** Clarify contract with users and maintainers about ownership model.
+
+**Team Impact:** All agents now have clear reference for how Copilot and Squad interact in sub-agent visibility.
