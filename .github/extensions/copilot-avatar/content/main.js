@@ -31,6 +31,17 @@ const ACTIVITY_BADGES = {
     success: { icon: '✓', text: 'Completed' },
     failed: { icon: '⚠', text: 'Failed' },
 };
+const GENERIC_AGENT_LABELS = new Set([
+    'agent',
+    'assistant',
+    'coding agent',
+    'general purpose',
+    'general purpose agent',
+    'general-purpose',
+    'general-purpose agent',
+    'subagent',
+    'task agent',
+]);
 const ROLE_STYLES = {
     default: {
         token: 'default',
@@ -237,6 +248,7 @@ let rootWorking = false;
 let idleStatusText = '';
 let idleSubtaskText = '';
 let activeSubtaskText = '';
+let squadRootMicActive = false;
 let rootLastActivityAt = performance.now();
 let rootEmotion = { name: 'default', until: 0 };
 let fadeTimeout = null;
@@ -616,6 +628,65 @@ function createActivityEffects() {
     return { readingBeam, readingBeamMaterial, thinkingDots };
 }
 
+function createSquadMicBoom() {
+    const micBoom = new THREE.Group();
+    micBoom.visible = false;
+    micBoom.userData.materials = [];
+    micBoom.userData.geometries = [];
+
+    const darkGraphite = 0x1c1c1c;
+    const boomMaterial = new THREE.MeshPhongMaterial({
+        color: darkGraphite,
+        emissive: new THREE.Color(0x0a0a0a),
+        emissiveIntensity: 1.0,
+        shininess: 22,
+        specular: new THREE.Color(0x3a3a3a),
+    });
+    const capsuleMaterial = new THREE.MeshBasicMaterial({
+        color: darkGraphite,
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false,
+    });
+    micBoom.userData.materials.push(boomMaterial, capsuleMaterial);
+
+    // Boom runs from ear region (temple) around the cheek down to the mouth capsule.
+    const boomCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(baseAsset.size.x * 0.245, baseAsset.eyeY + baseAsset.size.y * 0.04, baseAsset.eyeZ - baseAsset.size.z * 0.01),
+        new THREE.Vector3(baseAsset.size.x * 0.235, baseAsset.eyeY,                            baseAsset.eyeZ + baseAsset.size.z * 0.03),
+        new THREE.Vector3(baseAsset.size.x * 0.215, baseAsset.eyeY - baseAsset.size.y * 0.055, baseAsset.eyeZ + baseAsset.size.z * 0.05),
+        new THREE.Vector3(baseAsset.size.x * 0.195, baseAsset.eyeY - baseAsset.size.y * 0.11,  baseAsset.eyeZ + baseAsset.size.z * 0.085),
+        new THREE.Vector3(baseAsset.size.x * 0.145, baseAsset.eyeY - baseAsset.size.y * 0.155, baseAsset.eyeZ + baseAsset.size.z * 0.13),
+        new THREE.Vector3(baseAsset.size.x * 0.082, baseAsset.eyeY - baseAsset.size.y * 0.178, baseAsset.eyeZ + baseAsset.size.z * 0.156),
+    ]);
+    const boomGeometry = new THREE.TubeGeometry(boomCurve, 28, baseAsset.size.x * 0.0055, 8, false);
+    const micGeometry = new THREE.CapsuleGeometry(baseAsset.size.x * 0.020, baseAsset.size.x * 0.042, 4, 10);
+    micBoom.userData.geometries.push(boomGeometry, micGeometry);
+
+    const boom = new THREE.Mesh(boomGeometry, boomMaterial);
+    boom.renderOrder = 3;
+    micBoom.add(boom);
+
+    const mic = new THREE.Mesh(micGeometry, capsuleMaterial);
+    mic.position.set(baseAsset.size.x * 0.075, baseAsset.eyeY - baseAsset.size.y * 0.18, baseAsset.eyeZ + baseAsset.size.z * 0.158);
+    mic.rotation.z = Math.PI * 0.38;
+    mic.rotation.y = -0.18;
+    mic.renderOrder = 4;
+    micBoom.add(mic);
+
+    return micBoom;
+}
+
+function disposeSquadMicBoom(micBoom) {
+    if (!micBoom) return;
+    for (const material of micBoom.userData.materials || []) {
+        material.dispose();
+    }
+    for (const geometry of micBoom.userData.geometries || []) {
+        geometry.dispose();
+    }
+}
+
 function createWritingGlyphs() {
     return Array.from({ length: 6 }, (_, index) => {
         const character = index % 2 === 0 ? '1' : '0';
@@ -676,6 +747,52 @@ function formatToolLabel(toolName) {
         .replace(/\s+/g, ' ')
         .trim()
         .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function describeToolActivity(toolName) {
+    const normalized = String(toolName || '').trim().toLowerCase();
+    if (!normalized) return '';
+
+    if (normalized === 'edit') return 'Editing code';
+    if (normalized === 'create') return 'Creating files';
+    if (normalized === 'apply_patch') return 'Patching code';
+    if (normalized === 'view') return 'Reading files';
+    if (normalized === 'rg' || normalized === 'grep') return 'Searching code';
+    if (normalized === 'glob') return 'Scanning files';
+    if (normalized.startsWith('lsp')) return 'Inspecting code';
+    if (normalized === 'powershell' || normalized === 'bash') return 'Running commands';
+    if (normalized === 'task') return 'Running tasks';
+    if (normalized === 'read_powershell') return 'Reading command output';
+    if (normalized === 'write_powershell') return 'Driving command flow';
+    if (normalized === 'sql') return 'Querying data';
+    if (normalized === 'web_fetch') return 'Fetching docs';
+
+    return `Using ${formatToolLabel(toolName)}`;
+}
+
+function getLiveIntentText(avatar, now = performance.now()) {
+    return avatar.intentText && avatar.intentUntil > now ? avatar.intentText : '';
+}
+
+function getAvatarBadgeText(avatar, activity, now = performance.now()) {
+    const badge = ACTIVITY_BADGES[activity] || ACTIVITY_BADGES.idle;
+    const liveIntent = getLiveIntentText(avatar, now);
+    const latestTool = getLatestToolEntry(avatar);
+    const liveActivity = latestTool?.activityLabel || describeToolActivity(latestTool?.toolName);
+
+    if (avatar.effectState === 'success' || avatar.effectState === 'failed') {
+        return liveIntent || badge.text;
+    }
+
+    if (latestTool) {
+        return liveActivity || liveIntent || badge.text;
+    }
+
+    if (activity === 'thinking') {
+        return liveIntent || badge.text;
+    }
+
+    return liveIntent || (activity === 'idle' && avatar.role ? avatar.role : badge.text);
 }
 
 function getRoleStyle(data = {}) {
@@ -1038,9 +1155,63 @@ function createOverlay(agentId) {
     return { labelEl, nameEl, modelEl, badgeEl, badgeIconEl, badgeTextEl };
 }
 
+function cleanAgentLabel(value) {
+    return String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function normalizeAgentLabel(value) {
+    return cleanAgentLabel(value)
+        .replace(/[_-]+/g, ' ')
+        .toLowerCase();
+}
+
+function isPlaceholderAgentLabel(value) {
+    const normalized = normalizeAgentLabel(value);
+    return !!normalized && GENERIC_AGENT_LABELS.has(normalized);
+}
+
 function defaultDisplayName(agentId) {
     if (!agentId) return 'Agent';
     return agentId.length > 12 ? `agent-${agentId.slice(0, 6)}` : agentId;
+}
+
+function isLowConfidenceDisplayName(value, agentId) {
+    const normalized = normalizeAgentLabel(value);
+    if (!normalized) return false;
+
+    if (isPlaceholderAgentLabel(value)) {
+        return true;
+    }
+
+    const normalizedAgentId = normalizeAgentLabel(agentId);
+    if (normalizedAgentId && normalized === normalizedAgentId) {
+        return true;
+    }
+
+    const fallbackLabel = normalizeAgentLabel(defaultDisplayName(agentId));
+    return !!fallbackLabel && normalized === fallbackLabel;
+}
+
+function resolveAvatarDisplayName(agentId, data = {}, currentDisplayName = '') {
+    const nextDisplayName = cleanAgentLabel(data.displayName);
+    const nextAgentName = cleanAgentLabel(data.agentName);
+    const currentLabel = cleanAgentLabel(currentDisplayName);
+
+    if (nextDisplayName && !isLowConfidenceDisplayName(nextDisplayName, agentId)) {
+        return nextDisplayName;
+    }
+
+    if (currentLabel && !isLowConfidenceDisplayName(currentLabel, agentId)) {
+        return currentLabel;
+    }
+
+    if (nextAgentName && !isLowConfidenceDisplayName(nextAgentName, agentId)) {
+        return nextAgentName;
+    }
+
+    return nextDisplayName || nextAgentName || currentLabel || defaultDisplayName(agentId);
 }
 
 function isDuckAgent(data = {}) {
@@ -1083,7 +1254,7 @@ function updateAvatarModelDisplay(avatar) {
     if (!avatar?.overlay?.modelEl) return;
 
     avatar.overlay.modelEl.textContent = avatar.modelLabel || '';
-    avatar.overlay.modelEl.classList.toggle('visible', showAvatarBadges && showModelBadges && !!avatar.modelLabel);
+    avatar.overlay.modelEl.classList.toggle('visible', showAvatarBadges && !!avatar.modelLabel);
 }
 
 function getLatestToolEntry(avatar) {
@@ -1098,10 +1269,46 @@ function getLatestToolEntry(avatar) {
     return latest;
 }
 
+function getToolActivityKey(payload = {}) {
+    if (payload.toolCallId) return payload.toolCallId;
+    const toolName = String(payload.toolName || '').trim().toLowerCase() || 'tool';
+    return `anonymous:${toolName}`;
+}
+
+function clearAvatarToolActivity(avatar, payload = {}) {
+    if (!avatar?.activeTools?.size) return;
+
+    if (payload.toolCallId && avatar.activeTools.has(payload.toolCallId)) {
+        avatar.activeTools.delete(payload.toolCallId);
+        return;
+    }
+
+    const toolName = String(payload.toolName || '').trim();
+    const anonymousKey = getToolActivityKey(payload);
+    for (const [key, value] of avatar.activeTools.entries()) {
+        if ((toolName && value.toolName === toolName) || key === anonymousKey) {
+            avatar.activeTools.delete(key);
+        }
+    }
+}
+
+function clearRootTransientActivity({ clearIntent = false } = {}) {
+    const rootAvatar = avatars.get(ROOT_AGENT_ID);
+    if (!rootAvatar) return;
+
+    rootAvatar.activeTools.clear();
+    rootAvatar.thinkingUntil = 0;
+    rootAvatar.effectState = 'idle';
+    if (clearIntent) {
+        rootAvatar.intentText = '';
+        rootAvatar.intentUntil = 0;
+    }
+}
+
 function getRootBadgeToolLabel() {
     const rootAvatar = avatars.get(ROOT_AGENT_ID);
-    const toolName = getLatestToolEntry(rootAvatar)?.toolName || '';
-    return formatToolLabel(toolName);
+    const latestTool = getLatestToolEntry(rootAvatar);
+    return latestTool?.activityLabel || formatToolLabel(latestTool?.toolName || '');
 }
 
 function updateSubtaskDisplay() {
@@ -1207,6 +1414,11 @@ function applyAvatarModel(avatar, model) {
     }
 }
 
+function updateRootSquadMicBoom(avatar = avatars.get(ROOT_AGENT_ID)) {
+    if (!avatar?.isRoot || !avatar.squadMicBoom) return;
+    avatar.squadMicBoom.visible = squadRootMicActive;
+}
+
 function createAvatarInstance(agentId, data = {}) {
     const isRoot = agentId === ROOT_AGENT_ID;
     const group = new THREE.Group();
@@ -1227,6 +1439,7 @@ function createAvatarInstance(agentId, data = {}) {
     heartEyeR.rotation.z = Math.PI + 0.16;
     const duckBeak = createDuckBeak();
     const duckRipple = createDuckRipple();
+    const squadMicBoom = isRoot ? createSquadMicBoom() : null;
 
     const raccoonMask = new THREE.Mesh(maskGeometry, new THREE.MeshBasicMaterial({
         color: 0x05070c,
@@ -1249,6 +1462,9 @@ function createAvatarInstance(agentId, data = {}) {
     duckRipple.scale.set(baseAsset.size.x * 0.42, baseAsset.size.x * 0.42, 1);
     duckRipple.userData.baseScale = duckRipple.scale.clone();
     modelRoot.add(duckRipple, raccoonMask, eyeL, eyeR, heartEyeL, heartEyeR, duckBeak);
+    if (squadMicBoom) {
+        modelRoot.add(squadMicBoom);
+    }
     const writingGlyphs = createWritingGlyphs();
     for (const glyph of writingGlyphs) {
         modelRoot.add(glyph.sprite);
@@ -1270,7 +1486,7 @@ function createAvatarInstance(agentId, data = {}) {
     const avatar = {
         agentId,
         agentName: data.agentName || '',
-        displayName: data.displayName || defaultDisplayName(agentId),
+        displayName: resolveAvatarDisplayName(agentId, data),
         description: data.description || '',
         role: data.role || '',
         modelName: '',
@@ -1290,6 +1506,7 @@ function createAvatarInstance(agentId, data = {}) {
         heartEyeR,
         duckBeak,
         duckRipple,
+        squadMicBoom,
         raccoonMask,
         writingGlyphs,
         activityEffects,
@@ -1368,6 +1585,7 @@ function disposeAvatar(avatar) {
     avatar.heartEyeR.userData.core.material.dispose();
     disposeDuckBeak(avatar.duckBeak);
     avatar.duckRipple.material.dispose();
+    disposeSquadMicBoom(avatar.squadMicBoom);
     for (const glyph of avatar.writingGlyphs) {
         glyph.material.dispose();
     }
@@ -1386,7 +1604,10 @@ function updateAvatarMetadata(avatar, data = {}) {
     const wasDuck = avatar.isDuck;
 
     if (data.agentName) avatar.agentName = data.agentName;
-    if (data.displayName) avatar.displayName = data.displayName;
+    avatar.displayName = resolveAvatarDisplayName(avatar.agentId, {
+        ...data,
+        agentName: data.agentName || avatar.agentName,
+    }, avatar.displayName);
     if (data.description) avatar.description = data.description;
     if (data.role) avatar.role = data.role;
     avatar.isDuck = avatar.isDuck || isDuckAgent({
@@ -1418,6 +1639,7 @@ function updateAvatarMetadata(avatar, data = {}) {
     avatar.duckRipple.visible = false;
 
     if (avatar.isRoot) {
+        updateRootSquadMicBoom(avatar);
         updateRootModelIndicator();
     }
 }
@@ -1998,11 +2220,7 @@ function updateAvatarBadge(avatar, now = performance.now()) {
 
     const badge = ACTIVITY_BADGES[activity] || ACTIVITY_BADGES.idle;
     const roleStyle = avatar.roleStyle || ROLE_STYLES.default;
-    const badgeText = avatar.intentText && avatar.intentUntil > now
-        ? avatar.intentText
-        : activity === 'idle' && avatar.role
-            ? avatar.role
-            : badge.text;
+    const badgeText = getAvatarBadgeText(avatar, activity, now);
     avatar.overlay.badgeEl.className = `agent-badge ${activity}`;
     avatar.overlay.badgeIconEl.textContent = activity === 'idle'
         ? avatar.isDuck
@@ -2605,6 +2823,28 @@ function clearDemoAgents() {
     layoutSubagents();
 }
 
+function clearSubagents({ preserveRoot = true } = {}) {
+    pendingSubagents.length = 0;
+
+    for (const avatar of [...avatars.values()]) {
+        if (preserveRoot && avatar.isRoot) {
+            continue;
+        }
+        finalizeAvatar(avatar.agentId);
+    }
+
+    for (const agentId of [...pendingAgentModels.keys()]) {
+        if (preserveRoot && agentId === ROOT_AGENT_ID) {
+            continue;
+        }
+        pendingAgentModels.delete(agentId);
+    }
+
+    layoutSubagents();
+    updateRootModelIndicator();
+    updateSubtaskDisplay();
+}
+
 function resetDemoSequence() {
     demoSequenceRunId += 1;
     for (const timerId of demoTimers) {
@@ -2642,10 +2882,14 @@ function runDemoSequence() {
         window.addSubagent({ agentId: 'demo-planner', displayName: 'Planner', role: 'Coordinator' });
         window.addSubagent({ agentId: 'demo-coder', displayName: 'Coder', role: 'Developer' });
         window.addSubagent({ agentId: 'demo-reviewer', displayName: 'Reviewer', role: 'Reviewer' });
+        window.setAgentModel({ agentId: 'demo-planner', model: 'gpt-5.4' });
+        window.setAgentModel({ agentId: 'demo-coder', model: 'gpt-5.3-codex' });
+        window.setAgentModel({ agentId: 'demo-reviewer', model: 'claude-sonnet-4.5' });
     });
 
     scheduleDemoStep(runId, startAt + 900, () => {
         window.addSubagent({ agentId: 'demo-tester', displayName: 'Tester', role: 'Tester' });
+        window.setAgentModel({ agentId: 'demo-tester', model: 'gpt-5-mini' });
     });
 
     scheduleDemoStep(runId, startAt + 1700, () => {
@@ -2738,14 +2982,19 @@ window.showMessage = (text) => {
 };
 
 window.setWorking = (active) => {
-    rootWorking = !!active;
     if (active) {
+        if (!rootWorking) {
+            clearRootTransientActivity();
+        }
         registerRootActivity();
     } else {
         activeSubtaskText = '';
+        clearRootTransientActivity();
     }
+    rootWorking = !!active;
     updateStatusIndicator();
     updateSubtaskDisplay();
+    updateRootModelIndicator();
 };
 
 window.setSubtask = (text) => {
@@ -2755,12 +3004,23 @@ window.setSubtask = (text) => {
 };
 
 window.setSquadContext = (payload = {}) => {
+    squadRootMicActive = !!payload.active;
     idleStatusText = payload.active ? (payload.statusText || '● Squad ready') : '';
     idleSubtaskText = payload.active ? (payload.detailText || '') : '';
+    updateRootSquadMicBoom();
     if (!rootWorking) {
         updateSubtaskDisplay();
     }
     updateStatusIndicator();
+};
+
+window.resetRootActivity = (payload = {}) => {
+    rootWorking = false;
+    activeSubtaskText = '';
+    clearRootTransientActivity({ clearIntent: !!payload.clearIntent });
+    updateStatusIndicator();
+    updateSubtaskDisplay();
+    updateRootModelIndicator();
 };
 
 window.addSubagent = (payload = {}) => {
@@ -2777,6 +3037,10 @@ window.addSubagent = (payload = {}) => {
     avatar.effectState = 'idle';
     avatar.leaveAt = 0;
     layoutSubagents();
+};
+
+window.clearSubagents = (payload = {}) => {
+    clearSubagents(payload);
 };
 
 window.completeSubagent = (payload = {}) => {
@@ -2811,11 +3075,13 @@ window.failSubagent = (payload = {}) => {
 window.setAgentActivity = (payload = {}) => {
     const avatar = ensureAvatar(payload.agentId || ROOT_AGENT_ID, payload);
     if (!avatar.isRoot && (avatar.effectState === 'success' || avatar.effectState === 'failed')) return;
-    const key = payload.toolCallId || `${payload.toolName || 'tool'}:${performance.now()}`;
+    const key = getToolActivityKey(payload);
+    const existingEntry = avatar.activeTools.get(key);
     avatar.activeTools.set(key, {
         toolName: payload.toolName || '',
+        activityLabel: payload.activityLabel || describeToolActivity(payload.toolName || '') || formatToolLabel(payload.toolName || ''),
         activity: classifyTool(payload.toolName || ''),
-        startedAt: performance.now(),
+        startedAt: existingEntry?.startedAt ?? performance.now(),
     });
     avatar.effectState = 'idle';
     if (avatar.isRoot) {
@@ -2830,16 +3096,7 @@ window.clearAgentActivity = (payload = {}) => {
     if (!avatar) return;
     if (!avatar.isRoot && (avatar.effectState === 'success' || avatar.effectState === 'failed')) return;
 
-    if (payload.toolCallId && avatar.activeTools.has(payload.toolCallId)) {
-        avatar.activeTools.delete(payload.toolCallId);
-    } else if (payload.toolName) {
-        for (const [key, value] of avatar.activeTools.entries()) {
-            if (value.toolName === payload.toolName) {
-                avatar.activeTools.delete(key);
-                break;
-            }
-        }
-    }
+    clearAvatarToolActivity(avatar, payload);
 
     if (avatar.isRoot) {
         updateRootModelIndicator();

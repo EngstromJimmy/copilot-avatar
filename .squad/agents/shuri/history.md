@@ -7,6 +7,9 @@
 
 ## Learnings
 
+- 2026-05-16T20:03:34.127+02:00 — Squad root mic-boom recolored from Squad pink (`#f778ba`) to dark graphite (`0x1c1c1c`); boom curve extended from 4 to 6 CatmullRom control points so it now arcs up to the temple/ear region before curving down to the mouth capsule. Gating and root-only lifecycle unchanged.
+- 2026-05-16T20:03:34.127+02:00 — Squad root mic capsule radius increased from `0.016` to `0.020` and length from `0.032` to `0.042` (~25% in each dimension) for better readability at normal viewing distance. Boom tube, finish, and Squad-gating unchanged.
+
 - Day-1 context: CopilotAvatar is a Copilot CLI extension for a 3D avatar experience with Squad integration.
 - 2026-05-16T16:02:40.457+02:00 — Sub-agent cards now resolve display names through shared extension-side event mapping in `.github/extensions/copilot-avatar/main.mjs`, then render richer live badge text and per-agent model lines in `.github/extensions/copilot-avatar/content/main.js`.
 - 2026-05-16T16:02:40.457+02:00 — For avatar overlays, the stable UX pattern is: preferred Squad/cast name first, live model line on the card, and badge text driven by current tool activity or active intent instead of static role text.
