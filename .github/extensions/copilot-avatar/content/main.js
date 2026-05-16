@@ -6,6 +6,7 @@ const ROOT_AGENT_ID = 'root';
 const ROOT_SCALE = 1;
 const SUBAGENT_SCALE = 0.38;
 const MESSAGE_FADE_MS = 6000;
+const DEMO_START_DELAY_MS = 700;
 const IDLE_SLEEP_MS = 5 * 60 * 1000;
 const EMOTION_HOLD_MS = 9000;
 const THINKING_HOLD_MS = 1800;
@@ -33,6 +34,150 @@ const ACTIVITY_BADGES = {
     thinking: { icon: '🧠', text: 'Thinking' },
     success: { icon: '✓', text: 'Completed' },
     failed: { icon: '⚠', text: 'Failed' },
+};
+const ROLE_STYLES = {
+    default: {
+        token: 'default',
+        icon: '•',
+        accent: '#8b949e',
+        accentSoft: 'rgba(139, 148, 158, 0.28)',
+        accentGlow: 'rgba(139, 148, 158, 0.16)',
+        accentPanel: 'rgba(110, 118, 129, 0.12)',
+    },
+    coordinator: {
+        token: 'coordinator',
+        icon: '★',
+        accent: '#e3b341',
+        accentSoft: 'rgba(227, 179, 65, 0.36)',
+        accentGlow: 'rgba(227, 179, 65, 0.18)',
+        accentPanel: 'rgba(227, 179, 65, 0.12)',
+    },
+    backend: {
+        token: 'backend',
+        icon: '⚙',
+        accent: '#58a6ff',
+        accentSoft: 'rgba(88, 166, 255, 0.34)',
+        accentGlow: 'rgba(88, 166, 255, 0.18)',
+        accentPanel: 'rgba(56, 139, 253, 0.12)',
+    },
+    frontend: {
+        token: 'frontend',
+        icon: '◧',
+        accent: '#f778ba',
+        accentSoft: 'rgba(247, 120, 186, 0.34)',
+        accentGlow: 'rgba(247, 120, 186, 0.17)',
+        accentPanel: 'rgba(247, 120, 186, 0.12)',
+    },
+    tester: {
+        token: 'tester',
+        icon: '🧪',
+        accent: '#3fb950',
+        accentSoft: 'rgba(63, 185, 80, 0.34)',
+        accentGlow: 'rgba(63, 185, 80, 0.18)',
+        accentPanel: 'rgba(63, 185, 80, 0.12)',
+    },
+    docs: {
+        token: 'docs',
+        icon: '✍',
+        accent: '#bc8cff',
+        accentSoft: 'rgba(188, 140, 255, 0.34)',
+        accentGlow: 'rgba(188, 140, 255, 0.18)',
+        accentPanel: 'rgba(188, 140, 255, 0.12)',
+    },
+    copilot: {
+        token: 'copilot',
+        icon: '🤖',
+        accent: '#f0f6fc',
+        accentSoft: 'rgba(240, 246, 252, 0.28)',
+        accentGlow: 'rgba(240, 246, 252, 0.16)',
+        accentPanel: 'rgba(240, 246, 252, 0.1)',
+    },
+};
+const MOTION_PERSONAS = {
+    steady: {
+        token: 'steady',
+        blinkInterval: [3.2, 5.4],
+        winkInterval: [10, 14],
+        wanderInterval: [3.1, 4.8],
+        blinkRate: 0.92,
+        winkRate: 0.9,
+        bobScale: 0.82,
+        rotationScale: 0.72,
+        motionEase: 0.88,
+        eyeEase: 0.94,
+        writingFx: 0.9,
+        readingFx: 0.92,
+        thinkingFx: 0.96,
+        pulseScale: 0.92,
+        shakeScale: 0.82,
+        wanderScale: 0.72,
+        glyphScale: 0.94,
+        readingSweep: 0.9,
+        thinkingOrbit: 0.94,
+    },
+    eager: {
+        token: 'eager',
+        blinkInterval: [1.7, 3.1],
+        winkInterval: [6.4, 9.2],
+        wanderInterval: [1.9, 3.1],
+        blinkRate: 1.18,
+        winkRate: 1.2,
+        bobScale: 1.16,
+        rotationScale: 1.18,
+        motionEase: 1.12,
+        eyeEase: 1.08,
+        writingFx: 1.14,
+        readingFx: 1,
+        thinkingFx: 1,
+        pulseScale: 1.14,
+        shakeScale: 1.08,
+        wanderScale: 1.14,
+        glyphScale: 1.08,
+        readingSweep: 1.04,
+        thinkingOrbit: 1,
+    },
+    analytical: {
+        token: 'analytical',
+        blinkInterval: [2.4, 4],
+        winkInterval: [8.2, 11.4],
+        wanderInterval: [2.6, 3.8],
+        blinkRate: 1.02,
+        winkRate: 0.98,
+        bobScale: 0.92,
+        rotationScale: 1.08,
+        motionEase: 1.02,
+        eyeEase: 1.02,
+        writingFx: 0.96,
+        readingFx: 1.16,
+        thinkingFx: 1.18,
+        pulseScale: 0.98,
+        shakeScale: 0.92,
+        wanderScale: 0.88,
+        glyphScale: 0.94,
+        readingSweep: 1.18,
+        thinkingOrbit: 1.14,
+    },
+    mellow: {
+        token: 'mellow',
+        blinkInterval: [3.8, 6],
+        winkInterval: [12, 16],
+        wanderInterval: [3.6, 5.2],
+        blinkRate: 0.82,
+        winkRate: 0.82,
+        bobScale: 0.74,
+        rotationScale: 0.66,
+        motionEase: 0.8,
+        eyeEase: 0.86,
+        writingFx: 0.88,
+        readingFx: 0.9,
+        thinkingFx: 0.94,
+        pulseScale: 0.88,
+        shakeScale: 0.76,
+        wanderScale: 0.64,
+        glyphScale: 0.88,
+        readingSweep: 0.88,
+        thinkingOrbit: 0.92,
+    },
 };
 const PARTICLE_COLORS = [0x3fb950, 0x58a6ff, 0xbc8cff, 0xd29922, 0xffffff];
 const PARTY_EMOJIS = ['🎉', '🥳', '🎊'];
@@ -62,11 +207,21 @@ const CLIPPY_ANIMATION_KEYWORDS = {
     sleep: ['sleep', 'idle'],
 };
 
+const ROLE_HEAD_TINT_STRENGTH = {
+    default: 0.12,
+    copilot: 0.16,
+    coordinator: 0.4,
+    backend: 0.46,
+    frontend: 0.52,
+    tester: 0.6,
+    docs: 0.56,
+};
+
 const container = document.getElementById('avatar-container');
 const overlayContainer = document.getElementById('subagent-overlays');
-
 // Full window drag — click on Clippy opens settings
 document.body.style.webkitAppRegion = 'drag';
+const messageContainerEl = document.getElementById('message-container');
 const messageEl = document.getElementById('message-text');
 const statusEl = document.getElementById('status-indicator');
 const subtasksEl = document.getElementById('subtasks');
@@ -81,6 +236,7 @@ const avatarStyleSelect = document.getElementById('avatar-style-select');
 const ttsEngineSelect = document.getElementById('tts-engine-select');
 const ttsWebspeechSection = document.getElementById('tts-webspeech-section');
 const ttsVoxtralSection = document.getElementById('tts-voxtral-section');
+const runDemoBtn = document.getElementById('run-demo-btn');
 const ttsVoiceSelect = document.getElementById('tts-voice-select');
 const ttsRateInput = document.getElementById('tts-rate-input');
 const ttsRateValue = document.getElementById('tts-rate-value');
@@ -102,15 +258,21 @@ const clippyRetroVoiceBtn = document.getElementById('clippy-retro-voice-btn');
 const voxtralAudioPreview = document.getElementById('voxtral-audio-preview');
 const voxtralFileInput = document.getElementById('voxtral-file-input');
 const voxtralRerecordBtn = document.getElementById('voxtral-rerecord-btn');
+const messageVisibilityToggle = document.getElementById('message-visibility-toggle');
 
 const avatars = new Map();
 const pendingSubagents = [];
 const particles = [];
+const DEMO_AGENT_IDS = ['demo-planner', 'demo-coder', 'demo-reviewer', 'demo-tester', 'demo-docs'];
 
 let rootWorking = false;
+let idleStatusText = '';
+let idleSubtaskText = '';
 let rootLastActivityAt = performance.now();
 let rootEmotion = { name: 'default', until: 0 };
 let fadeTimeout = null;
+let demoTimers = [];
+let demoSequenceRunId = 0;
 let animationStarted = false;
 let lastFrameTime = performance.now();
 let baseAsset = null;
@@ -237,6 +399,9 @@ const overlayVector = new THREE.Vector3();
 const worldVector = new THREE.Vector3();
 const rightEyeVector = new THREE.Vector3();
 const confettiOriginVector = new THREE.Vector3();
+const layoutRayVector = new THREE.Vector3();
+const layoutDirectionVector = new THREE.Vector3();
+const roleTintColor = new THREE.Color();
 
 function createParticleTexture() {
     const size = 64;
@@ -454,6 +619,133 @@ function classifyTool(toolName) {
     return 'idle';
 }
 
+function getRoleStyle(data = {}) {
+    const roleText = `${data.role || ''} ${data.displayName || ''} ${data.agentName || ''}`.toLowerCase();
+    if (!roleText.trim()) return ROLE_STYLES.default;
+    if (roleText.includes('@copilot') || roleText.includes('coding agent')) return ROLE_STYLES.copilot;
+    if (roleText.includes('coordinator') || roleText.includes('lead')) return ROLE_STYLES.coordinator;
+    if (roleText.includes('test') || roleText.includes('qa') || roleText.includes('quality')) return ROLE_STYLES.tester;
+    if (roleText.includes('scribe') || roleText.includes('doc') || roleText.includes('writer') || roleText.includes('logger') || roleText.includes('prompt')) return ROLE_STYLES.docs;
+    if (roleText.includes('front') || roleText.includes('ui') || roleText.includes('ux')) return ROLE_STYLES.frontend;
+    if (roleText.includes('back') || roleText.includes('api') || roleText.includes('infra') || roleText.includes('platform') || roleText.includes('database') || roleText.includes('data')) return ROLE_STYLES.backend;
+    return ROLE_STYLES.default;
+}
+
+function hashString(value) {
+    let hash = 0;
+    const text = String(value || '');
+    for (let index = 0; index < text.length; index += 1) {
+        hash = ((hash << 5) - hash) + text.charCodeAt(index);
+        hash |= 0;
+    }
+    return Math.abs(hash);
+}
+
+function randomFromRange([min, max]) {
+    return min + Math.random() * (max - min);
+}
+
+function getMotionPersona(data = {}) {
+    const roleStyle = data.roleStyle || getRoleStyle(data);
+    if (data.isRoot || data.agentId === ROOT_AGENT_ID) return MOTION_PERSONAS.steady;
+    switch (roleStyle.token) {
+        case 'coordinator':
+            return MOTION_PERSONAS.steady;
+        case 'tester':
+        case 'backend':
+            return MOTION_PERSONAS.analytical;
+        case 'frontend':
+        case 'copilot':
+            return MOTION_PERSONAS.eager;
+        case 'docs':
+            return MOTION_PERSONAS.mellow;
+        default: {
+            const tokens = [MOTION_PERSONAS.steady, MOTION_PERSONAS.eager, MOTION_PERSONAS.analytical, MOTION_PERSONAS.mellow];
+            const hash = hashString(`${data.agentId || ''}:${data.displayName || ''}:${data.agentName || ''}`);
+            return tokens[hash % tokens.length];
+        }
+    }
+}
+
+function applyMotionPersona(avatar) {
+    const motionPersona = getMotionPersona(avatar);
+    const changed = !avatar.motionPersona || avatar.motionPersona.token !== motionPersona.token;
+    avatar.motionPersona = motionPersona;
+    if (!changed || !avatar.anim) return;
+
+    avatar.anim.blinkTimer = randomFromRange(motionPersona.blinkInterval);
+    avatar.anim.winkTimer = randomFromRange(motionPersona.winkInterval);
+    avatar.anim.wanderTimer = randomFromRange(motionPersona.wanderInterval);
+    avatar.anim.targetRotX = 0;
+    avatar.anim.targetRotY = 0;
+}
+
+function applyRoleStyle(avatar) {
+    if (!avatar?.overlay) return;
+
+    const roleStyle = avatar.roleStyle || ROLE_STYLES.default;
+    avatar.overlay.labelEl.dataset.roleStyle = roleStyle.token;
+    avatar.overlay.nameEl.dataset.roleIcon = roleStyle.icon || '';
+    avatar.overlay.labelEl.style.setProperty('--role-accent', roleStyle.accent);
+    avatar.overlay.labelEl.style.setProperty('--role-accent-soft', roleStyle.accentSoft);
+    avatar.overlay.labelEl.style.setProperty('--role-accent-glow', roleStyle.accentGlow);
+    avatar.overlay.labelEl.style.setProperty('--role-accent-panel', roleStyle.accentPanel);
+}
+
+function cloneAvatarHeadMaterials(modelRoot) {
+    const headMaterials = [];
+
+    modelRoot.traverse((node) => {
+        if (!node.isMesh || !node.material) return;
+
+        const sourceMaterials = Array.isArray(node.material) ? node.material : [node.material];
+        const clonedMaterials = sourceMaterials.map((material) => {
+            const clonedMaterial = material.clone();
+            if (clonedMaterial.color) {
+                headMaterials.push({
+                    material: clonedMaterial,
+                    baseColor: clonedMaterial.color.clone(),
+                    baseEmissive: clonedMaterial.emissive ? clonedMaterial.emissive.clone() : null,
+                    baseEmissiveIntensity: clonedMaterial.emissiveIntensity ?? 1,
+                });
+            }
+            return clonedMaterial;
+        });
+
+        node.material = Array.isArray(node.material) ? clonedMaterials : clonedMaterials[0];
+    });
+
+    return headMaterials;
+}
+
+function applyRoleHeadTint(avatar) {
+    if (!avatar?.headMaterials?.length) return;
+
+    const roleStyle = avatar.roleStyle || ROLE_STYLES.default;
+    const tintStrength = ROLE_HEAD_TINT_STRENGTH[roleStyle.token] ?? ROLE_HEAD_TINT_STRENGTH.default;
+    roleTintColor.set(roleStyle.accent || ROLE_STYLES.default.accent);
+    const accentHsl = {};
+    roleTintColor.getHSL(accentHsl);
+
+    for (const entry of avatar.headMaterials) {
+        const baseHsl = {};
+        entry.baseColor.getHSL(baseHsl);
+        const targetHue = THREE.MathUtils.lerp(baseHsl.h, accentHsl.h, tintStrength * 0.96);
+        const targetSat = THREE.MathUtils.clamp(Math.max(baseHsl.s * 0.58, accentHsl.s * 0.98), 0, 1);
+        const targetLight = THREE.MathUtils.clamp(baseHsl.l * 0.74 + accentHsl.l * 0.26, 0, 1);
+        entry.material.color.setHSL(
+            targetHue,
+            THREE.MathUtils.clamp(THREE.MathUtils.lerp(baseHsl.s, targetSat, tintStrength), 0, 1),
+            THREE.MathUtils.clamp(THREE.MathUtils.lerp(baseHsl.l, targetLight, tintStrength * 0.82), 0, 1),
+        );
+
+        if (entry.baseEmissive && entry.material.emissive) {
+            entry.material.emissive.copy(entry.baseEmissive).lerp(roleTintColor, tintStrength * 0.2);
+            entry.material.emissiveIntensity = entry.baseEmissiveIntensity + tintStrength * 0.18;
+        }
+    }
+}
+
 function registerRootActivity() {
     rootLastActivityAt = performance.now();
 }
@@ -490,14 +782,8 @@ function updateEmotionBubble(emotion) {
 }
 
 function updateStatusIndicator() {
-    if (rootWorking) {
-        statusEl.textContent = '● Working…';
-        statusEl.classList.add('active');
-        return;
-    }
-
-    statusEl.textContent = '';
-    statusEl.classList.remove('active');
+    statusEl.textContent = idleStatusText;
+    statusEl.classList.toggle('active', !!idleStatusText);
 }
 
 function updateTtsButton() {
@@ -512,6 +798,7 @@ function setTtsSettingsOpen(open) {
 function toggleTtsSettings() {
     setTtsSettingsOpen(ttsDropdown.classList.contains('hidden'));
 }
+
 
 function clearMessageOverlay() {
     if (fadeTimeout) {
@@ -895,6 +1182,15 @@ function applyAvatarStyle({ enforceVoiceDefaults = false } = {}) {
     updateEngineUI();
 }
 
+function updateMessageVisibility() {
+    messageContainerEl.classList.toggle('hidden', !showSpokenText);
+    messageVisibilityToggle.checked = showSpokenText;
+    if (!showSpokenText) {
+        clearMessageOverlay();
+    }
+}
+
+
 function createBaseAsset(modelScene) {
     if (!modelScene) {
         return {
@@ -934,7 +1230,7 @@ function createBaseAsset(modelScene) {
         eyeZ: size.z * 0.39,
         eyeSpacing: size.x * 0.11,
         heartScale: 0.1,
-        overlayOffset: new THREE.Vector3(0, -size.y * 0.82, size.z * 0.14),
+        overlayOffset: new THREE.Vector3(0, -size.y * 0.58, size.z * 0.14),
         bubbleOffset: new THREE.Vector3(size.x * 0.18, size.y * 0.36, size.z * 0.42),
         readingBeamY: size.y * 0.2,
         readingBeamZ: size.z * 0.5,
@@ -982,6 +1278,7 @@ function createAvatarInstance(agentId, data = {}) {
     const isRoot = agentId === ROOT_AGENT_ID;
     const group = new THREE.Group();
     const modelRoot = baseAsset.sourceScene ? SkeletonUtils.clone(baseAsset.sourceScene) : new THREE.Group();
+    const headMaterials = cloneAvatarHeadMaterials(modelRoot);
     group.add(modelRoot);
 
     const eyeMatL = createEyeMaterial();
@@ -1036,9 +1333,13 @@ function createAvatarInstance(agentId, data = {}) {
         agentName: data.agentName || '',
         displayName: data.displayName || defaultDisplayName(agentId),
         description: data.description || '',
+        role: data.role || '',
+        roleStyle: getRoleStyle(data),
+        motionPersona: getMotionPersona({ ...data, agentId, isRoot }),
         isRoot,
         group,
         modelRoot,
+        headMaterials,
         eyeL,
         eyeR,
         eyeMatL,
@@ -1085,15 +1386,15 @@ function createAvatarInstance(agentId, data = {}) {
         currentThinkingFx: 0,
         anim: {
             idleTime: 0,
-            blinkTimer: 2 + Math.random() * 3,
-            winkTimer: 8 + Math.random() * 10,
+            blinkTimer: randomFromRange((getMotionPersona({ ...data, agentId, isRoot })).blinkInterval),
+            winkTimer: randomFromRange((getMotionPersona({ ...data, agentId, isRoot })).winkInterval),
             isBlinking: false,
             isWinking: false,
             blinkProgress: 0,
             blinkPhase: 0,
             targetRotX: 0,
             targetRotY: 0,
-            wanderTimer: 0,
+            wanderTimer: randomFromRange((getMotionPersona({ ...data, agentId, isRoot })).wanderInterval),
         },
     };
 
@@ -1107,6 +1408,9 @@ function createAvatarInstance(agentId, data = {}) {
 function disposeAvatar(avatar) {
     scene.remove(avatar.group);
 
+    for (const entry of avatar.headMaterials || []) {
+        entry.material.dispose();
+    }
     avatar.eyeMatL.dispose();
     avatar.eyeMatR.dispose();
     avatar.raccoonMask.material.dispose();
@@ -1132,6 +1436,10 @@ function updateAvatarMetadata(avatar, data = {}) {
     if (data.agentName) avatar.agentName = data.agentName;
     if (data.displayName) avatar.displayName = data.displayName;
     if (data.description) avatar.description = data.description;
+    if (data.role) avatar.role = data.role;
+    avatar.roleStyle = getRoleStyle(avatar);
+    applyMotionPersona(avatar);
+    applyRoleHeadTint(avatar);
 
     if (!avatar.displayName) {
         avatar.displayName = defaultDisplayName(avatar.agentId);
@@ -1139,6 +1447,7 @@ function updateAvatarMetadata(avatar, data = {}) {
 
     if (avatar.overlay) {
         avatar.overlay.nameEl.textContent = avatar.displayName;
+        applyRoleStyle(avatar);
     }
 }
 
@@ -1157,6 +1466,7 @@ function ensureAvatar(agentId, payload = {}) {
     if (avatars.has(resolvedId)) {
         const avatar = avatars.get(resolvedId);
         updateAvatarMetadata(avatar, payload);
+        updateAvatarBadge(avatar);
         return avatar;
     }
 
@@ -1171,24 +1481,384 @@ function ensureAvatar(agentId, payload = {}) {
 function computeLayoutState(subagentCount) {
     const width = Math.max(container.clientWidth || 0, 320);
     const height = Math.max(container.clientHeight || 0, 360);
-    const maxColumns = Math.max(1, Math.floor((width - 32) / 168));
+    const aspect = width / height;
+
+    if (subagentCount === 0) {
+        const heroScale = THREE.MathUtils.clamp(1.92 + Math.min(width / 1400, height / 1200) * 0.58, 1.92, 2.48);
+        const rootScale = ROOT_SCALE * heroScale;
+        const rootY = baseAsset.rootY + 0.12;
+        const horizontalSpan = baseAsset.size.x * rootScale * 1.9;
+        const topExtent = rootY + baseAsset.size.y * rootScale * 0.98;
+        const bottomExtent = rootY - baseAsset.size.y * rootScale * 0.92;
+        const verticalSpan = topExtent - bottomExtent;
+        const halfFov = THREE.MathUtils.degToRad(camera.fov * 0.5);
+        const distanceForWidth = horizontalSpan / Math.max(0.25, 2 * aspect * Math.tan(halfFov));
+        const distanceForHeight = verticalSpan / Math.max(0.25, 2 * Math.tan(halfFov));
+        const cameraDistance = Math.max(baseAsset.maxDim * 1.58, distanceForWidth * 0.78, distanceForHeight * 0.82);
+
+        return {
+            columns: 1,
+            rows: 0,
+            slotWidthPx: width - 32,
+            overlayScale: 1,
+            rootScale,
+            rootY,
+            subScale: SUBAGENT_SCALE,
+            spacingX: baseAsset.rowSpacing,
+            rowGap: 0.24,
+            stackCenterY: baseAsset.subY,
+            cameraDistance,
+            cameraLookAtY: THREE.MathUtils.lerp(0.08, rootY * 0.5, 0.84),
+            cameraY: rootY + baseAsset.size.y * rootScale * 0.08,
+        };
+    }
+
+    if (subagentCount === 1) {
+        const slotWidthPx = width - 24;
+        const overlayScale = THREE.MathUtils.clamp(slotWidthPx / 320, 0.92, 1.06);
+        const subScale = THREE.MathUtils.clamp(
+            SUBAGENT_SCALE * (height < 760 ? 1.72 : 1.92),
+            0.58,
+            0.72,
+        );
+        const rootScale = THREE.MathUtils.clamp(ROOT_SCALE * 0.5, 0.46, 0.56);
+        const rootY = baseAsset.rootY + 0.8;
+        const topExtent = rootY + baseAsset.size.y * rootScale * 1.02;
+        const bottomExtent = -baseAsset.size.y * subScale * 2.28;
+        const horizontalSpan = baseAsset.size.x * subScale * 2.86;
+        const verticalSpan = topExtent - bottomExtent;
+        const halfFov = THREE.MathUtils.degToRad(camera.fov * 0.5);
+        const distanceForWidth = horizontalSpan / Math.max(0.25, 2 * aspect * Math.tan(halfFov));
+        const distanceForHeight = verticalSpan / Math.max(0.25, 2 * Math.tan(halfFov));
+        const cameraDistance = Math.max(baseAsset.maxDim * 2.84, distanceForWidth * 0.92, distanceForHeight * 0.98);
+        const contentCenterY = (topExtent + bottomExtent) / 2;
+
+        return {
+            mode: 'grid-1',
+            columns: 1,
+            rows: 1,
+            rowPattern: [1],
+            slotWidthPx,
+            overlayScale,
+            rootScale,
+            rootY,
+            subScale,
+            spacingX: baseAsset.rowSpacing * 1.64,
+            rowGap: baseAsset.size.y * subScale * 1.96,
+            stackCenterY: baseAsset.subY,
+            cameraDistance,
+            cameraLookAtY: THREE.MathUtils.lerp(0.12, contentCenterY, 0.56),
+            cameraY: contentCenterY + baseAsset.size.y * 0.08,
+            gridTopMin: 0.24,
+            gridTopGapPx: 12,
+            gridHeadYFactor: 0.34,
+            gridLabelStartFactor: 0.48,
+        };
+    }
+
+    if (subagentCount === 2) {
+        const slotWidthPx = (width - 24) / 2;
+        const overlayScale = THREE.MathUtils.clamp(slotWidthPx / 220, 0.8, 1);
+        const subScale = THREE.MathUtils.clamp(
+            SUBAGENT_SCALE * (height < 760 ? 1.34 : 1.52),
+            0.46,
+            0.58,
+        );
+        const rootScale = THREE.MathUtils.clamp(ROOT_SCALE * 0.52, 0.48, 0.58);
+        const rootY = baseAsset.rootY + 0.82;
+        const topExtent = rootY + baseAsset.size.y * rootScale * 1.02;
+        const bottomExtent = -baseAsset.size.y * subScale * 2.54;
+        const horizontalSpan = baseAsset.size.x * subScale * 4.26;
+        const verticalSpan = topExtent - bottomExtent;
+        const halfFov = THREE.MathUtils.degToRad(camera.fov * 0.5);
+        const distanceForWidth = horizontalSpan / Math.max(0.25, 2 * aspect * Math.tan(halfFov));
+        const distanceForHeight = verticalSpan / Math.max(0.25, 2 * Math.tan(halfFov));
+        const cameraDistance = Math.max(baseAsset.maxDim * 2.96, distanceForWidth * 0.93, distanceForHeight * 0.98);
+        const contentCenterY = (topExtent + bottomExtent) / 2;
+
+        return {
+            mode: 'grid-2',
+            columns: 2,
+            rows: 1,
+            rowPattern: [2],
+            slotWidthPx,
+            overlayScale,
+            rootScale,
+            rootY,
+            subScale,
+            spacingX: baseAsset.rowSpacing * 1.56,
+            rowGap: baseAsset.size.y * subScale * 2.02,
+            stackCenterY: baseAsset.subY,
+            cameraDistance,
+            cameraLookAtY: THREE.MathUtils.lerp(0.12, contentCenterY, 0.56),
+            cameraY: contentCenterY + baseAsset.size.y * 0.08,
+            gridTopMin: 0.24,
+            gridTopGapPx: 12,
+            gridHeadYFactor: 0.32,
+            gridLabelStartFactor: 0.5,
+        };
+    }
+
+    if (subagentCount === 4) {
+        const slotWidthPx = (width - 24) / 2;
+        const overlayScale = THREE.MathUtils.clamp(slotWidthPx / 214, 0.76, 0.98);
+        const subScale = THREE.MathUtils.clamp(
+            SUBAGENT_SCALE * (height < 760 ? 1.12 : 1.22),
+            0.4,
+            0.48,
+        );
+        const rootScale = THREE.MathUtils.clamp(ROOT_SCALE * 0.62, 0.58, 0.66);
+        const rootY = baseAsset.rootY + 0.88;
+        const topExtent = rootY + baseAsset.size.y * rootScale * 1.02;
+        const bottomExtent = -baseAsset.size.y * subScale * 3.16;
+        const horizontalSpan = baseAsset.size.x * subScale * 4.48;
+        const verticalSpan = topExtent - bottomExtent;
+        const halfFov = THREE.MathUtils.degToRad(camera.fov * 0.5);
+        const distanceForWidth = horizontalSpan / Math.max(0.25, 2 * aspect * Math.tan(halfFov));
+        const distanceForHeight = verticalSpan / Math.max(0.25, 2 * Math.tan(halfFov));
+        const cameraDistance = Math.max(baseAsset.maxDim * 3.1, distanceForWidth * 0.95, distanceForHeight * 0.98);
+        const contentCenterY = (topExtent + bottomExtent) / 2;
+
+        return {
+            mode: 'grid-2x2',
+            columns: 2,
+            rows: 2,
+            slotWidthPx,
+            overlayScale,
+            rootScale,
+            rootY,
+            subScale,
+            spacingX: baseAsset.rowSpacing * 1.48,
+            rowGap: baseAsset.size.y * subScale * 2.18,
+            stackCenterY: baseAsset.subY,
+            cameraDistance,
+            cameraLookAtY: THREE.MathUtils.lerp(0.08, contentCenterY, 0.58),
+            cameraY: contentCenterY + baseAsset.size.y * 0.08,
+            gridTopMin: 0.25,
+            gridTopGapPx: 10,
+            gridHeadYFactor: 0.28,
+            gridLabelStartFactor: 0.66,
+        };
+    }
+
+    if (subagentCount === 3) {
+        const slotWidthPx = (width - 24) / 2;
+        const overlayScale = THREE.MathUtils.clamp(slotWidthPx / 214, 0.78, 1);
+        const subScale = THREE.MathUtils.clamp(
+            SUBAGENT_SCALE * (height < 760 ? 1.16 : 1.28),
+            0.4,
+            0.48,
+        );
+        const rootScale = THREE.MathUtils.clamp(ROOT_SCALE * 0.54, 0.5, 0.6);
+        const rootY = baseAsset.rootY + 0.82;
+        const topExtent = rootY + baseAsset.size.y * rootScale * 1.02;
+        const bottomExtent = -baseAsset.size.y * subScale * 3.32;
+        const horizontalSpan = baseAsset.size.x * subScale * 4.52;
+        const verticalSpan = topExtent - bottomExtent;
+        const halfFov = THREE.MathUtils.degToRad(camera.fov * 0.5);
+        const distanceForWidth = horizontalSpan / Math.max(0.25, 2 * aspect * Math.tan(halfFov));
+        const distanceForHeight = verticalSpan / Math.max(0.25, 2 * Math.tan(halfFov));
+        const cameraDistance = Math.max(baseAsset.maxDim * 3.16, distanceForWidth * 0.94, distanceForHeight * 1.0);
+        const contentCenterY = (topExtent + bottomExtent) / 2;
+
+        return {
+            mode: 'grid-3',
+            columns: 2,
+            rows: 2,
+            rowPattern: [2, 1],
+            slotWidthPx,
+            overlayScale,
+            rootScale,
+            rootY,
+            subScale,
+            spacingX: baseAsset.rowSpacing * 1.5,
+            rowGap: baseAsset.size.y * subScale * 2.14,
+            stackCenterY: baseAsset.subY,
+            cameraDistance,
+            cameraLookAtY: THREE.MathUtils.lerp(0.08, contentCenterY, 0.58),
+            cameraY: contentCenterY + baseAsset.size.y * 0.08,
+            gridTopMin: 0.24,
+            gridTopGapPx: 10,
+            gridHeadYFactor: 0.27,
+            gridLabelStartFactor: 0.56,
+        };
+    }
+
+    if (subagentCount === 5) {
+        const slotWidthPx = (width - 24) / 2;
+        const overlayScale = THREE.MathUtils.clamp(slotWidthPx / 214, 0.76, 0.98);
+        const subScale = THREE.MathUtils.clamp(
+            SUBAGENT_SCALE * (height < 760 ? 1.02 : 1.1),
+            0.35,
+            0.43,
+        );
+        const rootScale = THREE.MathUtils.clamp(ROOT_SCALE * 0.5, 0.46, 0.54);
+        const rootY = baseAsset.rootY + 0.78;
+        const topExtent = rootY + baseAsset.size.y * rootScale * 1.02;
+        const bottomExtent = -baseAsset.size.y * subScale * 3.92;
+        const horizontalSpan = baseAsset.size.x * subScale * 4.36;
+        const verticalSpan = topExtent - bottomExtent;
+        const halfFov = THREE.MathUtils.degToRad(camera.fov * 0.5);
+        const distanceForWidth = horizontalSpan / Math.max(0.25, 2 * aspect * Math.tan(halfFov));
+        const distanceForHeight = verticalSpan / Math.max(0.25, 2 * Math.tan(halfFov));
+        const cameraDistance = Math.max(baseAsset.maxDim * 3.48, distanceForWidth * 0.96, distanceForHeight * 1.0);
+        const contentCenterY = (topExtent + bottomExtent) / 2;
+
+        return {
+            mode: 'grid-5',
+            columns: 2,
+            rows: 3,
+            rowPattern: [2, 2, 1],
+            slotWidthPx,
+            overlayScale,
+            rootScale,
+            rootY,
+            subScale,
+            spacingX: baseAsset.rowSpacing * 1.44,
+            rowGap: baseAsset.size.y * subScale * 1.94,
+            stackCenterY: baseAsset.subY,
+            cameraDistance,
+            cameraLookAtY: THREE.MathUtils.lerp(0.04, contentCenterY, 0.56),
+            cameraY: contentCenterY + baseAsset.size.y * 0.08,
+            gridTopMin: 0.2,
+            gridTopGapPx: 8,
+            gridHeadYFactor: 0.22,
+            gridLabelStartFactor: 0.58,
+        };
+    }
+
+    if (subagentCount === 6) {
+        const slotWidthPx = (width - 24) / 2;
+        const overlayScale = THREE.MathUtils.clamp(slotWidthPx / 214, 0.76, 0.96);
+        const subScale = THREE.MathUtils.clamp(
+            SUBAGENT_SCALE * (height < 760 ? 0.96 : 1.04),
+            0.32,
+            0.4,
+        );
+        const rootScale = THREE.MathUtils.clamp(ROOT_SCALE * 0.52, 0.48, 0.56);
+        const rootY = baseAsset.rootY + 0.82;
+        const topExtent = rootY + baseAsset.size.y * rootScale * 1.02;
+        const bottomExtent = -baseAsset.size.y * subScale * 4.18;
+        const horizontalSpan = baseAsset.size.x * subScale * 4.44;
+        const verticalSpan = topExtent - bottomExtent;
+        const halfFov = THREE.MathUtils.degToRad(camera.fov * 0.5);
+        const distanceForWidth = horizontalSpan / Math.max(0.25, 2 * aspect * Math.tan(halfFov));
+        const distanceForHeight = verticalSpan / Math.max(0.25, 2 * Math.tan(halfFov));
+        const cameraDistance = Math.max(baseAsset.maxDim * 3.72, distanceForWidth * 0.98, distanceForHeight * 1.02);
+        const contentCenterY = (topExtent + bottomExtent) / 2;
+
+        return {
+            mode: 'grid-2x3',
+            columns: 2,
+            rows: 3,
+            slotWidthPx,
+            overlayScale,
+            rootScale,
+            rootY,
+            subScale,
+            spacingX: baseAsset.rowSpacing * 1.42,
+            rowGap: baseAsset.size.y * subScale * 1.84,
+            stackCenterY: baseAsset.subY,
+            cameraDistance,
+            cameraLookAtY: THREE.MathUtils.lerp(0.02, contentCenterY, 0.56),
+            cameraY: contentCenterY + baseAsset.size.y * 0.08,
+            gridTopMin: 0.2,
+            gridTopGapPx: 6,
+            gridHeadYFactor: 0.2,
+            gridLabelStartFactor: 0.56,
+        };
+    }
+
+    const widthColumns = Math.max(1, Math.floor((width - 32) / 168));
+    let preferredMaxColumns = (height < 740 || width < 760 || aspect < 0.9)
+        ? 2
+        : height < 940
+            ? 3
+            : 4;
+    if (subagentCount >= 4 && (height < 880 || width < 840 || aspect < 0.96)) {
+        preferredMaxColumns = Math.min(preferredMaxColumns, 2);
+    }
+    const maxColumns = Math.max(1, Math.min(widthColumns, preferredMaxColumns));
     const columns = subagentCount > 0 ? Math.min(subagentCount, maxColumns) : 1;
     const rows = subagentCount > 0 ? Math.ceil(subagentCount / columns) : 0;
     const slotWidthPx = subagentCount > 0 ? Math.max(118, (width - 32) / columns) : width - 32;
-    const widthScale = THREE.MathUtils.clamp(slotWidthPx / 190, 0.66, 1);
-    const heightScale = THREE.MathUtils.clamp((height - 170) / 620, 0.72, 1);
-    const rowScale = rows >= 3 ? 0.78 : rows === 2 ? 0.88 : 1;
-    const subScale = THREE.MathUtils.clamp(SUBAGENT_SCALE * widthScale * heightScale * rowScale, 0.2, SUBAGENT_SCALE);
-    const spacingX = Math.max(baseAsset.rowSpacing * widthScale * 0.96, baseAsset.size.x * subScale * 1.45);
-    const rowGap = Math.max(baseAsset.size.y * subScale * 1.3, 0.28);
+    const widthCompactness = THREE.MathUtils.clamp((760 - width) / 360, 0, 1);
+    const heightCompactness = THREE.MathUtils.clamp((920 - height) / 380, 0, 1);
+    const widthScale = THREE.MathUtils.clamp(slotWidthPx / 194, 0.58, 1);
+    const heightScale = THREE.MathUtils.clamp((height - 210) / 640, 0.6, 1);
+    const rowScale = rows >= 3 ? 0.62 : rows === 2 ? 0.74 : 1;
     const compactness = THREE.MathUtils.clamp(Math.max((560 - width) / 260, (760 - height) / 260), 0, 1);
-    const stackCenterY = baseAsset.subY + compactness * 0.34 + Math.max(0, rows - 1) * 0.08;
-    const rootScale = THREE.MathUtils.clamp(ROOT_SCALE * (1 - compactness * 0.16) * (rows >= 3 ? 0.92 : 1), 0.8, ROOT_SCALE);
-    const rootY = baseAsset.rootY + compactness * 0.24 + Math.max(0, rows - 1) * 0.08;
-    const cameraDistance = baseAsset.maxDim * (3.7 + compactness * 1.05 + Math.max(0, rows - 1) * 0.42);
-    const cameraY = baseAsset.size.y * (0.04 + compactness * 0.08 + Math.max(0, rows - 1) * 0.02);
-    const cameraLookAtY = THREE.MathUtils.lerp(0.05, rootY * 0.28, 0.72);
-    const overlayScale = THREE.MathUtils.clamp(slotWidthPx / 176, 0.72, 1);
+    let subScale = THREE.MathUtils.clamp(
+        SUBAGENT_SCALE * widthScale * heightScale * rowScale * (1 - compactness * 0.08),
+        0.145,
+        SUBAGENT_SCALE,
+    );
+    let spacingX = Math.max(
+        baseAsset.rowSpacing * widthScale * (0.94 - widthCompactness * 0.12),
+        baseAsset.size.x * subScale * (1.26 - widthCompactness * 0.12),
+    );
+    let baseRowGap = Math.max(baseAsset.size.y * subScale * (0.86 - heightCompactness * 0.04), 0.18);
+    let labelReserve = rows > 1
+        ? Math.max(baseAsset.size.y * subScale * (1.45 + heightCompactness * 0.24), 0.28)
+        : 0;
+    let rowGap = baseRowGap + labelReserve;
+    if (rows === 1) {
+        subScale = THREE.MathUtils.clamp(subScale * 1.22, 0.22, SUBAGENT_SCALE);
+        spacingX *= 1.08;
+    } else if (rows === 2) {
+        subScale = THREE.MathUtils.clamp(subScale * 1.18, 0.18, SUBAGENT_SCALE * 0.94);
+        spacingX *= 1.1;
+        baseRowGap = Math.max(baseAsset.size.y * subScale * 0.96, 0.2);
+        labelReserve = Math.max(baseAsset.size.y * subScale * (2.0 + heightCompactness * 0.28), 0.42);
+        rowGap = baseRowGap + labelReserve;
+    }
+    const activeRootOffset = 0.48 + Math.min(0.26, subagentCount * 0.035);
+    let stackCenterY = baseAsset.subY
+        + compactness * 0.48
+        + heightCompactness * 0.1
+        - 0.02
+        + Math.max(0, rows - 1) * 0.02;
+    let rootScale = THREE.MathUtils.clamp(
+        ROOT_SCALE
+            * 0.62
+            * (1 - compactness * 0.2)
+            * (rows >= 2 ? 0.84 : 1)
+            * (rows >= 3 ? 0.92 : 1),
+        0.48,
+        ROOT_SCALE,
+    );
+    let rootY = baseAsset.rootY
+        + compactness * 0.66
+        + activeRootOffset
+        + Math.max(0, rows - 1) * 0.36;
+    if (rows === 1) {
+        rootScale = THREE.MathUtils.clamp(rootScale * 1.18, 0.66, ROOT_SCALE * 0.9);
+        rootY += 0.1;
+        stackCenterY += 0.12;
+    } else if (rows === 2) {
+        rootScale = THREE.MathUtils.clamp(rootScale * 1.14, 0.6, ROOT_SCALE * 0.82);
+        rootY += 0.08;
+        stackCenterY += 0.08;
+    }
+    const topRowY = stackCenterY + ((rows - 1) * rowGap) / 2;
+    const bottomRowY = stackCenterY - ((rows - 1) * rowGap) / 2;
+    const horizontalSpan = columns > 0
+        ? ((columns - 1) * spacingX) + baseAsset.size.x * subScale * 2.05
+        : baseAsset.size.x * rootScale * 1.4;
+    const topExtent = Math.max(rootY + baseAsset.size.y * rootScale * 0.92, topRowY + baseAsset.size.y * subScale * 0.85);
+    const bottomExtent = rows > 0
+        ? bottomRowY - baseAsset.size.y * subScale * 2.45
+        : rootY - baseAsset.size.y * rootScale * 0.82;
+    const verticalSpan = topExtent - bottomExtent;
+    const halfFov = THREE.MathUtils.degToRad(camera.fov * 0.5);
+    const distanceForWidth = horizontalSpan / Math.max(0.25, 2 * aspect * Math.tan(halfFov));
+    const distanceForHeight = verticalSpan / Math.max(0.25, 2 * Math.tan(halfFov));
+    const baseDistance = baseAsset.maxDim * (3.32 + compactness * 0.92 + Math.max(0, rows - 1) * 0.48 + 0.18);
+    const cameraDistance = Math.max(baseDistance, distanceForWidth * 0.98, distanceForHeight * 1.0);
+    const contentCenterY = (topExtent + bottomExtent) / 2;
+    const cameraLookAtY = THREE.MathUtils.lerp(0.04, contentCenterY, 0.76);
+    const cameraY = contentCenterY + baseAsset.size.y * (0.1 + compactness * 0.04);
+    const overlayScale = THREE.MathUtils.clamp(slotWidthPx / 186, 0.66, 1);
 
     return {
         columns,
@@ -1207,6 +1877,19 @@ function computeLayoutState(subagentCount) {
     };
 }
 
+function projectScreenPointToPlane(screenX, screenY, target, targetZ = 0) {
+    const width = Math.max(container.clientWidth || 0, 1);
+    const height = Math.max(container.clientHeight || 0, 1);
+    const ndcX = (screenX / width) * 2 - 1;
+    const ndcY = 1 - (screenY / height) * 2;
+
+    layoutRayVector.set(ndcX, ndcY, 0.5).unproject(camera);
+    layoutDirectionVector.copy(layoutRayVector).sub(camera.position).normalize();
+
+    const distance = (targetZ - camera.position.z) / layoutDirectionVector.z;
+    return target.copy(camera.position).addScaledVector(layoutDirectionVector, distance);
+}
+
 function layoutSubagents() {
     if (!baseAsset) return;
 
@@ -1218,6 +1901,63 @@ function layoutSubagents() {
     document.body.classList.toggle('compact-layout', layoutState.slotWidthPx < 156);
     document.body.classList.toggle('tiny-layout', layoutState.slotWidthPx < 136);
 
+    const rootAvatar = avatars.get(ROOT_AGENT_ID);
+    if (rootAvatar) {
+        rootAvatar.baseScale = layoutState.rootScale;
+        rootAvatar.targetPosition.set(0, layoutState.rootY, 0);
+    }
+
+    if (layoutState.mode === 'grid-1' || layoutState.mode === 'grid-2' || layoutState.mode === 'grid-3' || layoutState.mode === 'grid-2x2' || layoutState.mode === 'grid-2x3' || layoutState.mode === 'grid-5') {
+        updateCamera(layoutState);
+
+        const width = Math.max(container.clientWidth || 0, 320);
+        const height = Math.max(container.clientHeight || 0, 360);
+        worldVector.set(0, layoutState.rootY - baseAsset.size.y * layoutState.rootScale * 0.56, 0);
+        overlayVector.copy(worldVector).project(camera);
+
+        const rootBottomPx = (-overlayVector.y * 0.5 + 0.5) * height;
+        const gridTop = THREE.MathUtils.clamp(
+            Math.max(rootBottomPx + (layoutState.gridTopGapPx || 10), height * (layoutState.gridTopMin || 0.25)),
+            0,
+            height - 180,
+        );
+        const gridBottom = height - 12;
+        const gridLeft = 12;
+        const gridWidth = width - 24;
+        const gridHeight = Math.max(140, gridBottom - gridTop);
+        const cellHeight = gridHeight / layoutState.rows;
+        const rowPattern = layoutState.rowPattern || Array.from({ length: layoutState.rows }, () => layoutState.columns);
+
+        active.forEach((avatar, index) => {
+            let row = 0;
+            let rowStart = 0;
+            while (row < rowPattern.length && index >= rowStart + rowPattern[row]) {
+                rowStart += rowPattern[row];
+                row += 1;
+            }
+            const itemsInRow = rowPattern[Math.min(row, rowPattern.length - 1)] || layoutState.columns;
+            const column = index - rowStart;
+            const cellWidth = gridWidth / itemsInRow;
+            const cellLeft = gridLeft + column * cellWidth;
+            const cellTop = gridTop + row * cellHeight;
+            const cellRight = cellLeft + cellWidth;
+            const cellBottom = cellTop + cellHeight;
+            const headX = cellLeft + cellWidth * 0.5;
+            const headY = cellTop + cellHeight * (layoutState.gridHeadYFactor || 0.28);
+
+            avatar.baseScale = layoutState.subScale;
+            projectScreenPointToPlane(headX, headY, avatar.targetPosition);
+            avatar.overlayBounds = {
+                minX: cellLeft + 8,
+                maxX: cellRight - 8,
+                minY: cellTop + cellHeight * (layoutState.gridLabelStartFactor || 0.66),
+                maxY: cellBottom - 10,
+            };
+        });
+
+        return;
+    }
+
     const topRowY = layoutState.stackCenterY + ((layoutState.rows - 1) * layoutState.rowGap) / 2;
 
     active.forEach((avatar, index) => {
@@ -1228,18 +1968,13 @@ function layoutSubagents() {
         const centerOffset = (itemsInRow - 1) / 2;
 
         avatar.baseScale = layoutState.subScale;
+        avatar.overlayBounds = null;
         avatar.targetPosition.set(
             (column - centerOffset) * layoutState.spacingX,
             topRowY - row * layoutState.rowGap,
             0,
         );
     });
-
-    const rootAvatar = avatars.get(ROOT_AGENT_ID);
-    if (rootAvatar) {
-        rootAvatar.baseScale = layoutState.rootScale;
-        rootAvatar.targetPosition.set(0, layoutState.rootY, 0);
-    }
 
     updateCamera(layoutState);
 }
@@ -1257,6 +1992,10 @@ function getResolvedActivity(avatar, now = performance.now()) {
 
     if (avatar.thinkingUntil > now) {
         return 'thinking';
+    }
+
+    if (avatar.isRoot && rootWorking) {
+        return 'running';
     }
 
     return 'idle';
@@ -1287,9 +2026,14 @@ function updateAvatarBadge(avatar, now = performance.now()) {
             : getResolvedActivity(avatar, now);
 
     const badge = ACTIVITY_BADGES[activity] || ACTIVITY_BADGES.idle;
-    const badgeText = avatar.intentText && avatar.intentUntil > now ? avatar.intentText : badge.text;
+    const roleStyle = avatar.roleStyle || ROLE_STYLES.default;
+    const badgeText = avatar.intentText && avatar.intentUntil > now
+        ? avatar.intentText
+        : activity === 'idle' && avatar.role
+            ? avatar.role
+            : badge.text;
     avatar.overlay.badgeEl.className = `agent-badge ${activity}`;
-    avatar.overlay.badgeIconEl.textContent = badge.icon;
+    avatar.overlay.badgeIconEl.textContent = activity === 'idle' && avatar.role ? roleStyle.icon : badge.icon;
     avatar.overlay.badgeTextEl.textContent = badgeText;
 }
 
@@ -1391,8 +2135,8 @@ function setOverlayPosition(avatar) {
     overlayVector.copy(worldVector).project(camera);
 
     const onScreen = overlayVector.z > -1 && overlayVector.z < 1
-        && overlayVector.x > -1.2 && overlayVector.x < 1.2
-        && overlayVector.y > -1.2 && overlayVector.y < 1.2
+        && overlayVector.x > -1.45 && overlayVector.x < 1.45
+        && overlayVector.y > -1.45 && overlayVector.y < 1.45
         && avatar.presence > 0.05;
 
     if (!onScreen) {
@@ -1401,10 +2145,19 @@ function setOverlayPosition(avatar) {
         return;
     }
 
-    const x = (overlayVector.x * 0.5 + 0.5) * container.clientWidth;
-    const y = (-overlayVector.y * 0.5 + 0.5) * container.clientHeight;
     const scale = layoutState.overlayScale * (0.92 + avatar.presence * 0.08);
-    avatar.overlay.labelEl.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) scale(${scale})`;
+    const rawX = (overlayVector.x * 0.5 + 0.5) * container.clientWidth;
+    const rawY = (-overlayVector.y * 0.5 + 0.5) * container.clientHeight + 6;
+    const labelWidth = (avatar.overlay.labelEl.offsetWidth || 132) * scale;
+    const labelHeight = (avatar.overlay.labelEl.offsetHeight || 52) * scale;
+    const labelBounds = avatar.overlayBounds;
+    const minX = labelBounds ? labelBounds.minX + labelWidth * 0.5 : labelWidth * 0.5 + 8;
+    const maxX = labelBounds ? labelBounds.maxX - labelWidth * 0.5 : container.clientWidth - labelWidth * 0.5 - 8;
+    const minY = labelBounds ? labelBounds.minY : 8;
+    const maxY = labelBounds ? labelBounds.maxY - labelHeight : container.clientHeight - labelHeight - 10;
+    const clampedX = THREE.MathUtils.clamp(rawX, Math.min(minX, maxX), Math.max(minX, maxX));
+    const clampedY = THREE.MathUtils.clamp(rawY, Math.min(minY, maxY), Math.max(minY, maxY));
+    avatar.overlay.labelEl.style.transform = `translate3d(${clampedX}px, ${clampedY}px, 0) translate(-50%, 0) scale(${scale})`;
     avatar.overlay.labelEl.style.opacity = `${Math.max(0, Math.min(1, avatar.presence))}`;
     avatar.overlay.labelEl.classList.add('visible');
 }
@@ -1424,6 +2177,7 @@ function updateEmotionBubblePosition() {
 }
 
 function updateBlinkState(avatar, visual, dt, now) {
+    const motionPersona = avatar.motionPersona || MOTION_PERSONAS.steady;
     const restBlink = visual.restBlink ?? 1;
     let leftBlink = restBlink;
     let rightBlink = restBlink;
@@ -1438,19 +2192,19 @@ function updateBlinkState(avatar, visual, dt, now) {
 
     if (!visual.blinkEnabled) {
         avatar.anim.isBlinking = false;
-        avatar.anim.blinkTimer = 2 + Math.random() * 4;
+        avatar.anim.blinkTimer = randomFromRange(motionPersona.blinkInterval);
     } else {
         avatar.anim.blinkTimer -= dt;
         if (avatar.anim.blinkTimer <= 0 && !avatar.anim.isBlinking && !avatar.anim.isWinking) {
             avatar.anim.isBlinking = true;
             avatar.anim.blinkPhase = 1;
             avatar.anim.blinkProgress = 0;
-            avatar.anim.blinkTimer = 2 + Math.random() * 4;
+            avatar.anim.blinkTimer = randomFromRange(motionPersona.blinkInterval);
         }
     }
 
     if (avatar.anim.isBlinking) {
-        avatar.anim.blinkProgress += dt * 12;
+        avatar.anim.blinkProgress += dt * 12 * motionPersona.blinkRate;
         if (avatar.anim.blinkPhase === 1) {
             const blink = Math.max(0, restBlink * (1 - avatar.anim.blinkProgress * 1.5));
             leftBlink = blink;
@@ -1471,19 +2225,19 @@ function updateBlinkState(avatar, visual, dt, now) {
 
     if (!visual.winkEnabled) {
         avatar.anim.isWinking = false;
-        avatar.anim.winkTimer = 8 + Math.random() * 10;
+        avatar.anim.winkTimer = randomFromRange(motionPersona.winkInterval);
     } else {
         avatar.anim.winkTimer -= dt;
         if (avatar.anim.winkTimer <= 0 && !avatar.anim.isBlinking && !avatar.anim.isWinking) {
             avatar.anim.isWinking = true;
             avatar.anim.blinkPhase = 1;
             avatar.anim.blinkProgress = 0;
-            avatar.anim.winkTimer = 8 + Math.random() * 10;
+            avatar.anim.winkTimer = randomFromRange(motionPersona.winkInterval);
         }
     }
 
     if (avatar.anim.isWinking) {
-        avatar.anim.blinkProgress += dt * 10;
+        avatar.anim.blinkProgress += dt * 10 * motionPersona.winkRate;
         if (avatar.anim.blinkPhase === 1) {
             leftBlink = Math.max(0, restBlink * (1 - avatar.anim.blinkProgress * 1.5));
             if (leftBlink <= 0.02) {
@@ -1503,6 +2257,7 @@ function updateBlinkState(avatar, visual, dt, now) {
 }
 
 function getVisualConfig(avatar, mode, dt) {
+    const motionPersona = avatar.motionPersona || MOTION_PERSONAS.steady;
     const base = {
         color: ACTIVITY_COLORS[getResolvedActivity(avatar)] || ACTIVITY_COLORS.idle,
         eyeMode: 0,
@@ -1647,9 +2402,9 @@ function getVisualConfig(avatar, mode, dt) {
             base.color = ACTIVITY_COLORS.idle;
             avatar.anim.wanderTimer -= dt;
             if (avatar.anim.wanderTimer <= 0) {
-                avatar.anim.targetRotY = (Math.random() - 0.5) * 0.3;
-                avatar.anim.targetRotX = (Math.random() - 0.5) * 0.1;
-                avatar.anim.wanderTimer = 2.5 + Math.random() * 3;
+                avatar.anim.targetRotY = (Math.random() - 0.5) * 0.3 * motionPersona.wanderScale;
+                avatar.anim.targetRotX = (Math.random() - 0.5) * 0.1 * motionPersona.wanderScale;
+                avatar.anim.wanderTimer = randomFromRange(motionPersona.wanderInterval);
             }
             base.bobY = Math.sin(avatar.anim.idleTime * 1.2) * 0.02;
             base.rotX = avatar.anim.targetRotX;
@@ -1662,10 +2417,17 @@ function getVisualConfig(avatar, mode, dt) {
         base.color = ACTIVITY_COLORS.failed;
     }
 
+    base.bobY *= motionPersona.bobScale;
+    base.rotX *= motionPersona.rotationScale;
+    base.rotY *= motionPersona.rotationScale;
+    base.rotZ *= motionPersona.rotationScale;
+    base.heartPulse = 1 + ((base.heartPulse || 1) - 1) * motionPersona.pulseScale;
+
     return base;
 }
 
 function updateAvatar(avatar, dt, now) {
+    const motionPersona = avatar.motionPersona || MOTION_PERSONAS.steady;
     avatar.anim.idleTime += dt;
 
     if (avatar.intentUntil <= now && avatar.intentText) {
@@ -1687,9 +2449,9 @@ function updateAvatar(avatar, dt, now) {
     const visualMode = getVisualMode(avatar, now);
     const resolvedActivity = getResolvedActivity(avatar, now);
     const visual = getVisualConfig(avatar, visualMode, dt);
-    const scalePulse = avatar.scalePulseUntil > now ? 1 + Math.sin((now / 1000) * 20) * 0.08 : 1;
-    const motionEase = 1 - Math.exp(-dt * (avatar.isRoot ? 7 : 9));
-    const eyeEase = 1 - Math.exp(-dt * 12);
+    const scalePulse = avatar.scalePulseUntil > now ? 1 + Math.sin((now / 1000) * 20) * 0.08 * motionPersona.pulseScale : 1;
+    const motionEase = 1 - Math.exp(-dt * (avatar.isRoot ? 7 : 9) * motionPersona.motionEase);
+    const eyeEase = 1 - Math.exp(-dt * 12 * motionPersona.eyeEase);
     avatar.currentScale += ((avatar.baseScale * avatar.presence) - avatar.currentScale) * (1 - Math.exp(-dt * 10));
     avatar.currentEyeColor.lerp(visual.color, 1 - Math.exp(-dt * 9));
     avatar.currentBobY += (visual.bobY - avatar.currentBobY) * motionEase;
@@ -1699,13 +2461,13 @@ function updateAvatar(avatar, dt, now) {
     avatar.currentEyeScaleX += (visual.eyeScaleX - avatar.currentEyeScaleX) * eyeEase;
     avatar.currentEyeScaleY += (visual.eyeScaleY - avatar.currentEyeScaleY) * eyeEase;
     avatar.currentHeartPulse += (visual.heartPulse - avatar.currentHeartPulse) * eyeEase;
-    avatar.currentWritingFx += ((resolvedActivity === 'writing' ? 1 : 0) - avatar.currentWritingFx) * eyeEase;
-    avatar.currentReadingFx += ((resolvedActivity === 'reading' ? 1 : 0) - avatar.currentReadingFx) * eyeEase;
-    avatar.currentThinkingFx += ((resolvedActivity === 'thinking' ? 1 : 0) - avatar.currentThinkingFx) * eyeEase;
+    avatar.currentWritingFx += ((resolvedActivity === 'writing' ? motionPersona.writingFx : 0) - avatar.currentWritingFx) * eyeEase;
+    avatar.currentReadingFx += ((resolvedActivity === 'reading' ? motionPersona.readingFx : 0) - avatar.currentReadingFx) * eyeEase;
+    avatar.currentThinkingFx += ((resolvedActivity === 'thinking' ? motionPersona.thinkingFx : 0) - avatar.currentThinkingFx) * eyeEase;
 
     let shakeX = 0;
     if (avatar.shakeUntil > now) {
-        shakeX = Math.sin(now * 0.08) * 0.04;
+        shakeX = Math.sin(now * 0.08) * 0.04 * motionPersona.shakeScale;
     }
 
     avatar.group.position.set(
@@ -1741,7 +2503,7 @@ function updateAvatar(avatar, dt, now) {
         glyph.material.opacity = writingOpacity;
         glyph.material.rotation = Math.sin(avatar.anim.idleTime * 1.8 + glyph.phase) * 0.08;
         glyph.sprite.position.set(
-            Math.cos(avatar.anim.idleTime * glyph.speed + glyph.phase) * glyph.orbitRadius,
+            Math.cos(avatar.anim.idleTime * glyph.speed * motionPersona.glyphScale + glyph.phase) * glyph.orbitRadius * motionPersona.glyphScale,
             glyph.verticalOffset + Math.sin(avatar.anim.idleTime * 2.2 + glyph.phase * 1.7) * 0.05,
             baseAsset.eyeZ + 0.12 + Math.sin(avatar.anim.idleTime * 1.9 + glyph.phase) * 0.04 * glyph.drift,
         );
@@ -1752,17 +2514,17 @@ function updateAvatar(avatar, dt, now) {
     const readingBeamMaterial = avatar.activityEffects.readingBeamMaterial;
     readingBeam.visible = avatar.currentReadingFx > 0.04;
     readingBeamMaterial.opacity = avatar.currentReadingFx * 0.42;
-    readingBeam.position.x = Math.sin(avatar.anim.idleTime * 1.7) * baseAsset.eyeSpacing * 1.45;
+    readingBeam.position.x = Math.sin(avatar.anim.idleTime * 1.7 * motionPersona.readingSweep) * baseAsset.eyeSpacing * 1.45;
     readingBeam.scale.x = baseAsset.readingBeamWidth * (0.82 + (Math.sin(avatar.anim.idleTime * 2.5) + 1) * 0.1);
     readingBeam.scale.y = baseAsset.readingBeamHeight;
 
     for (const dot of avatar.activityEffects.thinkingDots) {
-        const orbitAngle = avatar.anim.idleTime * 0.85 + dot.phase;
+        const orbitAngle = avatar.anim.idleTime * 0.85 * motionPersona.thinkingOrbit + dot.phase;
         const bob = Math.sin(avatar.anim.idleTime * 1.6 + dot.phase * 1.5) * 0.03;
         dot.sprite.visible = avatar.currentThinkingFx > 0.04;
         dot.material.opacity = avatar.currentThinkingFx * (0.22 + (Math.sin(avatar.anim.idleTime * 2 + dot.phase) + 1) * 0.08);
         dot.sprite.position.set(
-            Math.cos(orbitAngle) * (baseAsset.thinkingOrbitRadius + dot.orbitRadius * 0.4),
+            Math.cos(orbitAngle) * (baseAsset.thinkingOrbitRadius + dot.orbitRadius * 0.4) * motionPersona.thinkingOrbit,
             baseAsset.thinkingCenterY + bob,
             baseAsset.eyeZ + 0.08 + Math.sin(orbitAngle) * 0.05,
         );
@@ -1833,6 +2595,136 @@ function initializeRootAvatar() {
     ensureAvatar(ROOT_AGENT_ID, { displayName: 'Copilot' });
 }
 
+function clearDemoAgents() {
+    for (let index = pendingSubagents.length - 1; index >= 0; index -= 1) {
+        if (DEMO_AGENT_IDS.includes(pendingSubagents[index].agentId)) {
+            pendingSubagents.splice(index, 1);
+        }
+    }
+
+    for (const agentId of DEMO_AGENT_IDS) {
+        if (avatars.has(agentId)) {
+            finalizeAvatar(agentId);
+        }
+    }
+
+    layoutSubagents();
+}
+
+function resetDemoSequence() {
+    demoSequenceRunId += 1;
+    for (const timerId of demoTimers) {
+        clearTimeout(timerId);
+    }
+    demoTimers = [];
+    clearDemoAgents();
+    clearMessageOverlay();
+    speechSynthesis.cancel();
+    rootEmotion = { name: 'default', until: 0 };
+    updateEmotionBubble('');
+    window.setWorking(false);
+    window.setSubtask('');
+    return demoSequenceRunId;
+}
+
+function scheduleDemoStep(runId, delayMs, action) {
+    const timerId = setTimeout(() => {
+        if (demoSequenceRunId !== runId) return;
+        action();
+    }, delayMs);
+    demoTimers.push(timerId);
+}
+
+function runDemoSequence() {
+    const runId = resetDemoSequence();
+    const startAt = DEMO_START_DELAY_MS;
+
+    scheduleDemoStep(runId, startAt, () => {
+        window.setWorking(true);
+        window.setSubtask('Coordinating a demo squad');
+        setRootEmotion('sparkle', 1200);
+    });
+
+    scheduleDemoStep(runId, startAt + 180, () => {
+        window.addSubagent({ agentId: 'demo-planner', displayName: 'Planner', role: 'Coordinator' });
+        window.addSubagent({ agentId: 'demo-coder', displayName: 'Coder', role: 'Developer' });
+        window.addSubagent({ agentId: 'demo-reviewer', displayName: 'Reviewer', role: 'Reviewer' });
+    });
+
+    scheduleDemoStep(runId, startAt + 900, () => {
+        window.addSubagent({ agentId: 'demo-tester', displayName: 'Tester', role: 'Tester' });
+    });
+
+    scheduleDemoStep(runId, startAt + 1700, () => {
+        window.setSubtask('Planner maps the repo while the others start working');
+        window.setAgentActivity({ agentId: 'demo-planner', toolName: 'view' });
+        window.setAgentIntent({ agentId: 'demo-planner', intent: 'Mapping the codebase' });
+        window.setAgentActivity({ agentId: 'demo-coder', toolName: 'edit' });
+        window.setAgentIntent({ agentId: 'demo-coder', intent: 'Implementing the fix' });
+        window.setAgentThinking('demo-reviewer');
+        window.setAgentIntent({ agentId: 'demo-reviewer', intent: 'Reviewing the approach' });
+        window.setAgentActivity({ agentId: 'demo-tester', toolName: 'powershell' });
+        window.setAgentIntent({ agentId: 'demo-tester', intent: 'Running checks' });
+    });
+
+    scheduleDemoStep(runId, startAt + 4200, () => {
+        window.setSubtask('The coder gets a little love');
+        setRootEmotion('heart', 1700);
+        window.setAgentExpression({ agentId: 'demo-coder', expression: 'heart', durationMs: 2200 });
+    });
+
+    scheduleDemoStep(runId, startAt + 6200, () => {
+        window.setSubtask('Planner wraps up the initial map');
+        window.clearAgentActivity({ agentId: 'demo-planner', toolName: 'view' });
+        window.completeSubagent({ agentId: 'demo-planner', totalToolCalls: 3 });
+    });
+
+    scheduleDemoStep(runId, startAt + 7200, () => {
+        window.setSubtask('A little confetti for progress');
+        setRootEmotion('party', 1800);
+        triggerRootBurst('party');
+    });
+
+    scheduleDemoStep(runId, startAt + 8200, () => {
+        window.setSubtask('Docs joins to write the summary');
+        window.addSubagent({ agentId: 'demo-docs', displayName: 'Docs', role: 'Writer' });
+        window.setAgentActivity({ agentId: 'demo-docs', toolName: 'edit' });
+        window.setAgentIntent({ agentId: 'demo-docs', intent: 'Writing release notes' });
+    });
+
+    scheduleDemoStep(runId, startAt + 10400, () => {
+        window.setSubtask('Tester finds a smoke test failure');
+        window.clearAgentActivity({ agentId: 'demo-tester', toolName: 'powershell' });
+        window.failSubagent({ agentId: 'demo-tester', error: 'Smoke test failed' });
+    });
+
+    scheduleDemoStep(runId, startAt + 12200, () => {
+        window.setSubtask('Reviewer signs off on the approach');
+        window.completeSubagent({ agentId: 'demo-reviewer', totalToolCalls: 2 });
+    });
+
+    scheduleDemoStep(runId, startAt + 14000, () => {
+        window.setSubtask('Docs finishes the release notes');
+        window.clearAgentActivity({ agentId: 'demo-docs', toolName: 'edit' });
+        window.completeSubagent({ agentId: 'demo-docs', totalToolCalls: 1 });
+    });
+
+    scheduleDemoStep(runId, startAt + 15600, () => {
+        window.setSubtask('Coder ships the fix');
+        window.clearAgentActivity({ agentId: 'demo-coder', toolName: 'edit' });
+        window.setAgentExpression({ agentId: 'demo-coder', expression: 'sparkle', durationMs: 1600 });
+        window.completeSubagent({ agentId: 'demo-coder', totalToolCalls: 4 });
+    });
+
+    scheduleDemoStep(runId, startAt + 17600, () => {
+        window.setWorking(false);
+        window.setSubtask('');
+        setRootEmotion('success', 1600);
+    });
+
+    return 'queued';
+}
+
 window.showMessage = (text) => {
     if (fadeTimeout) clearTimeout(fadeTimeout);
     registerRootActivity();
@@ -1851,10 +2743,15 @@ window.showMessage = (text) => {
         return;
     }
 
+    speak(text);
+    if (!showSpokenText || !text) {
+        clearMessageOverlay();
+        return;
+    }
+
     messageEl.classList.remove('fading');
     messageEl.classList.add('visible');
     messageEl.textContent = text;
-    speak(text);
 
     fadeTimeout = setTimeout(() => {
         messageEl.classList.add('fading');
@@ -1867,14 +2764,23 @@ window.setWorking = (active) => {
     if (active) {
         registerRootActivity();
     } else {
-        subtasksEl.textContent = '';
+        subtasksEl.textContent = idleSubtaskText;
     }
     updateStatusIndicator();
 };
 
 window.setSubtask = (text) => {
     if (text) registerRootActivity();
-    subtasksEl.textContent = text || '';
+    subtasksEl.textContent = text || (rootWorking ? '' : idleSubtaskText);
+};
+
+window.setSquadContext = (payload = {}) => {
+    idleStatusText = payload.active ? (payload.statusText || '● Squad ready') : '';
+    idleSubtaskText = payload.active ? (payload.detailText || '') : '';
+    if (!rootWorking) {
+        subtasksEl.textContent = idleSubtaskText;
+    }
+    updateStatusIndicator();
 };
 
 window.addSubagent = (payload = {}) => {
@@ -2003,6 +2909,7 @@ let clippyVoxtralVoice = CLIPPY_DEFAULT_VOXTRAL_VOICE;
 let clippyRefAudio = null;
 let voxtralAudioPlayer = null;
 let voxtralAudioCtx = null;
+let showSpokenText = true;
 
 function getVoxtralAudioCtx() {
     if (!voxtralAudioCtx || voxtralAudioCtx.state === 'closed') {
@@ -2124,9 +3031,13 @@ if (savedTts.clippyRefAudio) {
 if (savedTts.voxtralRefAudio) {
     setVoxtralRefAudio(savedTts.voxtralRefAudio, { rememberForClippy: false, save: false });
 }
+if (savedTts.showSpokenText != null) {
+    showSpokenText = !!savedTts.showSpokenText;
+}
 applyAvatarStyle({ enforceVoiceDefaults: avatarStyle === 'clippy' });
 updateTtsButton();
 updateEngineUI();
+updateMessageVisibility();
 
 function saveTtsSettings() {
     copilot.saveSettings({
@@ -2144,6 +3055,7 @@ function saveTtsSettings() {
         voxtralRefAudio,
         clippyVoxtralVoice,
         clippyRefAudio,
+        showSpokenText,
     }).catch(() => {});
 }
 
@@ -2508,6 +3420,18 @@ ttsEngineSelect.addEventListener('change', () => {
     saveTtsSettings();
 });
 
+runDemoBtn.addEventListener('click', () => {
+    ttsDropdown.classList.add('hidden');
+    runDemoSequence();
+});
+
+messageVisibilityToggle.addEventListener('change', () => {
+    showSpokenText = messageVisibilityToggle.checked;
+    if (fadeTimeout) clearTimeout(fadeTimeout);
+    updateMessageVisibility();
+    saveTtsSettings();
+});
+
 ttsVoiceSelect.addEventListener('change', () => {
     ttsVoiceName = ttsVoiceSelect.value;
     saveTtsSettings();
@@ -2633,7 +3557,23 @@ window.getTtsSettings = () => JSON.stringify({
     hasClippyRefAudio: !!clippyRefAudio,
     hasClippyModel: !!clippyRoot,
     clippyAnimations: clippyActions.map((action) => action.getClip().name),
+    showSpokenText,
 });
+
+window.setMessageTextVisible = (visible) => {
+    showSpokenText = !!visible;
+    if (fadeTimeout) clearTimeout(fadeTimeout);
+    updateMessageVisibility();
+    saveTtsSettings();
+    return showSpokenText;
+};
+
+window.getMessageTextVisible = () => showSpokenText;
+window.runDemoSequence = () => runDemoSequence();
+window.stopDemoSequence = () => {
+    resetDemoSequence();
+    return 'stopped';
+};
 
 function stripMarkdownForSpeech(text) {
     return String(text)

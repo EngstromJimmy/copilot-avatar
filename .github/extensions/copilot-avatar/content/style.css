@@ -71,17 +71,26 @@ body.avatar-clippy #clippy-avatar {
 }
 
 .subagent-label {
+  --role-accent: #8b949e;
+  --role-accent-soft: rgba(139, 148, 158, 0.28);
+  --role-accent-glow: rgba(139, 148, 158, 0.16);
+  --role-accent-panel: rgba(110, 118, 129, 0.12);
   position: absolute;
   left: 0;
   top: 0;
   min-width: 112px;
   max-width: 170px;
   padding: 8px 10px;
-  border: 1px solid rgba(240, 246, 252, 0.08);
+  overflow: hidden;
+  border: 1px solid var(--role-accent-soft);
   border-radius: 12px;
-  background: rgba(22, 27, 34, 0.72);
+  background:
+    linear-gradient(180deg, var(--role-accent-panel), rgba(22, 27, 34, 0.72) 68%),
+    rgba(22, 27, 34, 0.72);
   backdrop-filter: blur(4px);
-  box-shadow: 0 16px 32px rgba(1, 4, 9, 0.3);
+  box-shadow:
+    0 16px 32px rgba(1, 4, 9, 0.3),
+    0 0 22px var(--role-accent-glow);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -90,6 +99,17 @@ body.avatar-clippy #clippy-avatar {
   opacity: 0;
   transition: opacity 0.18s ease;
   will-change: transform, opacity;
+}
+
+.subagent-label::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--role-accent);
+  opacity: 0.95;
 }
 
 .subagent-label.visible {
@@ -142,6 +162,13 @@ body.tiny-layout .agent-badge {
   text-overflow: ellipsis;
 }
 
+.agent-name::before {
+  content: attr(data-role-icon);
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--role-accent);
+}
+
 .agent-badge {
   display: inline-flex;
   align-items: center;
@@ -170,7 +197,9 @@ body.tiny-layout .agent-badge {
 }
 
 .agent-badge.idle {
-  color: #c9d1d9;
+  color: var(--role-accent);
+  border-color: var(--role-accent-soft);
+  background: var(--role-accent-panel);
 }
 
 .agent-badge.writing {
@@ -207,6 +236,10 @@ body.tiny-layout .agent-badge {
   justify-content: center;
   z-index: 12;
   pointer-events: none;
+}
+
+#message-container.hidden {
+  display: none;
 }
 
 #message-text {
@@ -265,7 +298,7 @@ body.tiny-layout .agent-badge {
 
 #status-container {
   left: 50%;
-  bottom: 45%;
+  bottom: 14%;
   width: min(90%, 520px);
   transform: translateX(-50%);
   display: flex;
@@ -300,7 +333,7 @@ body.tiny-layout .agent-badge {
   }
 
   #status-container {
-    bottom: 49%;
+    bottom: 11%;
     width: min(94%, 460px);
   }
 
@@ -380,12 +413,46 @@ body.avatar-clippy #tts-controls.settings-open {
   display: none;
 }
 
+#run-demo-btn {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgba(88, 166, 255, 0.32);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(56, 139, 253, 0.18), rgba(17, 24, 39, 0.92));
+  color: #e6edf3;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+#run-demo-btn:hover {
+  background: linear-gradient(180deg, rgba(56, 139, 253, 0.28), rgba(17, 24, 39, 0.96));
+  border-color: rgba(88, 166, 255, 0.5);
+  transform: translateY(-1px);
+}
+
 #tts-dropdown label {
   display: flex;
   flex-direction: column;
   gap: 4px;
   color: #8b949e;
   font-size: 12px;
+}
+
+#tts-dropdown .tts-checkbox-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #e6edf3;
+  font-size: 13px;
+}
+
+#tts-dropdown .tts-checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #58a6ff;
 }
 
 #tts-dropdown select,

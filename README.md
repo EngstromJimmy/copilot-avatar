@@ -2,7 +2,7 @@
 
 ![Copilot Avatar Demo](assets/copilot-avatar-squad-demo.gif)
 
-A 3D animated Copilot avatar that lives in a native window alongside your terminal session. It shows the main Copilot avatar, visualizes sub-agents as a small squad, displays floating messages, and can read final responses aloud with text-to-speech.
+A 3D animated Copilot avatar that lives in a native window alongside your terminal session. It shows the main Copilot avatar, visualizes sub-agents beneath it, displays floating messages, and can read final responses aloud with text-to-speech.
 
 ## Why?
 
@@ -37,9 +37,30 @@ So I built this. A little friend that lives on your screen and actually talks to
   - Markdown formatting is stripped before speech
   - Settings persist in `.tts-settings.json`
 
+## Squad Integration
+
+With optional [Squad](https://github.com/bradygaster/squad) integration, the avatar keeps the normal Copilot flow and enriches the same sub-agents with Squad metadata.
+
+- **Names from Squad**: sub-agents use Squad member names when available
+- **Role-based color coding**: labels, accents, glows, and head tints follow Squad roles
+- **Extra context**: roster and charter metadata help each sub-agent feel distinct
+
+## Releases
+
+GitHub Releases are the distribution channel. Each release includes a `copilot-avatar-vX.Y.Z.zip` asset with the `copilot-avatar/` folder at the ZIP root.
+
 ## Installation
 
-You need [Node.js](https://nodejs.org) installed. Then clone or download this repo and copy the `copilot-avatar` folder from `.github/extensions/` to one of the locations below.
+You need [Node.js](https://nodejs.org) installed.
+
+### Install from a release ZIP
+
+1. Download the latest `copilot-avatar-vX.Y.Z.zip` asset from the GitHub Releases page.
+2. Extract the ZIP so you have a `copilot-avatar/` folder.
+3. Copy that folder to one of the extension locations below.
+4. Run `npm install` inside the copied `copilot-avatar` folder.
+
+Clone or download this repo and copy the `copilot-avatar` folder from `.github/extensions/` to one of the locations below.
 
 **Per-project** (only active when you're inside that repo):
 
@@ -80,6 +101,8 @@ Open the avatar window when you want it, then let it react to the current sessio
 Sub-agents appear automatically when the current session emits sub-agent lifecycle events.
 
 Select **Avatar → Clippy** in settings to show the animated grey `clippy.glb` paperclip on a transparent background. Clippy mode prefers Voxtral speech with the more animated `Paul - Excited` preset, hides response/status overlays, and speaks a short Clippy-style summary of the final Copilot response instead of reading the message verbatim. Import or record a Voxtral reference clip while Clippy is selected to save it as the default Clippy voice. You can also use **Generate retro Clippy sample** to fetch a short pitched-up Microsoft Sam-style SAPI4 reference WAV at setup time instead of bundling an audio file.
+
+If Squad is available for the workspace, the avatar uses that metadata automatically. Without Squad, it works as a normal Copilot avatar.
 
 ## Activity States
 

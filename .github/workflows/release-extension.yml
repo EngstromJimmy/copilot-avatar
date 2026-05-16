@@ -1,0 +1,132 @@
+name: Release extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version to release, without the v prefix
+        required: true
+        type: string
+      release_title:
+        description: Optional GitHub Release title
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      EXTENSION_DIR: .github/extensions/copilot-avatar
+      EXTENSION_NAME: copilot-avatar
+      VERSION: ${{ inputs.version }}
+      TAG_NAME: v${{ inputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Validate version input
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Version must be semantic versioning like 0.1.0 or 1.2.3-beta.1" >&2
+            exit 1
+          fi
+
+          if git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
+            echo "Tag $TAG_NAME already exists." >&2
+            exit 1
+          fi
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump extension version
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_version="$(node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(pkg.version || '');" "$EXTENSION_DIR/package.json")"
+          if [[ "$current_version" == "$VERSION" ]]; then
+            echo "Extension version already set to $VERSION."
+            exit 0
+          fi
+
+          npm version "$VERSION" --no-git-tag-version --prefix "$EXTENSION_DIR"
+
+      - name: Commit version files
+        id: commit_version_files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add "$EXTENSION_DIR/package.json" "$EXTENSION_DIR/package-lock.json"
+
+          if git diff --cached --quiet; then
+            echo "created_commit=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git commit -m "chore: release $TAG_NAME"
+          echo "created_commit=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create release tag
+        run: git tag "$TAG_NAME"
+
+      - name: Push release commit and tag
+        if: steps.commit_version_files.outputs.created_commit == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Push release tag
+        shell: bash
+        run: git push origin "$TAG_NAME"
+
+      - name: Build release ZIP
+        id: build_release_zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_path="${GITHUB_WORKSPACE}/${EXTENSION_NAME}-v${VERSION}.zip"
+          export ASSET_PATH="$asset_path"
+
+          python - <<'PY'
+          import os
+          import zipfile
+
+          extension_dir = os.path.join(os.environ["GITHUB_WORKSPACE"], ".github", "extensions", os.environ["EXTENSION_NAME"])
+          asset_path = os.environ["ASSET_PATH"]
+
+          with zipfile.ZipFile(asset_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+              for root, _, files in os.walk(extension_dir):
+                  files.sort()
+                  for file_name in files:
+                      full_path = os.path.join(root, file_name)
+                      relative_path = os.path.relpath(full_path, extension_dir)
+                      archive.write(full_path, os.path.join(os.environ["EXTENSION_NAME"], relative_path))
+          PY
+
+          echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TITLE: ${{ inputs.release_title }}
+          ASSET_PATH: ${{ steps.build_release_zip.outputs.asset_path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title="${RELEASE_TITLE:-Copilot Avatar ${TAG_NAME}}"
+          gh release create "$TAG_NAME" "$ASSET_PATH" --title "$title" --generate-notes
