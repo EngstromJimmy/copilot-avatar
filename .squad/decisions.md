@@ -335,6 +335,20 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 
 ---
 
+### 2026-05-16T19:56:44.385+02:00: Keep the Squad root mic face-side only
+
+**By:** Shuri
+
+**What:** Remove the ear-anchor geometry from the Squad root mic-boom accessory and recolor the remaining face-side mic boom and capsule to the established Squad pink accent (`#f778ba`). Preserve the existing root-only + visible-Squad gating.
+
+**Why:** User feedback indicated the ear-side piece read like unwanted clutter by the avatar's ear. A face-side-only mic keeps the Squad signal subtle and clean.
+
+**Impacted files:** `.github/extensions/copilot-avatar/content/main.js`
+
+**Status:** Implemented and validated.
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus

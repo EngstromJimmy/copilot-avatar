@@ -14,6 +14,7 @@
 - 2026-05-16T19:27:16.955+02:00 — Squad-only root avatar flair should reuse the existing visible Squad context from `.github/extensions/copilot-avatar/main.mjs`; in the webview, gate `modelRoot` accessories from `window.setSquadContext(payload.active)` instead of re-detecting Squad from cwd.
 - 2026-05-16T19:27:16.955+02:00 — Root accessory work stays surgical in `.github/extensions/copilot-avatar/content/main.js`: attach geometry in `createAvatarInstance()`, dispose it in `disposeAvatar()`, and keep the root-only visibility toggle isolated in a helper like `updateRootSquadMicBoom()`.
 - 2026-05-16T19:48:28.844+02:00 — Squad-only root comms flair reads better as a single-sided ear anchor, thin curved boom, and compact mouth capsule than as a full headset; keep the silhouette light so it feels like status, not costume.
+- 2026-05-16T19:56:44.385+02:00 — The current root Squad mic reads cleaner without any ear-side anchor at all; keep only a face-side boom plus capsule, and reuse the Squad pink accent (`#f778ba`) so the flair stays recognizable without crowding the silhouette.
 
 ## 2026-05-16T14:02:40.457Z — Session Complete: Approved Sub-Agent Identity & Badge Fix
 
@@ -114,3 +115,26 @@
 - Keeping accessory light and subtle improves avatar stability in motion and visual consistency
 - Root-only creation path in `createAvatarInstance()` and cleanup in `disposeAvatar()` keep implementation surgical
 
+## 2026-05-16T17:58:07Z — Session: Squad Root Mic Finalization — Face-Side Only, Squad Pink
+
+**Status:** ✅ Complete and validated
+
+**Coordinator:** Jimmy Engstrom
+
+**Work Summary:**
+- Removed ear-side anchor from Squad root mic-boom accessory
+- Recolored remaining face-side mic boom and capsule to Squad pink (#f778ba)
+- Preserved existing root-only + visible-Squad gating
+
+**Implementation:**
+- Updated `.github/extensions/copilot-avatar/content/main.js` to remove ear-anchor geometry and apply pink color
+- Validation: `node --check` passed for all extension files
+
+**Key Change:**
+- User feedback indicated the ear-side piece read like clutter; face-side-only mic keeps the Squad signal subtle and clean
+
+**Decision Captured:**
+- **2026-05-16T19:56:44.385+02:00** — Keep the Squad root mic face-side only (merged to decisions.md)
+  - Remove ear-anchor, keep face-side boom plus capsule
+  - Apply Squad pink (#f778ba)
+  - Preserve root-only + visible-Squad gating
