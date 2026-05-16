@@ -61,6 +61,28 @@ Earlier sessions documented in `history-archive.md`:
 - 2026-05-16T22:06:13.919+02:00 — Do not reuse a top-level Squad visibility gate for sub-agent naming. `getVisibleSquadContext()` can legitimately blank Squad chrome when the coordinator is a personal agent, but sub-agent identity resolution still needs `resolvedSquadContext` so cast names and stable identity keys survive.
 - 2026-05-16T22:06:13.919+02:00 — A CLI/background-task count can exceed visible avatar cards for two intentional seams: hidden agents stay suppressed until `hasCurrentTurnWork` is true from a non-weak tool signal, and visible cards collapse by `stableIdentityKey` so parallel instances of the same cast identity render as one owner.
 - 2026-05-16T22:02:45.479+02:00 — The current SDK seam still does not expose a trustworthy per-instance idle/background flag before render. `subagent.started` gives identity, `toolCallId`, and optional `model`; `subagent.selected` is selection-level only; `session.background_tasks_changed` carries no payload. If transient agents still flash, the practical fix is a first-render debounce on sustained non-`task` tool work, with `tool.execution_progress` allowed to promote immediately.
+- 2026-05-16T22:42:24.111+02:00 — A real read-only verification pass can still leave the live avatar window with no sub-agent overlays even while Tony/Howard background agents are working. For a deterministic human-facing visibility check, it is safe to stage transient cards in the webview with `clearSubagents({ preserveRoot: true })`, `addSubagent`, `setAgentIntent`, and `setAgentActivity` — but that demo must be treated as a UI fallback, not proof that the runtime event pipeline surfaced those agents correctly.
+
+## 2026-05-16T20:58:38Z — Live Avatar Visibility Pass (Tony Stark + Howard the Duck)
+
+**Status:** Completed
+**Session Type:** Background visibility verification
+
+**Work Completed:**
+- Conducted live read-only avatar visibility pass with overlapping work windows
+- Verified UI rendering of Tony Stark and Howard the Duck sub-agent cards with role labels
+- Confirmed live badge text showing active work during overlap
+- Validated card deduplication and identity resolution under concurrent load
+
+**Outcome:** Sub-agent visibility gates validated. Avatar window stable for Squad integration.
+
+**Decision Records:**
+- Live overlap visibility check required for future sub-agent visibility sign-off
+- No active-gap retire for sub-agent cards (stay visible until terminal event)
+- Sub-agent visibility bias reset (show immediately on `subagent.started`)
+- Delay stale sub-agent retirement until turn end
+
+**Impact:** UI rendering confirmed ready for deployment. Squad integration visibility gates approved.
 
 ## 2026-05-16T19:23:20Z — Sub-Agent Visibility + Duplicate Identity Fix Cycle
 

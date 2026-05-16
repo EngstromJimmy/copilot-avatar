@@ -325,18 +325,6 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 
 ---
 
-### 2026-05-16T16:40:39.107+02:00: Stable runtime agentId alias fallback for Squad names
-
-**By:** Vision
-
-**What:** Allow Squad metadata resolution to use the top-level runtime `agentId` only when it looks like a stable alias such as `lead` or `tony-stark`, while still refusing opaque handles like `agent-call_H`.
-
-**Why:** Some runtime events can arrive with generic placeholder labels in `agentDisplayName`, so ignoring a stable-looking `agentId` lets placeholders outrank cast names. Guarded fallback keeps non-Squad behavior intact and avoids reintroducing the rejected opaque-id join.
-
-**Status:** Implemented and approved.
-
----
-
 ### 2026-05-16T17:28:38.428+02:00: Runtime/Event-Bridge Revision — Live Sub-Agent Naming Fix (APPROVED & MERGED)
 
 **By:** Tony Stark (Implementation), Howard the Duck (QA & Approval)
@@ -671,6 +659,55 @@ Fix: add `{ resetSubagents: true }` to the `session.resume` call, OR clear `acti
 
 
 ---
+
+### 2026-05-16T23:01:57.563+02:00: User directive
+**By:** Jimmy Engstrom (via Copilot)
+**What:** Keep sub-agent visibility driven by Copilot SDK presence: if Copilot SDK says a sub-agent exists, it should stay visible in the view. Do not show extra non-Copilot agents from Squad SDK. Use Squad SDK only to enrich visible Copilot sub-agents with names, roles, and related metadata.
+**Why:** User request — captured for team memory
+
+
+## 2026-05-16T22:42:24.111+02:00 — Live overlap visibility check
+
+- **Decision:** For avatar visibility sign-off, use overlapping read-only activity windows and capture the live UI during the overlap.
+- **Why:** A late poll after the probes finish can falsely look clean or empty even when the user really did get simultaneous live cards.
+- **Observed evidence:** During the overlap window, the avatar UI showed `Tony Stark` and `Howard the Duck` together with correct role labels, separate model rows, and live badge text (`Reading main.mjs + main.js` / `Running harmless regression probe`).
+- **Impact:** Future QA on named sub-agent visibility should include a live overlap snapshot before declaring pass or fail.
+
+
+## 2026-05-16T22:45:02.806+02:00 — No active-gap retire for sub-agent cards
+
+- **Decision:** Do not auto-hide active sub-agent cards from fallback retire logic at all. Once a card is visible, it should stay up until a real terminal event arrives or the next root turn reset clears stale leftovers.
+- **Why:** The runtime can go quiet between tools while the sub-agent is still alive. Any heuristic that treats “no live tool right now” as equivalent to “task is done” causes the exact user-facing blink-out regression we’re chasing.
+- **Impact:** `.github/extensions/copilot-avatar/main.mjs` now clears tool badges on `tool.execution_complete` but leaves active cards rendered, while the previously loosened surfacing path continues to favor showing agents early.
+
+
+## 2026-05-16T22:45:02.806+02:00 — Sub-agent visibility bias reset
+
+- **Decision:** For now, active sub-agents should show up as soon as the extension sees `subagent.started`, and tracked tool activity should no longer wait on weak-signal gates or a first-render debounce before a card can appear.
+- **Why:** The stricter suppression path over-corrected and left the avatar with no visible helpers. For this UI, a few extra cards are easier to tolerate than an empty scene when real delegation is happening.
+- **Impact:** `.github/extensions/copilot-avatar/main.mjs` now prefers rendering known active agents immediately while still preserving Squad name resolution, task summaries, model updates, and stable-identity duplicate cleanup.
+
+
+## 2026-05-16T22:45:02.806+02:00 — Delay stale sub-agent retirement until turn end
+
+- **Decision:** Do not arm stale-card retirement from each `tool.execution_complete`. Keep visible sub-agents on screen through the active turn, and only start fallback retirement after the root `assistant.turn_end` if they never received `subagent.completed` / `subagent.failed`.
+- **Why:** A sub-agent can still be alive between tool calls. The old 1.2s post-tool retire path was hiding cards while the runtime task was still working, which reads like agents blinking out mid-job.
+- **Impact:** `.github/extensions/copilot-avatar/main.mjs` now preserves visible agent cards across intra-task pauses, while terminal events and turn-boundary resets still clean up truly finished or stale avatars.
+
+
+---
+date: 2026-05-16T22:42:24.111+02:00
+author: Tony Stark
+topic: Live avatar visibility fallback
+---
+
+# Tony Stark — Live Avatar Visibility Fallback
+
+- **Date:** 2026-05-16T22:42:24.111+02:00
+- **Decision:** When a real read-only verification pass does not surface the expected Tony/Howard sub-agent cards in the live avatar window, use a transient webview-only staging pass to show the cards for human verification.
+- **Why:** The source seams and background-agent activity can both look healthy while the live overlay still renders no sub-agent cards. For “show me Tony and Howard” requests, a deterministic UI fallback is cheaper than pretending the runtime pipeline proved itself.
+- **Guardrail:** This staged overlay is a visibility demo only. Do not treat it as sign-off on the runtime event path; keep using live-window polling plus source review for actual regression approval.
+
 
 ## Approved Decisions
 
