@@ -1,8 +1,10 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
+.hidden { display: none !important; }
 
 html, body {
   height: 100%;
   overflow: hidden;
+  background: transparent;
 }
 
 body {
@@ -12,23 +14,53 @@ body {
   position: relative;
 }
 
+body.window-transparent {
+  background: transparent;
+}
+
 #avatar-container,
 #subagent-overlays,
 #message-container,
 #status-container,
 #emotion-bubble,
+#clippy-avatar,
 #tts-controls {
   position: absolute;
 }
 
 #avatar-container {
   inset: 0;
+  z-index: 1;
 }
 
 #avatar-container canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
+}
+
+body.avatar-clippy #message-container,
+body.avatar-clippy #status-container,
+body.avatar-clippy #emotion-bubble {
+  display: none !important;
+}
+
+body.avatar-clippy #avatar-container {
+  z-index: 2;
+}
+
+#clippy-avatar {
+  inset: 0;
+  z-index: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+body.avatar-clippy #clippy-avatar {
+  display: flex;
 }
 
 #subagent-overlays {
@@ -362,6 +394,15 @@ body.tiny-layout .agent-model {
   display: flex;
   gap: 6px;
   align-items: flex-start;
+  transition: opacity 0.18s ease;
+}
+
+#tts-controls:not(.settings-open):not(:hover):not(:focus-within) {
+  opacity: 0;
+}
+
+#tts-controls.settings-open {
+  opacity: 1;
 }
 
 #tts-toggle,
@@ -423,6 +464,41 @@ body.tiny-layout .agent-model {
   transform: translateY(-1px);
 }
 
+#tts-settings-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tts-settings-tab {
+  padding: 7px 10px;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: #0d1117;
+  color: #8b949e;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.tts-settings-tab:hover {
+  background: #161b22;
+  color: #e6edf3;
+}
+
+.tts-settings-tab.active {
+  background: rgba(56, 139, 253, 0.18);
+  border-color: rgba(88, 166, 255, 0.45);
+  color: #e6edf3;
+}
+
+.tts-settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 #tts-dropdown label {
   display: flex;
   flex-direction: column;
@@ -447,7 +523,8 @@ body.tiny-layout .agent-model {
 }
 
 #tts-dropdown select,
-#tts-dropdown input[type="range"] {
+#tts-dropdown input[type="range"],
+#tts-dropdown input[type="file"] {
   width: 100%;
 }
 
@@ -465,6 +542,202 @@ body.tiny-layout .agent-model {
   color: #e6edf3;
   font-size: 13px;
   text-align: center;
+}
+
+#tts-dropdown input[type="text"],
+#tts-dropdown input[type="password"] {
+  flex: 1;
+  padding: 6px 8px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  font-size: 13px;
+}
+
+.tts-file-label input[type="file"] {
+  color: #c9d1d9;
+  font-size: 12px;
+}
+
+.tts-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.tts-hint {
+  font-size: 10px;
+  opacity: 0.6;
+  font-weight: 400;
+}
+
+.tts-radio-group {
+  display: flex;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.tts-radio-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  color: #8b949e;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tts-record-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#tts-ai-preset-section,
+#tts-ai-record-section {
+  display: grid;
+  gap: 8px;
+}
+
+#elevenlabs-clone-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#voxtral-refresh-btn,
+#elevenlabs-refresh-btn,
+#voxtral-record-btn,
+#voxtral-stop-btn,
+#clippy-retro-voice-btn,
+#voxtral-rerecord-btn,
+#tts-webspeech-test-btn,
+#tts-ai-test-btn,
+#elevenlabs-clone-btn,
+#elevenlabs-delete-btn {
+  padding: 5px 10px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+#voxtral-refresh-btn:hover,
+#elevenlabs-refresh-btn:hover,
+#voxtral-record-btn:hover,
+#voxtral-stop-btn:hover,
+#clippy-retro-voice-btn:hover,
+#voxtral-rerecord-btn:hover,
+#tts-webspeech-test-btn:hover,
+#tts-ai-test-btn:hover,
+#elevenlabs-clone-btn:hover,
+#elevenlabs-delete-btn:hover {
+  background: #30363d;
+}
+
+#clippy-retro-voice-btn {
+  width: 100%;
+  border-color: rgba(88, 166, 255, 0.35);
+}
+
+#tts-webspeech-test-btn,
+#tts-ai-test-btn,
+#elevenlabs-clone-btn {
+  border-color: rgba(88, 166, 255, 0.35);
+}
+
+#elevenlabs-delete-btn {
+  border-color: rgba(248, 81, 73, 0.35);
+}
+
+#voxtral-record-btn.recording {
+  border-color: #f85149;
+  color: #f85149;
+  animation: record-pulse 1.2s ease-in-out infinite;
+}
+
+#voxtral-record-timer {
+  color: #f85149;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+#voxtral-audio-preview {
+  width: 100%;
+  margin-top: 6px;
+  height: 32px;
+}
+
+#elevenlabs-clone-status {
+  line-height: 1.35;
+}
+
+@keyframes record-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes clippy-idle {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-8px) rotate(1.5deg); }
+}
+
+@keyframes clippy-speaking {
+  0%, 100% { transform: translateY(0) rotate(-2deg) scale(1); }
+  50% { transform: translateY(-7px) rotate(2deg) scale(1.035); }
+}
+
+@keyframes clippy-busy {
+  0%, 100% { transform: translate(0, 0) rotate(-4deg); }
+  25% { transform: translate(5px, -9px) rotate(5deg); }
+  50% { transform: translate(-2px, -3px) rotate(-1deg); }
+  75% { transform: translate(-5px, -8px) rotate(4deg); }
+}
+
+@keyframes clippy-thinking {
+  0%, 100% { transform: translateY(0) rotate(-5deg); }
+  50% { transform: translateY(-5px) rotate(7deg); }
+}
+
+@keyframes clippy-happy {
+  0%, 100% { transform: translateY(0) rotate(-7deg) scale(1); }
+  45% { transform: translateY(-15px) rotate(9deg) scale(1.06); }
+}
+
+@keyframes clippy-alert {
+  0%, 100% { transform: translateX(0) rotate(-3deg); }
+  25% { transform: translateX(-6px) rotate(-9deg); }
+  75% { transform: translateX(6px) rotate(7deg); }
+}
+
+@keyframes clippy-shadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.2; }
+  50% { transform: scaleX(0.82); opacity: 0.13; }
+}
+
+@keyframes clippy-look {
+  0%, 100% { transform: translateX(0); }
+  24% { transform: translate(4px, 1px); }
+  56% { transform: translate(-4px, 0); }
+}
+
+@keyframes clippy-scan {
+  0%, 100% { transform: translateX(-10px); }
+  50% { transform: translateX(10px); }
+}
+
+@keyframes clippy-brow-talk-left {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-4px) rotate(-4deg); }
+}
+
+@keyframes clippy-brow-talk-right {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-4px) rotate(4deg); }
 }
 
 @keyframes pulse {

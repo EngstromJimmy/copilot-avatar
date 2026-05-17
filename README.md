@@ -12,14 +12,21 @@ So I built this: a little screen buddy with some personality. It makes Copilot f
 
 ## Features
 
-- **Main avatar + sub-agent crew**: a big lead avatar up top, with helper agents popping in underneath as work fans out
-- **Per-agent activity states**: writing, reading, running, thinking, and idle all animate independently on the right avatar
+- **Main avatar + sub-agent squad view**: a large root Copilot avatar with dynamically spawned sub-agent avatars underneath it
+- **Optional Clippy mode**: swap the root avatar for an animated paperclip-style assistant on a transparent background
+- **Per-agent activity states**: writing, reading, running, thinking, and idle route independently to the right avatar
+- **Responsive squad layout**: sub-agents reflow into centered rows as the window changes size
+- **Activity and lifecycle reactions**: working states, success/failure moments, floating responses, and emoji-driven expressions keep things lively
 - **Optional avatar badges**: show or hide the full name/status card under each avatar
 - **Optional model badges**: show the current model for the main agent and sub-agents when you want the extra context
-- **Responsive sub-agent layout**: the whole cast reflows into neat centered rows as the window changes size
-- **Reactions and motion**: success/failure moments, floating responses, working states, and emoji-driven expressions keep things lively
 - **RoboDuck variant**: some agents can show up in full RoboDuck mode with the classic avatar head and a snap-on GLB duckbill
+- **Live response and working text**: final root-agent messages and current work status can stay visible beside the avatar
 - **Built-in TTS**: voice, speed, pitch, and saved settings so your desktop buddy can actually talk back
+  - Use the Web Speech API, Voxtral, or ElevenLabs TTS
+  - Point Voxtral at Mistral Cloud or a local vLLM server
+  - Record, import, or generate a retro Clippy reference clip for Voxtral reference audio
+  - Load ElevenLabs account voices directly from your ElevenLabs account
+  - Strip markdown before speaking and persist settings in `.tts-settings.json`
 
 ## Squad Integration
 
@@ -84,6 +91,8 @@ Open the avatar window, keep coding, and let it react to the session in real tim
 
 Sub-agents appear automatically when the current session emits sub-agent lifecycle events, so the whole scene fills out as work gets delegated.
 
+Select **Avatar → Clippy** in settings to show the animated grey `clippy.glb` paperclip on a transparent background. Clippy mode prefers an AI voice engine, hides response/status overlays, and speaks a short Clippy-style summary of the final Copilot response instead of reading the message verbatim. Import or record a reference clip while Clippy is selected to save it as the default Voxtral voice source. You can also use **Generate retro Clippy sample** to fetch a short pitched-up Microsoft Sam-style SAPI4 reference WAV at setup time instead of bundling an audio file. With ElevenLabs selected, choose one of your account voices instead.
+
 If Squad is available for the workspace, the avatar picks up that metadata automatically. Without Squad, it still works great as a plain Copilot companion.
 
 ## RoboDuck Asset Notes
@@ -110,9 +119,17 @@ The root avatar uses the same activity-state system even when there are no sub-a
 | --- | --- |
 | 🔇/🔊 button | Toggle speech on/off |
 | ⚙️ button | Open settings dropdown |
+| General / Speech tabs | Switch between avatar/window controls and TTS controls |
+| Avatar dropdown | Choose Copilot or Clippy |
+| Engine dropdown | Choose Web Speech, Voxtral, or ElevenLabs |
 | Show avatar badges | Show or hide the full badge card under each avatar |
 | Show model badges | Show or hide the model line inside each badge card |
 | Voice dropdown | Select a system voice |
+| Test selected voice | Preview the currently selected Web Speech, Voxtral, or ElevenLabs voice |
+| Voxtral backend | Choose Mistral Cloud or local vLLM |
+| ElevenLabs API key | Load voices from your ElevenLabs account |
+| Generate retro Clippy sample | Fetch and save a pitched-up Microsoft Sam-style reference clip for Clippy |
+| Import prerecorded voice | Save reference audio for Voxtral voice cloning |
 | Speed slider | Adjust rate from 0.5× to 3.0× |
 | Pitch slider | Adjust pitch from 0.5 to 2.0 |
 
@@ -131,8 +148,9 @@ copilot-avatar/
 └── content/
     ├── index.html      # Webview page
     ├── style.css       # Styling for the window and overlays
-    ├── main.js         # 3D scene, sub-agent logic, activity effects, TTS
+    ├── main.js         # 3D scene, squad logic, activity effects, TTS
     ├── model.glb       # 3D Copilot head model
+    ├── clippy.glb      # 3D animated Clippy model
     └── duck-bill.glb   # Optional RoboDuck beak asset
 ```
 

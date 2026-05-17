@@ -12,9 +12,33 @@ const DEFAULT_SETTINGS = Object.freeze({
     rate: 1.1,
     pitch: 1.0,
     voice: null,
+    windowWidth: 600,
+    windowHeight: 800,
+    transparentWindow: true,
+    avatarStyle: 'copilot',
+    engine: 'webspeech',
+    voxtralBackend: 'cloud',
+    voxtralUrl: 'http://localhost:18000',
+    voxtralApiKey: '',
+    voxtralVoice: 'en_paul_neutral',
+    voxtralVoiceSource: 'preset',
+    voxtralRefAudio: null,
+    clippyVoxtralVoice: 'en_paul_excited',
+    elevenlabsApiKey: '',
+    elevenlabsVoice: '',
+    elevenlabsClonedVoiceId: '',
+    elevenlabsClonedVoiceName: '',
+    elevenlabsCloneSourceHash: '',
+    clippyElevenlabsVoiceId: '',
+    clippyElevenlabsVoiceName: '',
+    clippyElevenlabsCloneSourceHash: '',
+    clippyRefAudio: null,
     showSpokenText: true,
+    showAvatarBadges: true,
     showModelBadges: false,
 });
+const clippyDefaultVoxtralVoice = 'en_paul_excited';
+const retroClippySampleText = "It looks like you're writing some code. Need a hand? I can help with that.";
 let folderName = basename(process.cwd());
 let currentSessionCwd = process.cwd();
 let squadContext = {
@@ -32,13 +56,26 @@ let lastSquadLogKey = "";
 let contextRefreshId = 0;
 const subagentIdsByToolCallId = new Map();
 const pendingModelsByToolCallId = new Map();
+const pendingThinkingByToolCallId = new Set();
 
 function normalizeSettings(settings) {
     if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
-        return { ...DEFAULT_SETTINGS };
+        return { ...DEFAULT_SETTINGS, windowSizeUnits: "physical" };
     }
 
-    return { ...DEFAULT_SETTINGS, ...settings };
+    const nextSettings = { ...DEFAULT_SETTINGS, ...settings };
+    nextSettings.windowWidth = normalizeWindowDimension(nextSettings.windowWidth, DEFAULT_SETTINGS.windowWidth, 320, 4096);
+    nextSettings.windowHeight = normalizeWindowDimension(nextSettings.windowHeight, DEFAULT_SETTINGS.windowHeight, 360, 3072);
+    nextSettings.windowSizeUnits = settings.windowSizeUnits === "physical" ? "physical" : "";
+    return nextSettings;
+}
+
+function normalizeWindowDimension(value, fallback, min, max) {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+        return fallback;
+    }
+    return Math.min(max, Math.max(min, Math.round(numericValue)));
 }
 
 function formatTitle() {
@@ -54,22 +91,63 @@ async function loadSettings() {
     }
 }
 
-async function saveSettings(settings) {
-    await writeFile(settingsPath, JSON.stringify(normalizeSettings(settings)), "utf-8");
+function applySettingsToWebview(settings) {
+    webview.width = settings.windowWidth;
+    webview.height = settings.windowHeight;
+    webview.transparent = settings.transparentWindow;
 }
+
+async function saveSettings(settings) {
+    const currentSettings = await loadSettings();
+    const nextSettings = normalizeSettings({ ...currentSettings, ...settings });
+    const transparencyChanged = webview.transparent !== nextSettings.transparentWindow;
+    await writeFile(settingsPath, JSON.stringify(nextSettings), "utf-8");
+    applySettingsToWebview(nextSettings);
+    if (transparencyChanged) {
+        void reopenWebviewForWindowStyleChange();
+    }
+    return {
+        windowWidth: nextSettings.windowWidth,
+        windowHeight: nextSettings.windowHeight,
+        transparentWindow: nextSettings.transparentWindow,
+        reopenedWindow: transparencyChanged && !!webview._handle,
+    };
+}
+
+async function generateRetroClippyVoice() {
+    const params = new URLSearchParams({
+        text: retroClippySampleText,
+        voice: "Sam",
+        pitch: "160",
+        speed: "165",
+    });
+    const response = await fetch(`https://www.tetyys.com/SAPI4/SAPI4?${params}`);
+    if (!response.ok) {
+        throw new Error(`SAPI4 voice generation failed (${response.status})`);
+    }
+    const contentType = response.headers.get("content-type") || "audio/wav";
+    const bytes = Buffer.from(await response.arrayBuffer());
+    return `data:${contentType};base64,${bytes.toString("base64")}`;
+}
+
+const initialSettings = await loadSettings();
 
 const webview = new CopilotWebview({
     extensionName: "copilot_avatar",
     contentDir: join(import.meta.dirname, "content"),
     title: formatTitle(),
-    width: 600,
-    height: 800,
+    width: initialSettings.windowWidth,
+    height: initialSettings.windowHeight,
+    transparent: initialSettings.transparentWindow,
+    alwaysOnTop: true,
     callbacks: {
         log: (msg, opts) => session.log(msg, opts),
         loadSettings: () => loadSettings(),
         saveSettings: (settings) => saveSettings(settings),
+        generateRetroClippyVoice: () => generateRetroClippyVoice(),
     },
 });
+applySettingsToWebview(initialSettings);
 
 async function syncTitle() {
     const title = formatTitle();
@@ -86,6 +164,30 @@ async function evalWebview(expression, timeoutMs = 2000) {
 
 async function callWindowFunction(name, value, timeoutMs = 2000) {
     await evalWebview(`window.${name}(${JSON.stringify(value)})`, timeoutMs);
+}
+
+let pendingWebviewReopen = null;
+
+async function reopenWebviewForWindowStyleChange() {
+    if (pendingWebviewReopen) {
+        return pendingWebviewReopen;
+    }
+
+    pendingWebviewReopen = (async () => {
+        if (!webview._handle) {
+            return;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        webview.close();
+        await webview.show();
+        await syncTitle();
+        await syncSquadContext();
+    })().finally(() => {
+        pendingWebviewReopen = null;
+    });
+
+    return pendingWebviewReopen;
 }
 
 function getSquadLogKey(context) {
@@ -145,6 +247,28 @@ async function syncPendingModelForSubagent(agentId, toolCallId) {
     const model = pendingModelsByToolCallId.get(toolCallId);
     pendingModelsByToolCallId.delete(toolCallId);
     await callWindowFunction("setAgentModel", { agentId, model }, 3000);
+}
+
+async function syncPendingThinkingForSubagent(agentId, toolCallId) {
+    if (!agentId || !toolCallId || !pendingThinkingByToolCallId.has(toolCallId)) {
+        return;
+    }
+
+    pendingThinkingByToolCallId.delete(toolCallId);
+    await callWindowFunction("setAgentThinking", agentId, 3000);
+}
+
+function resolveAgentIdFromEvent(event) {
+    if (event.agentId) {
+        return event.agentId;
+    }
+
+    const parentToolCallId = event.data?.parentToolCallId ?? null;
+    if (!parentToolCallId) {
+        return null;
+    }
+
+    return subagentIdsByToolCallId.get(parentToolCallId) ?? null;
 }
 
 function getIntentText(event) {
@@ -215,6 +339,7 @@ const session = await joinSession({
             },
             handler: async ({ reload = false } = {}) => {
                 try {
+                    applySettingsToWebview(await loadSettings());
                     await webview.show({ reload });
                     await syncTitle();
                     await syncSquadContext();
@@ -230,6 +355,7 @@ const session = await joinSession({
         name: "avatar",
         description: "Open the Copilot 3D avatar window.",
         handler: async () => {
+            applySettingsToWebview(await loadSettings());
             await webview.show();
             await syncTitle();
             await syncSquadContext();
@@ -289,6 +415,7 @@ session.on("subagent.started", async (event) => {
     }, 3000);
 
     await syncPendingModelForSubagent(event.agentId ?? null, toolCallId);
+    await syncPendingThinkingForSubagent(event.agentId ?? null, toolCallId);
 });
 
 session.on("subagent.completed", async (event) => {
@@ -346,7 +473,19 @@ session.on("tool.execution_complete", async (event) => {
 });
 
 session.on("assistant.reasoning", async (event) => {
-    await callWindowFunction("setAgentThinking", event.agentId ?? null);
+    const agentId = resolveAgentIdFromEvent(event);
+    if (agentId) {
+        await callWindowFunction("setAgentThinking", agentId, 3000);
+        return;
+    }
+
+    const parentToolCallId = event.data?.parentToolCallId ?? null;
+    if (parentToolCallId) {
+        pendingThinkingByToolCallId.add(parentToolCallId);
+        return;
+    }
+
+    await callWindowFunction("setAgentThinking", null, 3000);
 });
 
 session.on("assistant.usage", async (event) => {
@@ -421,6 +560,9 @@ session.on("assistant.turn_start", async (event) => {
 session.on("assistant.turn_end", async (event) => {
     if (event.agentId) return;
     await evalWebview("window.setWorking(false)");
+    if (rootTurnState.sawMessage && rootTurnState.lastMessage) {
+        await callWindowFunction("flushClippySummary", rootTurnState.lastMessage);
+    }
 
     if (rootTurnState.hadFailure || messageLooksFailed(rootTurnState.lastMessage)) {
         await callWindowFunction("setAgentExpression", {
