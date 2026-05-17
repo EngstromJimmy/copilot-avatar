@@ -41,6 +41,7 @@ Avatar 3D rendering and Squad-specific visual flair.
 - Mic boom 3D geometry and lifecycle pattern: created in `createSquadMicBoom()` (lines 731-778), added to root avatar only (line 2381), visibility set by `squadRootMicActive` boolean via `updateRootSquadMicBoom()` (line 2310). Squad-gating means boom is hidden until `window.setSquadContext({active: true})` is called from extension.
 - 2026-05-17T19:54:11.015+02:00 — Root-only webview chrome needs a latched-state replay path. For the mic fix, `.github/extensions/copilot-avatar/content/main.js` now reapplies `updateRootSquadMicBoom()` inside `initializeRootAvatar()`, and `.github/extensions/copilot-avatar/main.mjs` refreshes `syncSquadContext()` on root `assistant.turn_start` so a pre-open or pre-avatar Squad signal still lands once the webview is live.
 - 2026-05-17T20:00:51.651+02:00 — Final mic failure path: `.github/extensions/copilot-avatar/main.mjs` was already polling `window.__copilotAvatarReady`, but `.github/extensions/copilot-avatar/content/main.js` never set that flag, so `syncSquadContext()` skipped the first show/reopen replay and the root mic stayed hidden despite an active Squad context. Safe fix: set the ready flag after page boot, keep mic visibility on the existing `setSquadContext()` → `updateRootSquadMicBoom()` seam, and expose `window.__copilotAvatarState.rootMicVisible` for live regression probes.
+- 2026-05-17T20:10:26.460+02:00 — Generic Copilot labels like `General Purpose Agent` must be filtered in `.github/extensions/copilot-avatar/main.mjs` before payloads hit the webview. `content/main.js` already treats those labels as low-confidence, but it still needs richer upstream data, so `.github/extensions/copilot-avatar/lib/squad-context.mjs` now loads `.squad/casting/history.json` slot aliases (`lead`, `tester`, etc.) and the extension prefers cast metadata/roles over generic runtime labels.
 
 
 ## 2026-05-17 — Scribe Session Wrap-up
@@ -83,3 +84,22 @@ Avatar 3D rendering and Squad-specific visual flair.
 **Outcome:** Your webview-ready handshake (page sets `__copilotAvatarReady` flag) gates Squad context replay. Extension waits for that signal before calling `setSquadContext()`. Combined with mic boom replay in root-avatar init, this ensures first-paint visibility. Full coordination trail now in `.squad/orchestration-log/2026-05-17T18-00-51Z-{vision,shuri}.md`.
 
 **Team Visibility:** Session log in `.squad/log/2026-05-17T18-00-51Z-mic-state-handoff.md` summarizes both agents' findings for the broader team.
+
+---
+
+## 2026-05-17T20:10:26Z — Scribe: Cast Identity Resolution Cross-Agent Sync
+
+**From:** Scribe (Session Logger)
+
+**Context:** Vision and Shuri completed investigation into generic agent label regression. Scope expanded beyond mic boom to cover sub-agent cast name resolution seam failures.
+
+**What Scribe Did:**
+1. Merged inbox decisions (Howard identity verification, Shuri cast label precedence, Vision spawn metadata binding)
+2. Created orchestration logs: `.squad/orchestration-log/2026-05-17T18-10-26-{vision,shuri}.md`
+3. Session log: `.squad/log/2026-05-17T18-10-26-cast-identity.md`
+
+**Your Key Finding:** Generic Copilot labels like `General Purpose Agent` must be filtered in extension BEFORE webview receives them. Low-confidence detection in `content/main.js` is good defense but insufficient without upstream filtering. Solution: bring `GENERIC_AGENT_LABELS` and `isLowConfidenceLabel()` into `main.mjs`; prefer Squad displayName/role over generic labels before payload construction.
+
+**Files to Update:**
+- `.github/extensions/copilot-avatar/main.mjs` (filter + Squad preference on `subagent.started`, `.completed`, `.failed`)
+- `.github/extensions/copilot-avatar/lib/squad-context.mjs` (load `.squad/casting/history.json` for slot alias resolution)

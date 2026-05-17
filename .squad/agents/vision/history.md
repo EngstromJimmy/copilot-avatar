@@ -23,6 +23,8 @@ Implementing and refining sub-agent visibility, identity resolution, and metadat
 - Low-confidence label filtering in the webview is not enough if the extension layer passes generic Copilot labels before consulting Squad metadata; the filtering seam must be at the source (extension).
 - Webview improvements must be paired with extension-layer changes to avoid payload seams; generic labels like "General Purpose Agent" from Copilot SDK should be filtered in main.mjs before reaching `displayName` and `role` in the webview payload.
 - In CopilotWebview flows, `webview.show()` is not proof that page APIs exist yet; latch `window.__copilotAvatarReady` in `content/main.js` and wait for it in `main.mjs` before emitting `setSquadContext`, or root-only Squad chrome can miss first paint.
+- 2026-05-17T20:10:26.460+02:00 — Copilot’s parent spawn tool keeps the cast identity in `tool.execution_start.arguments` (`name` / `description`), not in `subagent.started` when the runtime agent type is generic. Cache that hint by `toolCallId`, bind it to the concrete `agentId` on first start, and let it outrank placeholder labels in `.github/extensions/copilot-avatar/main.mjs`.
+- 2026-05-17T20:10:26.460+02:00 — `.github/extensions/copilot-avatar/lib/squad-context.mjs` must resolve casting aliases from `.squad/casting/registry.json`; `.squad/casting/history.json` tracks persistent cast inventory but does not carry the assignment snapshot needed for `lead` / `tester` → cast-name lookup.
 
 ## Recent Work
 
@@ -197,3 +199,21 @@ Older work documented in `history-archive.md`:
 
 **Team Visibility:** Session log in `.squad/log/2026-05-17T18-00-51Z-mic-state-handoff.md` summarizes both agents' findings for the broader team.
 
+---
+
+## 2026-05-17T20:10:26Z — Scribe: Cast Identity Resolution Cross-Agent Sync
+
+**From:** Scribe (Session Logger)
+
+**Context:** Vision and Shuri completed investigation into generic agent label regression. Scope expanded beyond mic boom to cover sub-agent cast name resolution seam failures.
+
+**What Scribe Did:**
+1. Merged inbox decisions (Howard identity verification, Shuri cast label precedence, Vision spawn metadata binding)
+2. Created orchestration logs: `.squad/orchestration-log/2026-05-17T18-10-26-{vision,shuri}.md`
+3. Session log: `.squad/log/2026-05-17T18-10-26-cast-identity.md`
+
+**Decision Consolidation:**
+- **Shuri's decision:** Treat generic runtime labels as missing; restore casting-registry lookup
+- **Vision's decision:** Cache spawn tool metadata by toolCallId; bind to agentId before generic labels override
+
+**Outcome:** Sub-agent identity now flows from three sources in order: (1) cached spawn metadata, (2) Squad casting/roster, (3) generic fallback. Cast names (Tony Stark, Howard the Duck) now resolve correctly even when Copilot SDK reports generic labels. Files modified: `main.mjs`, `lib/squad-context.mjs`.

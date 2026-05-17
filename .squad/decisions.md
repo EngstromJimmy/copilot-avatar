@@ -1275,4 +1275,29 @@ When Copilot emits a real `subagent.started` event with weak identity fields, th
 
 ---
 
+### 2026-05-17T20:10:26.460+02:00: Prefer cast metadata over generic runtime labels
+
+**By:** Shuri (Frontend Dev)
+
+**What:** Sub-agent identity needs two linked fixes at the extension seam: load `.squad/casting/history.json` so slot aliases like `lead` and `tester` resolve to cast metadata, and treat low-confidence runtime labels like `General Purpose Agent` as missing before building the webview payload.
+
+**Why:** The page already has low-confidence label detection, but without Squad-enriched `displayName` / `role` data from `main.mjs`, it can only fall back to the same generic strings. Restoring the casting bridge gives the UI stable Tony/Howard-style names and roles without touching mic or badge lifecycle behavior.
+
+**Scope:** `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/lib/squad-context.mjs`
+
+---
+
+### 2026-05-17T20:10:26.460+02:00: Bind spawn metadata before generic sub-agent labels
+
+**By:** Vision (Platform Dev)
+
+**What:** Treat the parent spawn tool's `tool.execution_start.arguments` as the first reliable identity hint for Squad sub-agents. Cache the spawned `name` / `description` by `toolCallId`, bind that hint to the runtime `agentId` on `subagent.started`, and resolve the avatar payload from Squad metadata or spawn metadata before falling back to generic runtime labels like `General Purpose Agent`.
+
+**Why:** The live sub-agent events for `agent_type: "general-purpose"` can stay generic even when the spawned task itself was named `Tony Stark` or `Howard the Duck`. If the extension ignores the parent tool arguments and trusts `subagent.started` first, the generic SDK label short-circuits the whole Squad lookup chain and the UI never reaches the cast name.
+
+**Files touched:**
+- `.github/extensions/copilot-avatar/main.mjs`
+- `.github/extensions/copilot-avatar/lib/squad-context.mjs`
+
+---
 
