@@ -338,6 +338,13 @@ let baseAsset = null;
 let duckBeakAsset = null;
 let clippyRoot = null;
 let clippyMixer = null;
+
+window.__copilotAvatarReady = false;
+window.__copilotAvatarState = {
+    rootAvatarReady: false,
+    squadRootMicActive: false,
+    rootMicVisible: false,
+};
 let clippyActions = [];
 let clippyActiveAction = null;
 let clippyCurrentAnimationKey = '';
@@ -874,25 +881,87 @@ function getLiveIntentText(avatar, now = performance.now()) {
     return avatar.intentText && avatar.intentUntil > now ? avatar.intentText : '';
 }
 
+function normalizeComparisonText(value) {
+    return cleanAgentLabel(value)
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function isRoleLikeDetailText(value, role = '') {
+    const normalizedValue = normalizeComparisonText(value);
+    const normalizedRole = normalizeComparisonText(role);
+    if (!normalizedValue || !normalizedRole) return false;
+    return normalizedValue === normalizedRole || normalizedValue.startsWith(`${normalizedRole} `);
+}
+
+function getAvatarTaskSummary(avatar) {
+    const detailText = cleanAgentLabel(avatar?.detailText || '');
+    if (detailText) {
+        return detailText;
+    }
+
+    const taskSummary = cleanAgentLabel(avatar?.taskSummary || '');
+    if (taskSummary) {
+        return taskSummary;
+    }
+
+    const description = cleanAgentLabel(avatar?.description || '');
+    if (!description || isRoleLikeDetailText(description, avatar?.role || '')) {
+        return '';
+    }
+
+    return description;
+}
+
+function joinDistinctDetailParts(parts) {
+    const seen = new Set();
+    const joined = [];
+    for (const part of parts) {
+        const cleaned = cleanAgentLabel(part);
+        if (!cleaned) continue;
+        const normalized = normalizeComparisonText(cleaned);
+        if (normalized && seen.has(normalized)) continue;
+        if (normalized) seen.add(normalized);
+        joined.push(cleaned);
+    }
+    return joined.join(' • ');
+}
+
 function getAvatarBadgeText(avatar, activity, now = performance.now()) {
     const badge = ACTIVITY_BADGES[activity] || ACTIVITY_BADGES.idle;
+    return badge.text;
+}
+
+function getAvatarDetailText(avatar, activity, now = performance.now()) {
     const liveIntent = getLiveIntentText(avatar, now);
     const latestTool = getLatestToolEntry(avatar);
-    const liveActivity = latestTool?.activityLabel || describeToolActivity(latestTool?.toolName);
+    const explicitToolDetail = latestTool?.explicitActivityLabel ? latestTool.activityLabel : '';
+    const fallbackToolDetail = latestTool?.activityLabel || describeToolActivity(latestTool?.toolName);
+    const taskSummary = getAvatarTaskSummary(avatar);
+    const modelThinkingDetail = avatar.modelLabel ? `Thinking with ${avatar.modelLabel}` : '';
 
     if (avatar.effectState === 'success' || avatar.effectState === 'failed') {
-        return liveIntent || badge.text;
+        return liveIntent || '';
     }
 
     if (latestTool) {
-        return liveActivity || liveIntent || badge.text;
+        return joinDistinctDetailParts([liveIntent || taskSummary, explicitToolDetail || fallbackToolDetail])
+            || liveIntent
+            || taskSummary
+            || fallbackToolDetail
+            || '';
     }
 
     if (activity === 'thinking') {
-        return liveIntent || badge.text;
+        return joinDistinctDetailParts([liveIntent || taskSummary, modelThinkingDetail])
+            || liveIntent
+            || taskSummary
+            || modelThinkingDetail
+            || '';
     }
 
-    return liveIntent || (activity === 'idle' && avatar.role ? avatar.role : badge.text);
+    return liveIntent || taskSummary || '';
 }
 
 function getRoleStyle(data = {}) {
@@ -2024,8 +2093,14 @@ function createOverlay(agentId) {
     labelEl.className = 'subagent-label';
     labelEl.dataset.agentId = agentId;
 
+    const headerEl = document.createElement('div');
+    headerEl.className = 'agent-header';
+
     const nameEl = document.createElement('span');
     nameEl.className = 'agent-name';
+
+    const roleEl = document.createElement('span');
+    roleEl.className = 'agent-role';
 
     const modelEl = document.createElement('span');
     modelEl.className = 'agent-model';
@@ -2039,11 +2114,15 @@ function createOverlay(agentId) {
     const badgeTextEl = document.createElement('span');
     badgeTextEl.className = 'agent-badge-text';
 
+    const detailEl = document.createElement('div');
+    detailEl.className = 'agent-detail';
+
+    headerEl.append(nameEl, roleEl);
     badgeEl.append(badgeIconEl, badgeTextEl);
-    labelEl.append(nameEl, modelEl, badgeEl);
+    labelEl.append(headerEl, modelEl, badgeEl, detailEl);
     overlayContainer.appendChild(labelEl);
 
-    return { labelEl, nameEl, modelEl, badgeEl, badgeIconEl, badgeTextEl };
+    return { labelEl, headerEl, nameEl, roleEl, modelEl, badgeEl, badgeIconEl, badgeTextEl, detailEl };
 }
 
 function cleanAgentLabel(value) {
@@ -2285,6 +2364,7 @@ function updateBadgeVisibility() {
     modelVisibilityToggle.checked = showModelBadges;
     for (const avatar of avatars.values()) {
         updateAvatarModelDisplay(avatar);
+        updateAvatarBadge(avatar);
     }
     updateRootModelIndicator();
     updateSubtaskDisplay();
@@ -2306,8 +2386,23 @@ function applyAvatarModel(avatar, model) {
 }
 
 function updateRootSquadMicBoom(avatar = avatars.get(ROOT_AGENT_ID)) {
-    if (!avatar?.isRoot || !avatar.squadMicBoom) return;
+    if (!avatar?.isRoot || !avatar.squadMicBoom) {
+        window.__copilotAvatarState = {
+            ...(window.__copilotAvatarState || {}),
+            rootAvatarReady: !!avatars.get(ROOT_AGENT_ID),
+            squadRootMicActive,
+            rootMicVisible: false,
+        };
+        return;
+    }
+
     avatar.squadMicBoom.visible = squadRootMicActive;
+    window.__copilotAvatarState = {
+        ...(window.__copilotAvatarState || {}),
+        rootAvatarReady: true,
+        squadRootMicActive,
+        rootMicVisible: !!avatar.squadMicBoom.visible,
+    };
 }
 
 function createAvatarInstance(agentId, data = {}) {
@@ -2379,6 +2474,8 @@ function createAvatarInstance(agentId, data = {}) {
         agentName: data.agentName || '',
         displayName: resolveAvatarDisplayName(agentId, data),
         description: data.description || '',
+        detailText: cleanAgentLabel(data.detailText || data.taskSummary || ''),
+        taskSummary: cleanAgentLabel(data.taskSummary || ''),
         role: data.role || '',
         modelName: '',
         modelLabel: '',
@@ -2493,6 +2590,8 @@ function disposeAvatar(avatar) {
 
 function updateAvatarMetadata(avatar, data = {}) {
     const wasDuck = avatar.isDuck;
+    const hasDetailText = Object.prototype.hasOwnProperty.call(data, 'detailText');
+    const hasTaskSummary = Object.prototype.hasOwnProperty.call(data, 'taskSummary');
 
     if (data.agentName) avatar.agentName = data.agentName;
     avatar.displayName = resolveAvatarDisplayName(avatar.agentId, {
@@ -2500,6 +2599,8 @@ function updateAvatarMetadata(avatar, data = {}) {
         agentName: data.agentName || avatar.agentName,
     }, avatar.displayName);
     if (data.description) avatar.description = data.description;
+    if (hasDetailText) avatar.detailText = cleanAgentLabel(data.detailText);
+    if (hasTaskSummary) avatar.taskSummary = cleanAgentLabel(data.taskSummary);
     if (data.role) avatar.role = data.role;
     avatar.isDuck = avatar.isDuck || isDuckAgent({
         isDuck: data.isDuck,
@@ -2518,8 +2619,12 @@ function updateAvatarMetadata(avatar, data = {}) {
 
     if (avatar.overlay) {
         avatar.overlay.nameEl.textContent = avatar.displayName;
+        avatar.overlay.roleEl.textContent = avatar.role;
+        avatar.overlay.roleEl.classList.toggle('visible', !!avatar.role);
+        avatar.overlay.roleEl.title = avatar.role || '';
         applyRoleStyle(avatar);
         updateAvatarModelDisplay(avatar);
+        updateAvatarBadge(avatar);
     }
 
     if (avatar.isDuck && (!wasDuck || !avatar.duckBeak?.userData.isImported) && duckBeakAsset?.geometries?.length) {
@@ -3110,17 +3215,18 @@ function updateAvatarBadge(avatar, now = performance.now()) {
             : getResolvedActivity(avatar, now);
 
     const badge = ACTIVITY_BADGES[activity] || ACTIVITY_BADGES.idle;
-    const roleStyle = avatar.roleStyle || ROLE_STYLES.default;
     const badgeText = getAvatarBadgeText(avatar, activity, now);
+    const detailText = getAvatarDetailText(avatar, activity, now);
     avatar.overlay.badgeEl.className = `agent-badge ${activity}`;
     avatar.overlay.badgeIconEl.textContent = activity === 'idle'
         ? avatar.isDuck
             ? '🦆'
-            : avatar.role
-                ? roleStyle.icon
-                : badge.icon
+            : badge.icon
         : badge.icon;
     avatar.overlay.badgeTextEl.textContent = badgeText;
+    avatar.overlay.detailEl.textContent = detailText;
+    avatar.overlay.detailEl.classList.toggle('visible', showAvatarBadges && !!detailText);
+    avatar.overlay.detailEl.title = detailText || '';
 }
 
 function beginAvatarRemoval(avatar) {
@@ -3711,7 +3817,8 @@ function updateCamera(layout = layoutState) {
 }
 
 function initializeRootAvatar() {
-    ensureAvatar(ROOT_AGENT_ID, { displayName: 'Copilot', agentName: '@copilot' });
+    const rootAvatar = ensureAvatar(ROOT_AGENT_ID, { displayName: 'Copilot', agentName: '@copilot' });
+    updateRootSquadMicBoom(rootAvatar);
 }
 
 function clearDemoAgents() {
@@ -3993,6 +4100,7 @@ window.setAgentActivity = (payload = {}) => {
     avatar.activeTools.set(key, {
         toolName: payload.toolName || '',
         activityLabel: payload.activityLabel || describeToolActivity(payload.toolName || '') || formatToolLabel(payload.toolName || ''),
+        explicitActivityLabel: !!payload.activityLabel,
         activity: classifyTool(payload.toolName || ''),
         startedAt: existingEntry?.startedAt ?? performance.now(),
     });
@@ -4017,8 +4125,9 @@ window.clearAgentActivity = (payload = {}) => {
     }
 };
 
-window.setAgentThinking = (agentId) => {
-    const avatar = ensureAvatar(agentId || ROOT_AGENT_ID);
+window.setAgentThinking = (payload = {}) => {
+    const data = typeof payload === 'object' && payload !== null ? payload : { agentId: payload };
+    const avatar = ensureAvatar(data.agentId || ROOT_AGENT_ID, data);
     if (!avatar.isRoot && (avatar.effectState === 'success' || avatar.effectState === 'failed')) return;
     avatar.thinkingUntil = performance.now() + THINKING_HOLD_MS;
     if (avatar.isRoot) {
@@ -5338,6 +5447,7 @@ updateStatusIndicator();
 updateBadgeVisibility();
 updateCamera();
 startAnimation();
+window.__copilotAvatarReady = true;
 
 void (async () => {
     try {

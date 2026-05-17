@@ -68,6 +68,12 @@ function truncateText(value, maxLength = 140) {
     return `${text.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
+function titleCaseWords(value) {
+    return cleanMarkdownText(value)
+        .replace(/[-_]+/g, " ")
+        .replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
+}
+
 function getMarkdownField(content, label) {
     const expression = new RegExp(`^-\\s*\\*\\*${label}:\\*\\*\\s*(.+)$`, "im");
     return cleanMarkdownText(content.match(expression)?.[1] || "");
@@ -177,6 +183,19 @@ async function safeReadFile(path) {
     }
 }
 
+async function safeReadJson(path) {
+    const content = await safeReadFile(path);
+    if (!content) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(content);
+    } catch {
+        return null;
+    }
+}
+
 function resolveSquadReferencePath(squadPath, referencePath) {
     if (!referencePath || referencePath === "—") {
         return "";
@@ -206,6 +225,31 @@ async function loadCharterSummary(squadPath, referencePath, role) {
     }
 
     return summarizeCharter(content, role);
+}
+
+async function loadCharterMetadata(squadPath, referencePath, fallbackRole = "") {
+    const charterPath = resolveSquadReferencePath(squadPath, referencePath);
+    const cleanFallbackRole = cleanMarkdownText(fallbackRole);
+    if (!charterPath || !existsSync(charterPath)) {
+        return {
+            role: cleanFallbackRole,
+            description: truncateText(cleanFallbackRole, 160),
+        };
+    }
+
+    const content = await safeReadFile(charterPath);
+    if (!content) {
+        return {
+            role: cleanFallbackRole,
+            description: truncateText(cleanFallbackRole, 160),
+        };
+    }
+
+    const role = cleanMarkdownText(getMarkdownField(content, "Role") || cleanFallbackRole);
+    return {
+        role,
+        description: summarizeCharter(content, role) || truncateText(role, 160),
+    };
 }
 
 async function loadRosterMetadata(squadPath) {
@@ -353,6 +397,75 @@ async function loadConfigMetadata(sdk, cwd) {
     }
 }
 
+function getLatestCastingSnapshot(history) {
+    const snapshots = history?.assignment_cast_snapshots;
+    if (!snapshots || typeof snapshots !== "object") {
+        return null;
+    }
+
+    const usageHistory = Array.isArray(history?.universe_usage_history)
+        ? [...history.universe_usage_history].reverse()
+        : [];
+    for (const entry of usageHistory) {
+        const assignmentId = cleanMarkdownText(entry?.assignment_id || "");
+        const snapshot = assignmentId ? snapshots[assignmentId] : null;
+        if (snapshot?.agents && typeof snapshot.agents === "object") {
+            return snapshot;
+        }
+    }
+
+    const availableSnapshots = Object.values(snapshots)
+        .filter((snapshot) => snapshot?.agents && typeof snapshot.agents === "object")
+        .sort((left, right) => String(left?.created_at || "").localeCompare(String(right?.created_at || "")));
+    return availableSnapshots.length ? availableSnapshots[availableSnapshots.length - 1] : null;
+}
+
+async function loadCastingMetadata(squadPath) {
+    const castingRegistryPath = join(squadPath, "casting", "registry.json");
+    const castingHistoryPath = join(squadPath, "casting", "history.json");
+    const [castingRegistry, castingHistory] = await Promise.all([
+        safeReadJson(castingRegistryPath),
+        safeReadJson(castingHistoryPath),
+    ]);
+
+    const snapshot = getLatestCastingSnapshot(castingRegistry) || getLatestCastingSnapshot(castingHistory);
+    if (!snapshot?.agents || typeof snapshot.agents !== "object") {
+        return [];
+    }
+
+    const castingEntries = Object.entries(snapshot.agents)
+        .map(([slotAlias, castName]) => ({
+            id: normalizeAgentKey(slotAlias),
+            displayName: cleanMarkdownText(castName),
+        }))
+        .filter((agent) => agent.id && agent.displayName);
+
+    return Promise.all(castingEntries.map(async (agent) => {
+        const charterPath = deriveDefaultCharterPath(normalizeAgentKey(agent.displayName));
+        const charter = await loadCharterMetadata(squadPath, charterPath, titleCaseWords(agent.id));
+        return {
+            id: agent.id,
+            name: agent.displayName,
+            displayName: agent.displayName,
+            role: charter.role || titleCaseWords(agent.id),
+            description: charter.description || "",
+        };
+    }));
+}
+
+function isStableLookupAgentId(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    if (/^agent[-_]?call\b/.test(normalized) || /^subagent[-_]/.test(normalized)) {
+        return false;
+    }
+
+    return /^[a-z0-9@_-]+$/.test(normalized);
+}
+
 function buildAgentLookup(agents) {
     const lookup = new Map();
 
@@ -383,10 +496,10 @@ function buildAgentLookup(agents) {
     return lookup;
 }
 
-function mergeAgentSources(rosterAgents, configAgents) {
+function mergeAgentSources(rosterAgents, configAgents, castingAgents = []) {
     const merged = new Map();
 
-    for (const agent of [...configAgents, ...rosterAgents]) {
+    for (const agent of [...configAgents, ...rosterAgents, ...castingAgents]) {
         const key = normalizeAgentKey(agent.id || agent.displayName);
         if (!key) {
             continue;
@@ -437,11 +550,12 @@ export async function loadSquadContext(cwd = process.cwd()) {
     }
 
     try {
-        const [rosterMetadata, configMetadata] = await Promise.all([
+        const [rosterMetadata, configMetadata, castingMetadata] = await Promise.all([
             loadRosterMetadata(squadPath),
             loadConfigMetadata(sdk, resolvedCwd),
+            loadCastingMetadata(squadPath),
         ]);
-        const agents = mergeAgentSources(rosterMetadata.agents, configMetadata?.agents || []);
+        const agents = mergeAgentSources(rosterMetadata.agents, configMetadata?.agents || [], castingMetadata);
         const teamName = cleanMarkdownText(configMetadata?.teamName || "");
         const coordinatorName = cleanMarkdownText(rosterMetadata.coordinatorName || "Squad");
 
@@ -483,13 +597,16 @@ export function getSquadWindowContext(context) {
 }
 
 export function resolveSquadAgentMetadata(context, agentData = {}) {
-    if (!context?.active || !(context.agentsByKey instanceof Map)) {
+    if (!(context?.agentsByKey instanceof Map) || context.agentsByKey.size === 0) {
         return null;
     }
 
     const keys = [
+        normalizeAgentKey(agentData.spawnDisplayName),
+        normalizeAgentKey(agentData.spawnName),
         normalizeAgentKey(agentData.agentName),
         normalizeAgentKey(agentData.agentDisplayName),
+        isStableLookupAgentId(agentData.agentId) ? normalizeAgentKey(agentData.agentId) : "",
     ].filter(Boolean);
 
     for (const key of keys) {

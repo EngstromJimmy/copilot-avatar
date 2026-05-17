@@ -39,6 +39,20 @@ const DEFAULT_SETTINGS = Object.freeze({
 });
 const clippyDefaultVoxtralVoice = 'en_paul_excited';
 const retroClippySampleText = "It looks like you're writing some code. Need a hand? I can help with that.";
+const WEBVIEW_READY_POLL_MS = 100;
+const WEBVIEW_READY_TIMEOUT_MS = 5000;
+const SUBAGENT_SPAWN_TOOLS = new Set(["task", "runSubagent", "agent"]);
+const GENERIC_AGENT_LABELS = new Set([
+    "agent",
+    "assistant",
+    "coding agent",
+    "general purpose",
+    "general purpose agent",
+    "general-purpose",
+    "general-purpose agent",
+    "subagent",
+    "task agent",
+]);
 let folderName = basename(process.cwd());
 let currentSessionCwd = process.cwd();
 let squadContext = {
@@ -57,6 +71,8 @@ let contextRefreshId = 0;
 const subagentIdsByToolCallId = new Map();
 const pendingModelsByToolCallId = new Map();
 const pendingThinkingByToolCallId = new Set();
+const subagentSpawnMetadataByToolCallId = new Map();
+const subagentSpawnMetadataByAgentId = new Map();
 
 function normalizeSettings(settings) {
     if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
@@ -162,8 +178,48 @@ async function evalWebview(expression, timeoutMs = 2000) {
     await webview.eval(expression, { timeoutMs }).catch(() => {});
 }
 
+async function waitForWebviewReady(timeoutMs = WEBVIEW_READY_TIMEOUT_MS) {
+    if (!webview._handle) {
+        return false;
+    }
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) {
+            break;
+        }
+
+        try {
+            const ready = await webview.eval("window.__copilotAvatarReady === true", {
+                timeoutMs: Math.max(250, Math.min(1000, remainingMs)),
+            });
+            if (ready === true) {
+                return true;
+            }
+        } catch {}
+
+        await new Promise((resolve) => setTimeout(resolve, WEBVIEW_READY_POLL_MS));
+    }
+
+    return false;
+}
+
 async function callWindowFunction(name, value, timeoutMs = 2000) {
     await evalWebview(`window.${name}(${JSON.stringify(value)})`, timeoutMs);
+}
+
+async function syncVisibleWindowState({ waitForReady = false } = {}) {
+    if (!webview._handle) {
+        return;
+    }
+
+    if (waitForReady) {
+        await waitForWebviewReady();
+    }
+
+    await syncTitle();
+    await syncSquadContext();
 }
 
 let pendingWebviewReopen = null;
@@ -181,8 +237,7 @@ async function reopenWebviewForWindowStyleChange() {
         await new Promise((resolve) => setTimeout(resolve, 0));
         webview.close();
         await webview.show();
-        await syncTitle();
-        await syncSquadContext();
+        await syncVisibleWindowState({ waitForReady: true });
     })().finally(() => {
         pendingWebviewReopen = null;
     });
@@ -220,6 +275,13 @@ async function maybeLogSquadContext(context) {
 }
 
 async function syncSquadContext() {
+    if (!webview._handle) {
+        return;
+    }
+    const ready = await waitForWebviewReady();
+    if (!ready) {
+        return;
+    }
     await callWindowFunction("setSquadContext", getSquadWindowContext(squadContext), 3000);
 }
 
@@ -232,10 +294,8 @@ async function refreshSessionContext(cwd = process.cwd()) {
     if (refreshId !== contextRefreshId) {
         return;
     }
-
     squadContext = nextSquadContext;
-    await syncTitle();
-    await syncSquadContext();
+    await syncVisibleWindowState();
     await maybeLogSquadContext(nextSquadContext);
 }
 
@@ -246,7 +306,11 @@ async function syncPendingModelForSubagent(agentId, toolCallId) {
 
     const model = pendingModelsByToolCallId.get(toolCallId);
     pendingModelsByToolCallId.delete(toolCallId);
-    await callWindowFunction("setAgentModel", { agentId, model }, 3000);
+    const displayData = resolveSubagentDisplayData({
+        agentId,
+        data: { toolCallId },
+    });
+    await callWindowFunction("setAgentModel", buildSubagentPayload(displayData, { model }), 3000);
 }
 
 async function syncPendingThinkingForSubagent(agentId, toolCallId) {
@@ -255,7 +319,11 @@ async function syncPendingThinkingForSubagent(agentId, toolCallId) {
     }
 
     pendingThinkingByToolCallId.delete(toolCallId);
-    await callWindowFunction("setAgentThinking", agentId, 3000);
+    const displayData = resolveSubagentDisplayData({
+        agentId,
+        data: { toolCallId },
+    });
+    await callWindowFunction("setAgentThinking", buildSubagentPayload(displayData), 3000);
 }
 
 function resolveAgentIdFromEvent(event) {
@@ -277,6 +345,285 @@ function getIntentText(event) {
 
 function getToolLabel(toolName) {
     return (toolName || "").replace(/[_-]+/g, " ").trim();
+}
+
+function cleanAgentLabel(value) {
+    return String(value || "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function normalizeAgentLabel(value) {
+    return cleanAgentLabel(value)
+        .replace(/[_-]+/g, " ")
+        .toLowerCase();
+}
+
+function isLowConfidenceAgentLabel(value, agentId = "") {
+    const normalized = normalizeAgentLabel(value);
+    if (!normalized) {
+        return false;
+    }
+
+    if (GENERIC_AGENT_LABELS.has(normalized)) {
+        return true;
+    }
+
+    const normalizedAgentId = normalizeAgentLabel(agentId);
+    return !!normalizedAgentId && normalized === normalizedAgentId;
+}
+
+function humanizeAgentName(value) {
+    const cleaned = cleanAgentLabel(value).replace(/^@+/, "");
+    if (!cleaned) {
+        return "";
+    }
+
+    return cleaned
+        .split(/[-_]+/g)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+
+function pickPreferredAgentLabel(candidates, agentId = "") {
+    const normalizedCandidates = candidates
+        .map((candidate) => cleanAgentLabel(candidate))
+        .filter(Boolean);
+
+    for (const candidate of normalizedCandidates) {
+        if (!isLowConfidenceAgentLabel(candidate, agentId)) {
+            return candidate;
+        }
+    }
+
+    return normalizedCandidates[0] || "";
+}
+
+function extractSpawnDisplayName(description) {
+    const cleaned = cleanAgentLabel(description).replace(/^[^\p{L}\p{N}@]+/u, "");
+    if (!cleaned) {
+        return "";
+    }
+
+    const colonMatch = cleaned.match(/^(.+?)\s*:\s+.+$/u);
+    if (colonMatch?.[1]) {
+        return cleanAgentLabel(colonMatch[1]);
+    }
+
+    const dashMatch = cleaned.match(/^(.+?)\s+[—–-]\s+.+$/u);
+    if (dashMatch?.[1]) {
+        return cleanAgentLabel(dashMatch[1]);
+    }
+
+    return "";
+}
+
+function escapeRegExp(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripLeadingAgentLabel(text, labels = []) {
+    const cleanedText = cleanAgentLabel(text);
+    if (!cleanedText) {
+        return "";
+    }
+
+    for (const label of labels.map((value) => cleanAgentLabel(value)).filter(Boolean)) {
+        const pattern = new RegExp(`^${escapeRegExp(label)}\\s*[:—–-]\\s+`, "iu");
+        if (pattern.test(cleanedText)) {
+            return cleanAgentLabel(cleanedText.replace(pattern, ""));
+        }
+    }
+
+    return cleanedText;
+}
+
+function resolveSubagentTaskSummary({ spawnMetadata, runtimeDescription, displayName, agentName, role }) {
+    const labels = [
+        displayName,
+        agentName,
+        role,
+        spawnMetadata?.displayName,
+        humanizeAgentName(spawnMetadata?.name),
+        spawnMetadata?.name,
+    ]
+        .map((value) => cleanAgentLabel(value))
+        .filter(Boolean);
+
+    for (const candidate of [spawnMetadata?.description, runtimeDescription]) {
+        const summary = stripLeadingAgentLabel(candidate, labels);
+        if (!summary) {
+            continue;
+        }
+
+        const normalizedSummary = normalizeAgentLabel(summary);
+        if (!normalizedSummary || labels.some((label) => normalizeAgentLabel(label) === normalizedSummary)) {
+            continue;
+        }
+
+        return summary;
+    }
+
+    return "";
+}
+
+function parseToolArguments(rawArguments) {
+    if (!rawArguments) {
+        return null;
+    }
+
+    if (typeof rawArguments === "string") {
+        try {
+            const parsed = JSON.parse(rawArguments);
+            return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+        } catch {
+            return null;
+        }
+    }
+
+    return typeof rawArguments === "object" && !Array.isArray(rawArguments) ? rawArguments : null;
+}
+
+function extractSubagentSpawnMetadata(toolName, rawArguments) {
+    if (!SUBAGENT_SPAWN_TOOLS.has(toolName)) {
+        return null;
+    }
+
+    const argumentsObject = parseToolArguments(rawArguments);
+    if (!argumentsObject) {
+        return null;
+    }
+
+    const name = cleanAgentLabel(argumentsObject.name);
+    const description = cleanAgentLabel(argumentsObject.description);
+    const displayName = pickPreferredAgentLabel([
+        extractSpawnDisplayName(description),
+        cleanAgentLabel(argumentsObject.displayName),
+        humanizeAgentName(name),
+        name,
+    ]);
+
+    if (!name && !displayName) {
+        return null;
+    }
+
+    return {
+        name,
+        displayName,
+        description,
+    };
+}
+
+function getSubagentSpawnMetadata(toolCallId, agentId = null) {
+    if (agentId && subagentSpawnMetadataByAgentId.has(agentId)) {
+        return subagentSpawnMetadataByAgentId.get(agentId);
+    }
+
+    if (toolCallId && subagentSpawnMetadataByToolCallId.has(toolCallId)) {
+        return subagentSpawnMetadataByToolCallId.get(toolCallId);
+    }
+
+    return null;
+}
+
+function bindSubagentSpawnMetadata(agentId, toolCallId, metadata) {
+    if (!metadata) {
+        return;
+    }
+
+    if (toolCallId) {
+        subagentSpawnMetadataByToolCallId.set(toolCallId, metadata);
+    }
+
+    if (agentId) {
+        subagentSpawnMetadataByAgentId.set(agentId, metadata);
+    }
+}
+
+function releaseSubagentSpawnMetadata(agentId, toolCallId) {
+    if (toolCallId) {
+        subagentSpawnMetadataByToolCallId.delete(toolCallId);
+    }
+
+    if (agentId) {
+        subagentSpawnMetadataByAgentId.delete(agentId);
+    }
+}
+
+function resolveSubagentDisplayData(event) {
+    const agentId = event.agentId ?? null;
+    const toolCallId = event.data?.toolCallId ?? event.data?.parentToolCallId ?? null;
+    const spawnMetadata = getSubagentSpawnMetadata(toolCallId, agentId);
+    if (agentId && spawnMetadata) {
+        bindSubagentSpawnMetadata(agentId, toolCallId, spawnMetadata);
+    }
+
+    const runtimeAgentName = cleanAgentLabel(event.data?.agentName);
+    const runtimeDisplayName = cleanAgentLabel(event.data?.agentDisplayName);
+    const runtimeDescription = cleanAgentLabel(event.data?.agentDescription);
+    const squadAgent = resolveSquadAgentMetadata(squadContext, {
+        agentId,
+        agentName: runtimeAgentName,
+        agentDisplayName: runtimeDisplayName,
+        spawnName: spawnMetadata?.name,
+        spawnDisplayName: spawnMetadata?.displayName,
+    });
+    const displayName = pickPreferredAgentLabel([
+        squadAgent?.displayName,
+        spawnMetadata?.displayName,
+        runtimeDisplayName,
+        runtimeAgentName,
+        humanizeAgentName(spawnMetadata?.name),
+    ], agentId) || runtimeDisplayName || runtimeAgentName || agentId || "";
+    const agentName = pickPreferredAgentLabel([
+        squadAgent?.displayName,
+        spawnMetadata?.displayName,
+        runtimeAgentName,
+        humanizeAgentName(spawnMetadata?.name),
+        spawnMetadata?.name,
+    ], agentId) || runtimeAgentName || cleanAgentLabel(spawnMetadata?.name) || "";
+    const role = cleanAgentLabel(squadAgent?.role);
+    const taskSummary = resolveSubagentTaskSummary({
+        spawnMetadata,
+        runtimeDescription,
+        displayName,
+        agentName,
+        role,
+    });
+    const description = runtimeDescription || squadAgent?.description || "";
+
+    return {
+        agentId,
+        agentName,
+        displayName,
+        description,
+        taskSummary,
+        detailText: taskSummary,
+        role,
+        isDuck: isDuckAgent({
+            agentId,
+            agentName,
+            agentDisplayName: displayName,
+            agentDescription: description,
+        }),
+        toolCallId,
+    };
+}
+
+function buildSubagentPayload(displayData, extra = {}) {
+    return {
+        agentId: displayData.agentId,
+        agentName: displayData.agentName,
+        displayName: displayData.displayName,
+        description: displayData.description,
+        taskSummary: displayData.taskSummary,
+        detailText: displayData.detailText,
+        role: displayData.role,
+        isDuck: displayData.isDuck,
+        toolCallId: displayData.toolCallId,
+        ...extra,
+    };
 }
 
 function isDuckAgent(agentData = {}) {
@@ -341,8 +688,7 @@ const session = await joinSession({
                 try {
                     applySettingsToWebview(await loadSettings());
                     await webview.show({ reload });
-                    await syncTitle();
-                    await syncSquadContext();
+                    await syncVisibleWindowState({ waitForReady: true });
                     return reload ? "Avatar window refreshed." : "Avatar window opened.";
                 } catch (e) {
                     return `Error: ${e.message}`;
@@ -357,8 +703,7 @@ const session = await joinSession({
         handler: async () => {
             applySettingsToWebview(await loadSettings());
             await webview.show();
-            await syncTitle();
-            await syncSquadContext();
+            await syncVisibleWindowState({ waitForReady: true });
         },
     }],
     hooks: {
@@ -390,70 +735,54 @@ session.on("session.context_changed", (event) => {
 });
 
 session.on("subagent.started", async (event) => {
-    const toolCallId = event.data?.toolCallId ?? null;
+    const displayData = resolveSubagentDisplayData(event);
+    const toolCallId = displayData.toolCallId;
     if (event.agentId && toolCallId) {
         subagentIdsByToolCallId.set(toolCallId, event.agentId);
     }
 
-    const squadAgent = resolveSquadAgentMetadata(squadContext, {
-        agentName: event.data?.agentName,
-        agentDisplayName: event.data?.agentDisplayName,
-    });
-    await callWindowFunction("addSubagent", {
-        agentId: event.agentId ?? null,
-        agentName: event.data?.agentName ?? "",
-        displayName: event.data?.agentDisplayName ?? squadAgent?.displayName ?? event.data?.agentName ?? "",
-        description: event.data?.agentDescription ?? squadAgent?.description ?? "",
-        role: squadAgent?.role ?? "",
-        isDuck: isDuckAgent({
-            agentId: event.agentId,
-            agentName: event.data?.agentName,
-            agentDisplayName: event.data?.agentDisplayName,
-            agentDescription: event.data?.agentDescription,
-        }),
-        toolCallId,
-    }, 3000);
+    await callWindowFunction("addSubagent", buildSubagentPayload(displayData), 3000);
 
     await syncPendingModelForSubagent(event.agentId ?? null, toolCallId);
     await syncPendingThinkingForSubagent(event.agentId ?? null, toolCallId);
 });
 
 session.on("subagent.completed", async (event) => {
-    const squadAgent = resolveSquadAgentMetadata(squadContext, {
-        agentName: event.data?.agentName,
-        agentDisplayName: event.data?.agentDisplayName,
-    });
-    await callWindowFunction("completeSubagent", {
-        agentId: event.agentId ?? null,
-        displayName: event.data?.agentDisplayName ?? squadAgent?.displayName ?? event.data?.agentName ?? "",
-        description: event.data?.agentDescription ?? squadAgent?.description ?? "",
-        role: squadAgent?.role ?? "",
+    const displayData = resolveSubagentDisplayData(event);
+    await callWindowFunction("completeSubagent", buildSubagentPayload(displayData, {
         durationMs: event.data?.durationMs ?? null,
         totalToolCalls: event.data?.totalToolCalls ?? null,
-    }, 3000);
+    }), 3000);
+    releaseSubagentSpawnMetadata(displayData.agentId, displayData.toolCallId);
 });
 
 session.on("subagent.failed", async (event) => {
-    const squadAgent = resolveSquadAgentMetadata(squadContext, {
-        agentName: event.data?.agentName,
-        agentDisplayName: event.data?.agentDisplayName,
-    });
-    await callWindowFunction("failSubagent", {
-        agentId: event.agentId ?? null,
-        displayName: event.data?.agentDisplayName ?? squadAgent?.displayName ?? event.data?.agentName ?? "",
-        description: event.data?.agentDescription ?? squadAgent?.description ?? "",
-        role: squadAgent?.role ?? "",
+    const displayData = resolveSubagentDisplayData(event);
+    await callWindowFunction("failSubagent", buildSubagentPayload(displayData, {
         error: event.data?.error ?? "",
-    }, 3000);
+    }), 3000);
+    releaseSubagentSpawnMetadata(displayData.agentId, displayData.toolCallId);
 });
 
 session.on("tool.execution_start", async (event) => {
     const toolName = event.data?.toolName ?? "";
-    await callWindowFunction("setAgentActivity", {
-        agentId: event.agentId ?? null,
-        toolName,
-        toolCallId: event.data?.toolCallId ?? null,
-    });
+    const spawnMetadata = extractSubagentSpawnMetadata(toolName, event.data?.arguments);
+    if (spawnMetadata && event.data?.toolCallId) {
+        bindSubagentSpawnMetadata(null, event.data.toolCallId, spawnMetadata);
+    }
+
+    if (event.agentId) {
+        const displayData = resolveSubagentDisplayData(event);
+        await callWindowFunction("setAgentActivity", buildSubagentPayload(displayData, {
+            toolName,
+        }));
+    } else {
+        await callWindowFunction("setAgentActivity", {
+            agentId: null,
+            toolName,
+            toolCallId: event.data?.toolCallId ?? null,
+        });
+    }
 
     if (!event.agentId && toolName) {
         await callWindowFunction("setSubtask", getToolLabel(toolName));
@@ -465,17 +794,25 @@ session.on("tool.execution_complete", async (event) => {
         rootTurnState.hadFailure = true;
     }
 
+    const toolCallId = event.data?.toolCallId ?? null;
     await callWindowFunction("clearAgentActivity", {
         agentId: event.agentId ?? null,
         toolName: event.data?.toolName ?? "",
-        toolCallId: event.data?.toolCallId ?? null,
+        toolCallId,
     });
+    releaseSubagentSpawnMetadata(subagentIdsByToolCallId.get(toolCallId) ?? null, toolCallId);
 });
 
 session.on("assistant.reasoning", async (event) => {
     const agentId = resolveAgentIdFromEvent(event);
     if (agentId) {
-        await callWindowFunction("setAgentThinking", agentId, 3000);
+        const displayData = resolveSubagentDisplayData({
+            agentId,
+            data: {
+                parentToolCallId: event.data?.parentToolCallId ?? null,
+            },
+        });
+        await callWindowFunction("setAgentThinking", buildSubagentPayload(displayData), 3000);
         return;
     }
 
@@ -493,10 +830,8 @@ session.on("assistant.usage", async (event) => {
     if (!model) return;
 
     if (event.agentId) {
-        await callWindowFunction("setAgentModel", {
-            agentId: event.agentId,
-            model,
-        }, 3000);
+        const displayData = resolveSubagentDisplayData(event);
+        await callWindowFunction("setAgentModel", buildSubagentPayload(displayData, { model }), 3000);
         return;
     }
 
@@ -504,10 +839,11 @@ session.on("assistant.usage", async (event) => {
     if (parentToolCallId) {
         const agentId = subagentIdsByToolCallId.get(parentToolCallId);
         if (agentId) {
-            await callWindowFunction("setAgentModel", {
+            const displayData = resolveSubagentDisplayData({
                 agentId,
-                model,
-            }, 3000);
+                data: { parentToolCallId },
+            });
+            await callWindowFunction("setAgentModel", buildSubagentPayload(displayData, { model }), 3000);
         } else {
             pendingModelsByToolCallId.set(parentToolCallId, model);
         }
@@ -519,8 +855,16 @@ session.on("assistant.usage", async (event) => {
 
 session.on("session.model_change", async (event) => {
     if (!event.data?.newModel) return;
+    if (event.agentId) {
+        const displayData = resolveSubagentDisplayData(event);
+        await callWindowFunction("setAgentModel", buildSubagentPayload(displayData, {
+            model: event.data.newModel,
+        }), 3000);
+        return;
+    }
+
     await callWindowFunction("setAgentModel", {
-        agentId: event.agentId ?? null,
+        agentId: null,
         model: event.data.newModel,
     }, 3000);
 });
@@ -529,10 +873,15 @@ session.on("assistant.intent", async (event) => {
     const intent = getIntentText(event);
     if (!intent) return;
 
-    await callWindowFunction("setAgentIntent", {
-        agentId: event.agentId ?? null,
-        intent,
-    });
+    if (event.agentId) {
+        const displayData = resolveSubagentDisplayData(event);
+        await callWindowFunction("setAgentIntent", buildSubagentPayload(displayData, { intent }));
+    } else {
+        await callWindowFunction("setAgentIntent", {
+            agentId: null,
+            intent,
+        });
+    }
 
     if (!event.agentId) {
         await callWindowFunction("setSubtask", intent);
@@ -554,6 +903,7 @@ session.on("assistant.turn_start", async (event) => {
     rootTurnState.hadFailure = false;
     rootTurnState.sawMessage = false;
     rootTurnState.lastMessage = "";
+    await syncSquadContext();
     await evalWebview("window.setWorking(true)");
 });
 
