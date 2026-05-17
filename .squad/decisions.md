@@ -34,6 +34,7 @@
 - Option C: Both (safest, guarantees sync on open + refresh on turn)
 
 
+
 ### 2026-05-17T19:54:11.015+02:00: Replay latched Squad mic state when root avatar initializes
 
 **By:** Shuri (Frontend Dev)
@@ -45,6 +46,7 @@
 **Scope:** `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/main.mjs`
 
 ---
+
 
 ### 2026-05-17T20:00:51.651+02:00: Wait for webview-ready before Squad context sync
 
@@ -62,6 +64,7 @@
 
 ## Active Decisions
 
+
 ### 2026-05-16T23:25:38.850+02:00: User directive — remove first-render gate for sub-agent visibility
 
 **By:** Jimmy Engstrom (via Copilot)
@@ -73,6 +76,7 @@
 **Implementation:** Copilot-owned sub-agents render on `subagent.started` without requiring extra tool or debounce evidence.
 
 ---
+
 
 ### 2026-05-16T23:25:38.850+02:00: Copilot-owned sub-agents render on `subagent.started`
 
@@ -86,6 +90,7 @@
 
 ---
 
+
 ### 2026-05-16T23:01:57.563+02:00: Hidden Squad chrome keeps metadata lookup alive
 
 **By:** Vision (Platform Dev)
@@ -97,6 +102,7 @@
 **Implementation note:** Metadata lookup now keys off loaded lookup presence rather than `context.active`, and sub-agent scope also follows loaded Squad metadata instead of visible chrome state.
 
 ---
+
 
 ### 2026-05-16T23:01:57.563+02:00: Copilot-owned sub-agent visibility
 
@@ -160,6 +166,7 @@
 
 ---
 
+
 ### 2026-05-16T22:06:13.919+02:00: Do not collapse actively working duplicate identities into one card
 
 **By:** Peter Parker
@@ -175,6 +182,7 @@
 
 ---
 
+
 ### 2026-05-16T22:06:13.919+02:00: Sub-agent metadata must bypass top-level Squad UI gating
 
 **By:** Tony Stark
@@ -184,6 +192,7 @@
 **Why:** The new top-level gate is valid for root-only visuals and status text, but it accidentally starved sub-agent naming of cast metadata. That dropped Tony/Peter/Howard-style names and weakened `stableIdentityKey` resolution, while background-task visibility gating (`hasCurrentTurnWork`) and duplicate collapse should remain unchanged.
 
 ---
+
 
 ### 2026-05-16T22:02:45.479+02:00: Treat `report_intent` as weak first-visibility evidence
 
@@ -196,6 +205,7 @@
 **Why:** This matches the user-visible symptom: cards appear briefly and then retire about a second later, which lines up with weak launch-time tools being promoted and then retired after `tool.execution_complete`. Suppressing those weak tool-only activations keeps the UI focused on agents that actually started visible work.
 
 ---
+
 
 ### 2026-05-16T22:02:45.479+02:00: Sub-agent first-render debounce
 
@@ -218,6 +228,7 @@ Given that gap, render debounce is the smallest safe filter for short-lived wake
 - `node --check .github/extensions/copilot-avatar/content/main.js`
 
 ---
+
 
 ### 2026-05-16T15:42:38.842+02:00: Sub-Agent Display Name Lookup Fix
 
@@ -254,6 +265,7 @@ Given that gap, render debounce is the smallest safe filter for short-lived wake
 
 ---
 
+
 ### 2026-05-16T15:42:38.842+02:00: Squad Sub-Agent Events Silently Lost Before Webview Open
 
 **By:** Vision (Platform Dev)
@@ -288,6 +300,7 @@ The extension needs an **event buffering layer** that:
 
 Alternatively, the extension could wait for webview readiness before registering event handlers, or require the avatar window to be open before Squad features become active.
 
+
 ### 2026-05-16T16:02:40.457+02:00: User directive
 
 **By:** Jimmy Engstrom (via Copilot)
@@ -297,6 +310,7 @@ Alternatively, the extension could wait for webview readiness before registering
 **Why:** User request - captured for team memory
 
 ---
+
 
 ### 2026-05-16T16:02:40.457+02:00: Multi-Agent Identity & Badge System Design Review
 
@@ -324,6 +338,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 
 ---
 
+
 ### 2026-05-16T16:02:40.457+02:00: Centralize sub-agent runtime state in the avatar extension
 
 **By:** Tony Stark
@@ -333,6 +348,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 **Why:** Names and models were drifting because different lifecycle events each rebuilt partial payloads with different fallbacks. One runtime seam keeps Squad labels like Tony Stark, Peter Parker, and Howard the Duck stable while still letting tool progress and model updates stay attached to the right live avatar instance.
 
 ---
+
 
 ### 2026-05-16T16:02:40.457+02:00: Squad display-name resolver contract
 
@@ -344,6 +360,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 
 ---
 
+
 ### 2026-05-16T16:02:40.457+02:00: Reset sub-agent runtime state on session/context boundaries
 
 **By:** Peter Parker
@@ -354,6 +371,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 
 ---
 
+
 ### 2026-05-16T16:02:40.457+02:00: Sub-agent badges prefer live work details over static labels
 
 **By:** Shuri
@@ -363,6 +381,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 **Why:** The old cards looked alive but hid the useful state. Showing the resolved Squad name, current model, and actual work text makes the sub-agent swarm readable without harming generic non-Squad sessions.
 
 ---
+
 
 ### 2026-05-16T16:02:40.457+02:00: Howard the Duck — Squad badge repro risks
 
@@ -376,6 +395,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 
 ---
 
+
 ### 2026-05-16T16:02:40.457+02:00: Howard the Duck — Reject stale subagent replay
 
 - **Decision:** Reject this batch for one remaining regression: backend sub-agent state survives past the Squad context that created it, so the avatar can replay stale Squad cards later.
@@ -388,6 +408,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 **Next Revision Owner:** Peter Parker — this is runtime-state ownership in `main.mjs`.
 
 ---
+
 
 ### 2026-05-16T16:02:40.457+02:00: Howard the Duck — Approve subagent stale-state fix
 
@@ -409,6 +430,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
   - Per-subagent model sync hooks remain wired
   - Badge text still prioritizes current activity
 
+
 ### 2026-05-16T16:40:39.107+02:00: Prefer specific agent names over generic card labels
 
 **By:** Shuri
@@ -421,6 +443,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 
 ---
 
+
 ### 2026-05-16T16:40:39.107+02:00: Stable runtime agentId alias fallback for Squad names
 
 **By:** Vision
@@ -432,6 +455,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 **Status:** Implemented and approved.
 
 ---
+
 
 ### 2026-05-16T17:28:38.428+02:00: Runtime/Event-Bridge Revision — Live Sub-Agent Naming Fix (APPROVED & MERGED)
 
@@ -468,6 +492,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 
 ---
 
+
 ### 2026-05-16T19:27:16.955+02:00 — Gate Squad root accessories from visible Squad context
 
 **By:** Shuri
@@ -480,6 +505,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 
 ---
 
+
 ### 2026-05-16T19:48:28.844+02:00 — Root Squad comms accessory should stay mic-boom light
 
 **By:** Shuri
@@ -489,6 +515,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 **Why:** The Squad signal should read as subtle comms gear, not a costume piece. Keeping it root-only and still driven by `window.setSquadContext(payload.active)` preserves the existing non-Squad boundary while making the avatar feel cleaner and more stable in motion.
 
 ---
+
 
 ### 2026-05-16T19:56:44.385+02:00: Keep the Squad root mic face-side only
 
@@ -503,6 +530,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 **Status:** Implemented and validated.
 
 ---
+
 
 ### 2026-05-16T20:03:34.127+02:00: Squad Root Mic — Dark Graphite Finish, Ear-to-Mouth Boom Arc
 
@@ -520,6 +548,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 **Status:** Implemented.
 
 ---
+
 
 ### 2026-05-16T20:11:12.638+02:00: Reset Subagent State at Directive Boundary (assistant.turn_start)
 
@@ -542,6 +571,7 @@ This is a comprehensive refactor of the CopilotAvatar extension's agent display 
 3. **Post-completion prune timer**: `scheduleSubagentPrune` removes completed/failed entries from maps after hold+fade buffer.
 
 ---
+
 
 ### 2026-05-16T20:11:12.638+02:00: Stale Subagent Pruning Strategy
 
@@ -675,6 +705,7 @@ The avatar extension now treats `subagent.started` as a provisional runtime even
 ## Why
 
 We cannot fix upstream Squad agent-pool behavior here. Old idle agents can be reactivated and emit fresh `subagent.started` events on a new directive. Gating UI activation on meaningful current-turn work is the smallest safe extension-side filter: it drops idle reactivation noise without breaking the extension's internal joins or normal live agents once they actually begin doing work.
+
 ### 2026-05-16T21:04:02.794+02:00: Gate hidden subagents on substantive work
 **By:** Tony Stark
 **What:** Hidden sub-agents in the avatar extension now stay suppressed until the current turn produces real work evidence — tool execution or a substantive intent. Bare reasoning pulses no longer create cards, and replay only rehydrates active agents that already earned visibility.
@@ -767,6 +798,7 @@ Fix: add `{ resetSubagents: true }` to the `session.resume` call, OR clear `acti
 
 
 ---
+
 
 ### 2026-05-16T23:01:57.563+02:00: User directive
 **By:** Jimmy Engstrom (via Copilot)
@@ -1173,6 +1205,7 @@ That wrapper is often just the orchestration handoff that wakes or assigns an ag
 
 
 
+
 ### 2026-05-16T23:33:39.835+02:00: Scribe UI Name-Loss Repro — Metadata Loss in syncKnownSubagents()
 
 ---
@@ -1227,6 +1260,7 @@ Target `.github/extensions/copilot-avatar/main.mjs`, `syncKnownSubagents()` func
 
 ---
 
+
 ### 2026-05-16T23:33:39.835+02:00: Copilot Runtime Sub-Agent Identity Hints
 
 ---
@@ -1243,6 +1277,7 @@ When Copilot emits a real `subagent.started` event with weak identity fields, th
 - `subagent.selected` is metadata-only enrichment and must not create, suppress, or gate cards by itself.
 - Once bound to `agentId`, the Copilot-owned hint should be reused for later sync/update events so reconnects keep the human name instead of falling back to an unnamed card.
 ---
+
 
 ### 2026-05-16T23:51:24.513+02:00: Subagent Duplicate Card Seam — Fixed
 
@@ -1263,6 +1298,7 @@ When Copilot emits a real `subagent.started` event with weak identity fields, th
 
 ---
 
+
 ### 2026-05-16T23:51:24.513+02:00: Sub-agent fallback duplicates must collapse on both sides
 
 **By:** Vision (Platform Dev)
@@ -1275,6 +1311,7 @@ When Copilot emits a real `subagent.started` event with weak identity fields, th
 
 ---
 
+
 ### 2026-05-17T20:10:26.460+02:00: Prefer cast metadata over generic runtime labels
 
 **By:** Shuri (Frontend Dev)
@@ -1286,6 +1323,7 @@ When Copilot emits a real `subagent.started` event with weak identity fields, th
 **Scope:** `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/lib/squad-context.mjs`
 
 ---
+
 
 ### 2026-05-17T20:10:26.460+02:00: Bind spawn metadata before generic sub-agent labels
 
@@ -1300,4 +1338,6 @@ When Copilot emits a real `subagent.started` event with weak identity fields, th
 - `.github/extensions/copilot-avatar/lib/squad-context.mjs`
 
 ---
+
+
 
