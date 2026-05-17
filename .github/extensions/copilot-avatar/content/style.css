@@ -14,7 +14,7 @@ body {
   position: relative;
 }
 
-body.avatar-clippy {
+body.window-transparent {
   background: transparent;
 }
 
@@ -39,7 +39,6 @@ body.avatar-clippy {
   height: 100% !important;
 }
 
-body.avatar-clippy #subagent-overlays,
 body.avatar-clippy #message-container,
 body.avatar-clippy #status-container,
 body.avatar-clippy #emotion-bubble {
@@ -398,11 +397,11 @@ body.tiny-layout .agent-model {
   transition: opacity 0.18s ease;
 }
 
-body.avatar-clippy #tts-controls:not(.settings-open):not(:hover):not(:focus-within) {
+#tts-controls:not(.settings-open):not(:hover):not(:focus-within) {
   opacity: 0;
 }
 
-body.avatar-clippy #tts-controls.settings-open {
+#tts-controls.settings-open {
   opacity: 1;
 }
 
@@ -463,6 +462,41 @@ body.avatar-clippy #tts-controls.settings-open {
   background: linear-gradient(180deg, rgba(56, 139, 253, 0.28), rgba(17, 24, 39, 0.96));
   border-color: rgba(88, 166, 255, 0.5);
   transform: translateY(-1px);
+}
+
+#tts-settings-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tts-settings-tab {
+  padding: 7px 10px;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: #0d1117;
+  color: #8b949e;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.tts-settings-tab:hover {
+  background: #161b22;
+  color: #e6edf3;
+}
+
+.tts-settings-tab.active {
+  background: rgba(56, 139, 253, 0.18);
+  border-color: rgba(88, 166, 255, 0.45);
+  color: #e6edf3;
+}
+
+.tts-settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 #tts-dropdown label {
@@ -560,11 +594,28 @@ body.avatar-clippy #tts-controls.settings-open {
   gap: 8px;
 }
 
+#tts-ai-preset-section,
+#tts-ai-record-section {
+  display: grid;
+  gap: 8px;
+}
+
+#elevenlabs-clone-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 #voxtral-refresh-btn,
+#elevenlabs-refresh-btn,
 #voxtral-record-btn,
 #voxtral-stop-btn,
 #clippy-retro-voice-btn,
-#voxtral-rerecord-btn {
+#voxtral-rerecord-btn,
+#tts-webspeech-test-btn,
+#tts-ai-test-btn,
+#elevenlabs-clone-btn,
+#elevenlabs-delete-btn {
   padding: 5px 10px;
   background: #21262d;
   border: 1px solid #30363d;
@@ -576,16 +627,31 @@ body.avatar-clippy #tts-controls.settings-open {
 }
 
 #voxtral-refresh-btn:hover,
+#elevenlabs-refresh-btn:hover,
 #voxtral-record-btn:hover,
 #voxtral-stop-btn:hover,
 #clippy-retro-voice-btn:hover,
-#voxtral-rerecord-btn:hover {
+#voxtral-rerecord-btn:hover,
+#tts-webspeech-test-btn:hover,
+#tts-ai-test-btn:hover,
+#elevenlabs-clone-btn:hover,
+#elevenlabs-delete-btn:hover {
   background: #30363d;
 }
 
 #clippy-retro-voice-btn {
   width: 100%;
   border-color: rgba(88, 166, 255, 0.35);
+}
+
+#tts-webspeech-test-btn,
+#tts-ai-test-btn,
+#elevenlabs-clone-btn {
+  border-color: rgba(88, 166, 255, 0.35);
+}
+
+#elevenlabs-delete-btn {
+  border-color: rgba(248, 81, 73, 0.35);
 }
 
 #voxtral-record-btn.recording {
@@ -604,6 +670,10 @@ body.avatar-clippy #tts-controls.settings-open {
   width: 100%;
   margin-top: 6px;
   height: 32px;
+}
+
+#elevenlabs-clone-status {
+  line-height: 1.35;
 }
 
 @keyframes record-pulse {

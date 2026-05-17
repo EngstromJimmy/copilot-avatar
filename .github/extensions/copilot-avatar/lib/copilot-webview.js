@@ -213,7 +213,11 @@ export class CopilotWebview {
         return this._handle.eval(code, opts);
     }
 
-    close() { if (this._handle) this._handle.close(); }
+    close() {
+        const handle = this._handle;
+        this._handle = null;
+        if (handle) handle.close();
+    }
 
     get tools() {
         const { prefix } = this;

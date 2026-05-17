@@ -38,100 +38,140 @@
     <button id="tts-toggle" title="Toggle text-to-speech">🔇</button>
     <button id="tts-settings-btn" title="Avatar settings">⚙️</button>
     <div id="tts-dropdown" class="hidden">
-      <button id="run-demo-btn" type="button">Run demo sequence</button>
-      <label class="tts-checkbox-row" for="message-visibility-toggle">
-        <span>Show spoken text</span>
-        <input id="message-visibility-toggle" type="checkbox" checked />
-      </label>
-      <label class="tts-checkbox-row" for="badge-visibility-toggle">
-        <span>Show avatar badges</span>
-        <input id="badge-visibility-toggle" type="checkbox" checked />
-      </label>
-      <label class="tts-checkbox-row" for="model-visibility-toggle">
-        <span>Show model badges</span>
-        <input id="model-visibility-toggle" type="checkbox" />
-      </label>
-      <label>Avatar
-        <select id="avatar-style-select">
-          <option value="copilot">Copilot</option>
-          <option value="clippy">Clippy</option>
-        </select>
-      </label>
-
-      <label>Engine
-        <select id="tts-engine-select">
-          <option value="webspeech">Web Speech</option>
-          <option value="voxtral">Voxtral</option>
-        </select>
-      </label>
-
-      <!-- Web Speech controls -->
-      <div id="tts-webspeech-section">
-        <label>Voice
-          <select id="tts-voice-select"></select>
+      <div id="tts-settings-tabs" role="tablist" aria-label="Avatar settings tabs">
+        <button id="settings-general-tab" class="tts-settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="settings-general-panel">General</button>
+        <button id="settings-speech-tab" class="tts-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-speech-panel">Speech</button>
+      </div>
+      <div id="settings-general-panel" class="tts-settings-panel">
+        <button id="run-demo-btn" type="button">Run demo sequence</button>
+        <label class="tts-checkbox-row" for="message-visibility-toggle">
+          <span>Show spoken text</span>
+          <input id="message-visibility-toggle" type="checkbox" checked />
         </label>
-        <div id="tts-pitch-row">
-          <label>Pitch
-            <input id="tts-pitch-input" type="range" min="0.5" max="2" step="0.1" value="1.0" />
-            <span id="tts-pitch-value">1.0</span>
-          </label>
-        </div>
-        <label>Speed
-          <input id="tts-rate-input" type="range" min="0.5" max="3" step="0.1" value="1.1" />
-          <span id="tts-rate-value">1.1×</span>
+        <label class="tts-checkbox-row" for="badge-visibility-toggle">
+          <span>Show avatar badges</span>
+          <input id="badge-visibility-toggle" type="checkbox" checked />
+        </label>
+        <label class="tts-checkbox-row" for="model-visibility-toggle">
+          <span>Show model badges</span>
+          <input id="model-visibility-toggle" type="checkbox" />
+        </label>
+        <label class="tts-checkbox-row" for="transparent-window-toggle">
+          <span>Transparent window background</span>
+          <input id="transparent-window-toggle" type="checkbox" checked />
+        </label>
+        <label>Avatar
+          <select id="avatar-style-select">
+            <option value="copilot">Copilot</option>
+            <option value="clippy">Clippy</option>
+          </select>
         </label>
       </div>
 
-      <!-- Voxtral controls -->
-      <div id="tts-voxtral-section" class="hidden">
-        <div class="tts-radio-group">
-          <label class="tts-radio-label">
-            <input type="radio" name="voxtral-backend" value="cloud" checked /> ☁ Mistral Cloud
+      <div id="settings-speech-panel" class="tts-settings-panel hidden">
+        <label>Engine
+          <select id="tts-engine-select">
+            <option value="webspeech">Web Speech</option>
+            <option value="voxtral">Voxtral</option>
+            <option value="elevenlabs">ElevenLabs</option>
+          </select>
+        </label>
+
+        <!-- Web Speech controls -->
+        <div id="tts-webspeech-section">
+          <label>Voice
+            <select id="tts-voice-select"></select>
           </label>
-          <label class="tts-radio-label">
-            <input type="radio" name="voxtral-backend" value="local" /> ⚙ Local (vllm)
+          <div id="tts-pitch-row">
+            <label>Pitch
+              <input id="tts-pitch-input" type="range" min="0.5" max="2" step="0.1" value="1.0" />
+              <span id="tts-pitch-value">1.0</span>
+            </label>
+          </div>
+          <label>Speed
+            <input id="tts-rate-input" type="range" min="0.5" max="3" step="0.1" value="1.1" />
+            <span id="tts-rate-value">1.1×</span>
           </label>
+          <button id="tts-webspeech-test-btn" type="button">Test selected voice</button>
         </div>
-        <div id="voxtral-cloud-section">
-          <label>API Key
-            <input id="voxtral-apikey-input" type="password" placeholder="sk-..." autocomplete="off" />
-          </label>
-        </div>
-        <div id="voxtral-local-section" class="hidden">
-          <label>Server URL
-            <div class="tts-row">
-              <input id="voxtral-url-input" type="text" value="http://localhost:18000" />
-              <button id="voxtral-refresh-btn" title="Fetch voices from server">↻</button>
-            </div>
-          </label>
-        </div>
-        <label>Voice source
+
+        <!-- Voxtral controls -->
+        <div id="tts-voxtral-section" class="hidden">
           <div class="tts-radio-group">
             <label class="tts-radio-label">
-              <input type="radio" name="voxtral-voice-source" value="preset" checked /> Preset
+              <input type="radio" name="voxtral-backend" value="cloud" checked /> ☁ Mistral Cloud
             </label>
             <label class="tts-radio-label">
-              <input type="radio" name="voxtral-voice-source" value="myvoice" /> My Voice
+              <input type="radio" name="voxtral-backend" value="local" /> ⚙ Local (vllm)
             </label>
           </div>
-        </label>
-        <div id="voxtral-preset-section">
-          <label>Voice
-            <select id="voxtral-voice-select"></select>
-          </label>
-        </div>
-        <div id="voxtral-record-section" class="hidden">
-          <div class="tts-record-controls">
-            <button id="voxtral-record-btn">🎤 Record</button>
-            <span id="voxtral-record-timer" class="hidden">0s</span>
-            <button id="voxtral-stop-btn" class="hidden">■ Stop</button>
+          <div id="voxtral-cloud-section">
+            <label>API Key
+              <input id="voxtral-apikey-input" type="password" placeholder="sk-..." autocomplete="off" />
+            </label>
           </div>
-          <button id="clippy-retro-voice-btn" type="button">Generate retro Clippy sample</button>
-          <audio id="voxtral-audio-preview" class="hidden" controls></audio>
-          <label class="tts-file-label">Import prerecorded voice
-            <input id="voxtral-file-input" type="file" accept="audio/*" />
+          <div id="voxtral-local-section" class="hidden">
+            <label>Server URL
+              <div class="tts-row">
+                <input id="voxtral-url-input" type="text" value="http://localhost:18000" />
+                <button id="voxtral-refresh-btn" title="Fetch voices from server">↻</button>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div id="tts-elevenlabs-section" class="hidden">
+          <label>API Key
+            <input id="elevenlabs-apikey-input" type="password" placeholder="sk_..." autocomplete="off" />
           </label>
-          <button id="voxtral-rerecord-btn" class="hidden">Re-record</button>
+          <div class="tts-hint">
+            Uses your ElevenLabs account voices.
+          </div>
+        </div>
+
+        <div id="tts-ai-voice-section" class="hidden">
+          <label id="tts-ai-voice-source-label">Voice source
+            <div class="tts-radio-group">
+              <label class="tts-radio-label">
+                <input type="radio" name="ai-voice-source" value="preset" checked /> Preset
+              </label>
+              <label class="tts-radio-label">
+                <input type="radio" name="ai-voice-source" value="myvoice" /> My Voice
+              </label>
+            </div>
+          </label>
+          <div id="tts-ai-preset-section">
+            <label>Voice
+              <select id="voxtral-voice-select"></select>
+            </label>
+            <label id="elevenlabs-preset-section" class="hidden">Voice
+              <div class="tts-row">
+                <select id="elevenlabs-voice-select"></select>
+                <button id="elevenlabs-refresh-btn" type="button" title="Fetch voices from ElevenLabs">↻</button>
+              </div>
+            </label>
+          </div>
+          <div id="tts-ai-record-section" class="hidden">
+            <div class="tts-hint">Use the recorded or imported sample as the Voxtral reference voice.</div>
+            <div class="tts-record-controls">
+              <button id="voxtral-record-btn">🎤 Record</button>
+              <span id="voxtral-record-timer" class="hidden">0s</span>
+              <button id="voxtral-stop-btn" class="hidden">■ Stop</button>
+            </div>
+            <button id="clippy-retro-voice-btn" type="button">Generate retro Clippy sample</button>
+            <audio id="voxtral-audio-preview" class="hidden" controls></audio>
+            <label class="tts-file-label">Import prerecorded voice
+              <input id="voxtral-file-input" type="file" accept="audio/*" />
+            </label>
+            <button id="voxtral-rerecord-btn" class="hidden">Re-record</button>
+            <div id="elevenlabs-clone-controls" class="hidden">
+              <button id="elevenlabs-clone-btn" type="button">Create ElevenLabs voice</button>
+              <button id="elevenlabs-delete-btn" type="button" class="hidden">Delete cloned voice</button>
+            </div>
+            <div id="elevenlabs-clone-status" class="tts-hint hidden"></div>
+          </div>
+          <button id="tts-ai-test-btn" type="button">Test selected voice</button>
+          <div class="tts-hint">Preview the current engine and selected voice without waiting for a full response.</div>
         </div>
       </div>
     </div>

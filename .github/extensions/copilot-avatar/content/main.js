@@ -15,6 +15,17 @@ const COMPLETION_HOLD_MS = 2000;
 const FAILURE_HOLD_MS = 1100;
 const CLIPPY_MODEL_URL = 'clippy.glb';
 const CLIPPY_TARGET_HEIGHT = 1.55;
+const CLIPPY_SUBAGENT_DROP_FACTOR = 0.2;
+const CLIPPY_GAZE_MAX_X = 0.014;
+const CLIPPY_GAZE_MAX_Y = 0.009;
+const CLIPPY_EYE_ROTATION_X = 2.4;
+const CLIPPY_EYE_ROTATION_Y = 0.45;
+const CLIPPY_EYE_ROTATION_Z = 2.1;
+const CLIPPY_BROW_TRACK_Y = -0.22;
+const CLIPPY_BROW_IDLE_LIFT = 0.0034;
+const CLIPPY_BROW_ROTATION_X = 1.05;
+const CLIPPY_BROW_ROTATION_Z = 0.9;
+const CLIPPY_BROW_IDLE_TILT = 0.008;
 const CLIPPY_DEFAULT_VOXTRAL_VOICE = 'en_paul_excited';
 const CLIPPY_LEGACY_DEFAULT_VOXTRAL_VOICE = 'en_paul_cheerful';
 const ACTIVITY_COLORS = {
@@ -253,12 +264,23 @@ const ttsToggleBtn = document.getElementById('tts-toggle');
 const ttsSettingsBtn = document.getElementById('tts-settings-btn');
 const ttsControls = document.getElementById('tts-controls');
 const ttsDropdown = document.getElementById('tts-dropdown');
+const settingsGeneralTabBtn = document.getElementById('settings-general-tab');
+const settingsSpeechTabBtn = document.getElementById('settings-speech-tab');
+const settingsGeneralPanel = document.getElementById('settings-general-panel');
+const settingsSpeechPanel = document.getElementById('settings-speech-panel');
 const avatarStyleSelect = document.getElementById('avatar-style-select');
 const ttsEngineSelect = document.getElementById('tts-engine-select');
 const ttsWebspeechSection = document.getElementById('tts-webspeech-section');
 const ttsVoxtralSection = document.getElementById('tts-voxtral-section');
+const ttsElevenlabsSection = document.getElementById('tts-elevenlabs-section');
+const ttsAiVoiceSection = document.getElementById('tts-ai-voice-section');
+const ttsAiVoiceSourceLabel = document.getElementById('tts-ai-voice-source-label');
+const ttsAiPresetSection = document.getElementById('tts-ai-preset-section');
+const ttsAiRecordSection = document.getElementById('tts-ai-record-section');
 const runDemoBtn = document.getElementById('run-demo-btn');
 const ttsVoiceSelect = document.getElementById('tts-voice-select');
+const ttsWebspeechTestBtn = document.getElementById('tts-webspeech-test-btn');
+const ttsAiTestBtn = document.getElementById('tts-ai-test-btn');
 const ttsRateInput = document.getElementById('tts-rate-input');
 const ttsRateValue = document.getElementById('tts-rate-value');
 const ttsPitchInput = document.getElementById('tts-pitch-input');
@@ -270,8 +292,14 @@ const voxtralRefreshBtn = document.getElementById('voxtral-refresh-btn');
 const voxtralCloudSection = document.getElementById('voxtral-cloud-section');
 const voxtralLocalSection = document.getElementById('voxtral-local-section');
 const voxtralVoiceSelect = document.getElementById('voxtral-voice-select');
-const voxtralPresetSection = document.getElementById('voxtral-preset-section');
-const voxtralRecordSection = document.getElementById('voxtral-record-section');
+const elevenlabsApikeyInput = document.getElementById('elevenlabs-apikey-input');
+const elevenlabsVoiceSelect = document.getElementById('elevenlabs-voice-select');
+const elevenlabsRefreshBtn = document.getElementById('elevenlabs-refresh-btn');
+const elevenlabsPresetSection = document.getElementById('elevenlabs-preset-section');
+const elevenlabsCloneControls = document.getElementById('elevenlabs-clone-controls');
+const elevenlabsCloneBtn = document.getElementById('elevenlabs-clone-btn');
+const elevenlabsDeleteBtn = document.getElementById('elevenlabs-delete-btn');
+const elevenlabsCloneStatus = document.getElementById('elevenlabs-clone-status');
 const voxtralRecordBtn = document.getElementById('voxtral-record-btn');
 const voxtralRecordTimer = document.getElementById('voxtral-record-timer');
 const voxtralStopBtn = document.getElementById('voxtral-stop-btn');
@@ -282,6 +310,7 @@ const voxtralRerecordBtn = document.getElementById('voxtral-rerecord-btn');
 const messageVisibilityToggle = document.getElementById('message-visibility-toggle');
 const badgeVisibilityToggle = document.getElementById('badge-visibility-toggle');
 const modelVisibilityToggle = document.getElementById('model-visibility-toggle');
+const transparentWindowToggle = document.getElementById('transparent-window-toggle');
 
 const avatars = new Map();
 const pendingSubagents = [];
@@ -297,6 +326,10 @@ let squadRootMicActive = false;
 let rootLastActivityAt = performance.now();
 let rootEmotion = { name: 'default', until: 0 };
 let fadeTimeout = null;
+let activeSettingsTab = 'general';
+let pendingClippyMessage = '';
+let lastSpokenClippySummary = '';
+let lastSpokenClippySummaryAt = 0;
 let demoTimers = [];
 let demoSequenceRunId = 0;
 let animationStarted = false;
@@ -312,8 +345,18 @@ let clippyVisualMode = 'idle';
 let clippySpeaking = false;
 let clippyBaseY = 0;
 let clippyBaseScale = 1;
+let clippyBrowsMesh = null;
+let clippyEyesMesh = null;
+let clippyIrisMesh = null;
 let clippyInnerClipDeform = null;
 let clippyTalkEnvelope = 0;
+let clippyGazeState = {
+    currentX: 0,
+    currentY: 0,
+    targetX: 0,
+    targetY: 0,
+    timer: 0,
+};
 let layoutState = {
     columns: 1,
     rows: 0,
@@ -1116,16 +1159,17 @@ function updateClippyAnimationState() {
 
 function updateSceneModeVisibility() {
     const clippyActive = isClippyAvatar();
+    const clippyWithSubagents = clippyActive && [...avatars.values()].some((avatar) => !avatar.isRoot && avatar.inLayout);
     if (clippyRoot) {
         clippyRoot.visible = clippyActive;
     }
 
     for (const avatar of avatars.values()) {
-        avatar.group.visible = !clippyActive;
+        avatar.group.visible = !clippyActive || (!avatar.isRoot && clippyWithSubagents);
     }
 
     for (const particle of particles) {
-        particle.sprite.visible = !clippyActive;
+        particle.sprite.visible = !clippyActive || clippyWithSubagents;
     }
 }
 
@@ -1192,6 +1236,28 @@ function prepareClippyInnerClipDeform(mesh) {
     window.__clippyDeform = clippyInnerClipDeform;
 }
 
+function rememberClippyFaceNode(object, type) {
+    if (!object?.isMesh) return;
+
+    if (!object.userData.baseScale) {
+        object.userData.baseScale = object.scale.clone();
+    }
+    if (!object.userData.basePosition) {
+        object.userData.basePosition = object.position.clone();
+    }
+    if (!object.userData.baseRotation) {
+        object.userData.baseRotation = object.rotation.clone();
+    }
+
+    if (type === 'brows') {
+        clippyBrowsMesh = object;
+    } else if (type === 'eyes') {
+        clippyEyesMesh = object;
+    } else if (type === 'iris') {
+        clippyIrisMesh = object;
+    }
+}
+
 function styleClippyMesh(object) {
     if (!object.isMesh) return;
     window.__allMeshes = window.__allMeshes || [];
@@ -1200,6 +1266,14 @@ function styleClippyMesh(object) {
 
     const objectName = object.name.toLowerCase();
     const materialNames = getObjectMaterialNames(object);
+    if (objectName.includes('brows') || materialNames.some((name) => name.includes('brows'))) {
+        rememberClippyFaceNode(object, 'brows');
+    } else if (objectName.includes('iris') || materialNames.some((name) => name.includes('iris'))) {
+        rememberClippyFaceNode(object, 'iris');
+    } else if (objectName.includes('eyes') || materialNames.some((name) => name.includes('eyes'))) {
+        rememberClippyFaceNode(object, 'eyes');
+    }
+
     if (objectName.includes('paper') || materialNames.some((name) => name.includes('paper'))) {
         object.visible = false;
         return;
@@ -1249,12 +1323,16 @@ async function loadClippyModel(loader) {
         clippyRoot = new THREE.Group();
         clippyRoot.name = 'Clippy';
         clippyRoot.visible = false;
+        clippyBrowsMesh = null;
+        clippyEyesMesh = null;
+        clippyIrisMesh = null;
 
         const model = gltf.scene;
         const modelWrapper = new THREE.Group();
         modelWrapper.add(model);
         model.traverse(styleClippyMesh);
         normalizeClippyModel(modelWrapper, clippyRoot);
+        applyClippyBlink(1);
 
         clippyRoot.add(modelWrapper);
         scene.add(clippyRoot);
@@ -1357,14 +1435,229 @@ function updateClippyInnerClipDeform(dt, time) {
     position.needsUpdate = true;
 }
 
+function updateClippyFaceState(patch = {}) {
+    window.__clippyFaceState = {
+        ...(window.__clippyFaceState || {}),
+        ...patch,
+        hasBrows: !!clippyBrowsMesh,
+        hasEyes: !!clippyEyesMesh,
+        hasIris: !!clippyIrisMesh,
+    };
+}
+
+function applyClippyBlink(openness = 1) {
+    if (clippyEyesMesh?.userData?.baseScale) {
+        const baseScale = clippyEyesMesh.userData.baseScale;
+        clippyEyesMesh.scale.set(baseScale.x, baseScale.y, baseScale.z);
+    }
+
+    if (clippyIrisMesh?.userData?.baseScale) {
+        const baseScale = clippyIrisMesh.userData.baseScale;
+        clippyIrisMesh.scale.set(baseScale.x, baseScale.y, baseScale.z);
+        clippyIrisMesh.visible = true;
+    }
+
+    updateClippyFaceState({
+        blink: 1,
+    });
+}
+
+function getClippyGazeConfig(mode = 'idle', motionPersona = MOTION_PERSONAS.steady) {
+    const timerRange = [
+        Math.max(1.15, motionPersona.wanderInterval[0] * 0.44),
+        Math.max(2.1, motionPersona.wanderInterval[1] * 0.5),
+    ];
+
+    switch (mode) {
+        case 'reading':
+            return {
+                enabled: true,
+                restX: -CLIPPY_GAZE_MAX_X * 0.08,
+                restY: -CLIPPY_GAZE_MAX_Y * 0.18,
+                rangeX: CLIPPY_GAZE_MAX_X * 0.24,
+                rangeY: CLIPPY_GAZE_MAX_Y * 0.12,
+                timerRange,
+            };
+        case 'thinking':
+        case 'think':
+            return {
+                enabled: true,
+                restX: CLIPPY_GAZE_MAX_X * 0.1,
+                restY: CLIPPY_GAZE_MAX_Y * 0.08,
+                rangeX: CLIPPY_GAZE_MAX_X * 0.18,
+                rangeY: CLIPPY_GAZE_MAX_Y * 0.12,
+                timerRange,
+            };
+        case 'sleep':
+            return {
+                enabled: false,
+                restX: 0,
+                restY: -CLIPPY_GAZE_MAX_Y * 0.12,
+                rangeX: 0,
+                rangeY: 0,
+                timerRange,
+            };
+        default:
+            return {
+                enabled: true,
+                restX: 0,
+                restY: 0,
+                rangeX: CLIPPY_GAZE_MAX_X,
+                rangeY: CLIPPY_GAZE_MAX_Y,
+                timerRange,
+            };
+    }
+}
+
+function getClippyBrowLift(mode = 'idle') {
+    switch (mode) {
+        case 'thinking':
+        case 'think':
+            return CLIPPY_BROW_IDLE_LIFT * 1.4;
+        case 'reading':
+            return CLIPPY_BROW_IDLE_LIFT * 0.45;
+        case 'failed':
+        case 'error':
+        case 'warning':
+            return -CLIPPY_BROW_IDLE_LIFT * 0.6;
+        case 'sleep':
+            return -CLIPPY_BROW_IDLE_LIFT * 0.4;
+        default:
+            return CLIPPY_BROW_IDLE_LIFT;
+    }
+}
+
+function applyClippyGaze(offsetX = 0, offsetY = 0, { mode = 'idle', time = 0 } = {}) {
+    if (clippyEyesMesh?.userData?.basePosition && clippyEyesMesh?.userData?.baseRotation) {
+        const basePosition = clippyEyesMesh.userData.basePosition;
+        const baseRotation = clippyEyesMesh.userData.baseRotation;
+        clippyEyesMesh.position.set(
+            basePosition.x,
+            basePosition.y,
+            basePosition.z,
+        );
+        clippyEyesMesh.rotation.set(
+            baseRotation.x - offsetY * CLIPPY_EYE_ROTATION_X,
+            baseRotation.y + offsetX * CLIPPY_EYE_ROTATION_Y,
+            baseRotation.z - offsetX * CLIPPY_EYE_ROTATION_Z,
+        );
+    }
+
+    if (clippyIrisMesh?.userData?.basePosition && clippyIrisMesh?.userData?.baseRotation) {
+        const basePosition = clippyIrisMesh.userData.basePosition;
+        const baseRotation = clippyIrisMesh.userData.baseRotation;
+        clippyIrisMesh.position.set(
+            basePosition.x,
+            basePosition.y,
+            basePosition.z,
+        );
+        clippyIrisMesh.rotation.set(
+            baseRotation.x - offsetY * CLIPPY_EYE_ROTATION_X,
+            baseRotation.y + offsetX * CLIPPY_EYE_ROTATION_Y,
+            baseRotation.z - offsetX * CLIPPY_EYE_ROTATION_Z,
+        );
+    }
+
+    let browY = getClippyBrowLift(mode);
+    let browRotateX = 0;
+    let browRotateZ = 0;
+    if (clippyBrowsMesh?.userData?.basePosition) {
+        const basePosition = clippyBrowsMesh.userData.basePosition;
+        const baseRotation = clippyBrowsMesh.userData.baseRotation;
+        const idleWave = Math.sin(time * 1.05) * CLIPPY_BROW_IDLE_LIFT * 0.26;
+        const idleTilt = Math.sin(time * 0.9) * CLIPPY_BROW_IDLE_TILT;
+        browY += idleWave + (offsetY * CLIPPY_BROW_TRACK_Y);
+        browRotateX = -offsetY * CLIPPY_BROW_ROTATION_X + idleTilt * 0.34;
+        browRotateZ = -offsetX * CLIPPY_BROW_ROTATION_Z + idleTilt;
+        clippyBrowsMesh.position.set(
+            basePosition.x,
+            basePosition.y,
+            basePosition.z + browY,
+        );
+        if (baseRotation) {
+            clippyBrowsMesh.rotation.set(
+                baseRotation.x + browRotateX,
+                baseRotation.y,
+                baseRotation.z + browRotateZ,
+            );
+        }
+    }
+
+    updateClippyFaceState({
+        gazeX: offsetX,
+        gazeY: offsetY,
+        browY,
+        browRotateX,
+        browRotateZ,
+    });
+}
+
+function updateClippyGaze(rootAvatar, dt, now) {
+    const motionPersona = rootAvatar?.motionPersona || MOTION_PERSONAS.steady;
+    const visualMode = rootAvatar ? getVisualMode(rootAvatar, now) : clippyVisualMode;
+    const config = getClippyGazeConfig(visualMode, motionPersona);
+
+    if (!clippyIrisMesh?.userData?.basePosition) {
+        return;
+    }
+
+    if (!config.enabled) {
+        clippyGazeState.currentX = config.restX;
+        clippyGazeState.currentY = config.restY;
+        clippyGazeState.targetX = config.restX;
+        clippyGazeState.targetY = config.restY;
+        clippyGazeState.timer = randomFromRange(config.timerRange);
+        applyClippyGaze(config.restX, config.restY, { mode: visualMode, time: now / 1000 });
+        return;
+    }
+
+    clippyGazeState.timer -= dt;
+    if (clippyGazeState.timer <= 0) {
+        if (Math.random() < 0.3) {
+            clippyGazeState.targetX = config.restX;
+            clippyGazeState.targetY = config.restY;
+        } else {
+            clippyGazeState.targetX = config.restX + randomFromRange([-config.rangeX, config.rangeX]);
+            clippyGazeState.targetY = config.restY + randomFromRange([-config.rangeY, config.rangeY]);
+        }
+        clippyGazeState.timer = randomFromRange(config.timerRange);
+    }
+
+    const ease = 1 - Math.exp(-dt * (1.65 + motionPersona.eyeEase * 0.85));
+    clippyGazeState.currentX += (clippyGazeState.targetX - clippyGazeState.currentX) * ease;
+    clippyGazeState.currentY += (clippyGazeState.targetY - clippyGazeState.currentY) * ease;
+    applyClippyGaze(clippyGazeState.currentX, clippyGazeState.currentY, { mode: visualMode, time: now / 1000 });
+}
+
 function updateClippyModel(dt, now) {
     if (!clippyRoot || !isClippyAvatar()) return;
 
     const time = now / 1000;
     const mode = getClippyAnimationKey();
     const motion = getClippyMotionConfig(mode, time);
+    const rootAvatar = avatars.get(ROOT_AGENT_ID);
+    applyClippyBlink(1);
+    updateClippyGaze(rootAvatar, dt, now);
+    const clippyWithSubagents = rootAvatar && [...avatars.values()].some((avatar) => !avatar.isRoot && avatar.inLayout);
+    if (clippyWithSubagents) {
+        const subagentDrop = CLIPPY_TARGET_HEIGHT * rootAvatar.currentScale * CLIPPY_SUBAGENT_DROP_FACTOR;
+        clippyRoot.position.x = rootAvatar.group.position.x;
+        clippyRoot.position.y = rootAvatar.group.position.y - subagentDrop;
+        clippyRoot.position.z = rootAvatar.group.position.z;
+        clippyRoot.rotation.set(motion.rotX, motion.rotY, motion.rotZ);
+        clippyRoot.scale.setScalar(clippyBaseScale * rootAvatar.currentScale * motion.scale);
+        updateClippyInnerClipDeform(dt, time);
+
+        if (clippyMixer) {
+            clippyMixer.timeScale = motion.timeScale;
+            clippyMixer.update(dt);
+        }
+        return;
+    }
+
     clippyRoot.position.x = 0;
     clippyRoot.position.y = clippyBaseY + motion.bobY;
+    clippyRoot.position.z = 0;
     clippyRoot.rotation.set(motion.rotX, motion.rotY, motion.rotZ);
     clippyRoot.scale.setScalar(clippyBaseScale * motion.scale);
     updateClippyInnerClipDeform(dt, time);
@@ -1393,7 +1686,156 @@ function setVoxtralRefAudio(dataUrl, { rememberForClippy = isClippyAvatar(), sav
         voxtralRecordBtn.classList.remove('hidden', 'recording');
     }
 
+    updateElevenLabsCloneUI();
+    updateVoicePreviewButtons();
     if (save) saveTtsSettings();
+}
+
+function getActiveReferenceAudio({ clippy = isClippyAvatar() } = {}) {
+    return clippy ? (clippyRefAudio || voxtralRefAudio) : voxtralRefAudio;
+}
+
+function getElevenLabsCloneState({ clippy = false } = {}) {
+    if (clippy) {
+        return {
+            voiceId: clippyElevenlabsVoiceId,
+            voiceName: clippyElevenlabsVoiceName,
+            sourceHash: clippyElevenlabsCloneSourceHash,
+        };
+    }
+    return {
+        voiceId: elevenlabsClonedVoiceId,
+        voiceName: elevenlabsClonedVoiceName,
+        sourceHash: elevenlabsCloneSourceHash,
+    };
+}
+
+function setElevenLabsCloneState(
+    { voiceId = '', voiceName = '', sourceHash = '' } = {},
+    { clippy = false, save = true } = {},
+) {
+    if (clippy) {
+        clippyElevenlabsVoiceId = voiceId;
+        clippyElevenlabsVoiceName = voiceName;
+        clippyElevenlabsCloneSourceHash = sourceHash;
+    } else {
+        elevenlabsClonedVoiceId = voiceId;
+        elevenlabsClonedVoiceName = voiceName;
+        elevenlabsCloneSourceHash = sourceHash;
+    }
+    updateElevenLabsCloneUI();
+    updateVoicePreviewButtons();
+    if (save) saveTtsSettings();
+}
+
+function getActiveElevenLabsVoiceId({ clippy = false } = {}) {
+    return elevenlabsVoice;
+}
+
+function setElevenLabsCloneStatus(message = '') {
+    const text = String(message || '').trim();
+    elevenlabsCloneStatus.textContent = text;
+    elevenlabsCloneStatus.classList.toggle('hidden', !text);
+}
+
+function setSettingsTab(tab) {
+    activeSettingsTab = tab === 'speech' ? 'speech' : 'general';
+    const showingSpeech = activeSettingsTab === 'speech';
+    settingsGeneralTabBtn.classList.toggle('active', !showingSpeech);
+    settingsGeneralTabBtn.setAttribute('aria-selected', String(!showingSpeech));
+    settingsSpeechTabBtn.classList.toggle('active', showingSpeech);
+    settingsSpeechTabBtn.setAttribute('aria-selected', String(showingSpeech));
+    settingsGeneralPanel.classList.toggle('hidden', showingSpeech);
+    settingsSpeechPanel.classList.toggle('hidden', !showingSpeech);
+}
+
+function beginSpeechRequest() {
+    speechRequestId += 1;
+    return speechRequestId;
+}
+
+function isCurrentSpeechRequest(requestId) {
+    return requestId === speechRequestId;
+}
+
+function stopGeneratedSpeechPlayback() {
+    if (ttsAudioPlayer) {
+        ttsAudioPlayer.pause();
+        ttsAudioPlayer = null;
+    }
+    releaseGeneratedAudioUrl();
+}
+
+function getVoicePreviewText() {
+    return isClippyAvatar()
+        ? "It looks like this voice is ready to help."
+        : "Hello! This is a preview of the selected voice.";
+}
+
+function canPreviewCurrentVoice(engine = ttsEngine) {
+    if (engine === 'webspeech') {
+        return ttsVoiceSelect.options.length > 0;
+    }
+    if (engine === 'voxtral') {
+        if (voxtralVoiceSource === 'myvoice') {
+            return !!getActiveReferenceAudio({ clippy: isClippyAvatar() });
+        }
+        return !!voxtralVoiceSelect.value;
+    }
+    if (engine === 'elevenlabs') {
+        return !!elevenlabsApiKey && !!elevenlabsVoiceSelect.value;
+    }
+    return false;
+}
+
+function updateVoicePreviewButtons() {
+    const webspeechReady = canPreviewCurrentVoice('webspeech');
+    const aiReady = canPreviewCurrentVoice(ttsEngine);
+    const busyLabel = voicePreviewBusy ? 'Testing...' : 'Test selected voice';
+    ttsWebspeechTestBtn.textContent = busyLabel;
+    ttsAiTestBtn.textContent = busyLabel;
+    ttsWebspeechTestBtn.disabled = voicePreviewBusy || !webspeechReady;
+    ttsAiTestBtn.disabled = voicePreviewBusy || !aiReady;
+}
+
+async function previewCurrentVoice(engine = ttsEngine) {
+    if (!canPreviewCurrentVoice(engine)) {
+        return false;
+    }
+
+    voicePreviewBusy = true;
+    updateVoicePreviewButtons();
+    stopAllSpeech();
+    const text = getVoicePreviewText();
+    const clippy = isClippyAvatar();
+
+    try {
+        if (engine === 'webspeech') {
+            speakWebSpeech(text, { clippy });
+            return true;
+        }
+        if (engine === 'voxtral') {
+            await speakVoxtral(text, { clippy });
+            return true;
+        }
+        if (engine === 'elevenlabs') {
+            await speakElevenLabs(text, { clippy });
+            return true;
+        }
+        return false;
+    } finally {
+        voicePreviewBusy = false;
+        updateVoicePreviewButtons();
+    }
+}
+
+function updateElevenLabsCloneUI() {
+    elevenlabsCloneControls.classList.add('hidden');
+    elevenlabsDeleteBtn.classList.add('hidden');
+    elevenlabsCloneBtn.disabled = true;
+    elevenlabsDeleteBtn.disabled = true;
+    setElevenLabsCloneStatus('');
+    updateVoicePreviewButtons();
 }
 
 function applyAvatarStyle({ enforceVoiceDefaults = false } = {}) {
@@ -1402,6 +1844,8 @@ function applyAvatarStyle({ enforceVoiceDefaults = false } = {}) {
     updateSceneModeVisibility();
     updateCamera();
     if (!isClippyAvatar()) {
+        applyClippyBlink(1);
+        applyClippyGaze(0, 0);
         setClippySpeaking(false);
         updateClippyVisual('idle');
         return;
@@ -1409,20 +1853,22 @@ function applyAvatarStyle({ enforceVoiceDefaults = false } = {}) {
 
     if (enforceVoiceDefaults) {
         ttsEnabled = true;
-        ttsEngine = 'voxtral';
         ttsEngineSelect.value = ttsEngine;
-        voxtralVoice = clippyVoxtralVoice || CLIPPY_DEFAULT_VOXTRAL_VOICE;
-        voxtralVoiceSource = 'myvoice';
-        setRadioGroupValue('voxtral-voice-source', voxtralVoiceSource);
-        if (clippyRefAudio) {
-            setVoxtralRefAudio(clippyRefAudio, { rememberForClippy: false, save: false });
-        } else if (voxtralRefAudio) {
-            clippyRefAudio = voxtralRefAudio;
+        if (ttsEngine === 'voxtral') {
+            voxtralVoice = clippyVoxtralVoice || CLIPPY_DEFAULT_VOXTRAL_VOICE;
+            voxtralVoiceSource = 'myvoice';
+            setRadioGroupValue('ai-voice-source', voxtralVoiceSource);
+            if (clippyRefAudio) {
+                setVoxtralRefAudio(clippyRefAudio, { rememberForClippy: false, save: false });
+            } else if (voxtralRefAudio) {
+                clippyRefAudio = voxtralRefAudio;
+            }
         }
     }
 
     updateTtsButton();
     updateEngineUI();
+    updateVoicePreviewButtons();
 }
 
 function updateMessageVisibility() {
@@ -1431,6 +1877,11 @@ function updateMessageVisibility() {
     if (!showSpokenText) {
         clearMessageOverlay();
     }
+}
+
+function updateWindowTransparency() {
+    document.body.classList.toggle('window-transparent', transparentWindow);
+    transparentWindowToggle.checked = transparentWindow;
 }
 
 
@@ -3239,7 +3690,8 @@ function updateCamera(layout = layoutState) {
     const width = container.clientWidth || 1;
     const height = container.clientHeight || 1;
     camera.aspect = width / height;
-    if (isClippyAvatar()) {
+    const clippyWithSubagents = isClippyAvatar() && [...avatars.values()].some((avatar) => !avatar.isRoot && avatar.inLayout);
+    if (isClippyAvatar() && !clippyWithSubagents) {
         const compactness = THREE.MathUtils.clamp(Math.max((520 - width) / 260, (640 - height) / 260), 0, 1);
         camera.position.set(0, 0.08 + compactness * 0.06, 4.65 + compactness * 0.5);
         camera.lookAt(0, 0.02, 0);
@@ -3422,7 +3874,7 @@ window.showMessage = (text) => {
 
     if (isClippyAvatar()) {
         clearMessageOverlay();
-        speakClippySummary(text);
+        pendingClippyMessage = text || '';
         return;
     }
 
@@ -3619,12 +4071,26 @@ let voxtralVoice = 'en_paul_neutral';
 let voxtralVoiceSource = 'preset';
 let voxtralRefAudio = null;
 let clippyVoxtralVoice = CLIPPY_DEFAULT_VOXTRAL_VOICE;
+let elevenlabsApiKey = '';
+let elevenlabsVoice = '';
+let elevenlabsClonedVoiceId = '';
+let elevenlabsClonedVoiceName = '';
+let elevenlabsCloneSourceHash = '';
+let clippyElevenlabsVoiceId = '';
+let clippyElevenlabsVoiceName = '';
+let clippyElevenlabsCloneSourceHash = '';
 let clippyRefAudio = null;
-let voxtralAudioPlayer = null;
+let ttsAudioPlayer = null;
 let voxtralAudioCtx = null;
+let activeGeneratedAudioUrl = null;
+let speechRequestId = 0;
+let elevenlabsVoicesRequestId = 0;
+let elevenlabsCloneBusy = false;
+let voicePreviewBusy = false;
 let showSpokenText = true;
 let showAvatarBadges = true;
 let showModelBadges = false;
+let transparentWindow = true;
 
 function getVoxtralAudioCtx() {
     if (!voxtralAudioCtx || voxtralAudioCtx.state === 'closed') {
@@ -3690,6 +4156,47 @@ try {
     savedTts = {};
 }
 
+let suppressAutoWindowSizeSaveUntil = 0;
+
+if (savedTts.windowWidth && savedTts.windowHeight && savedTts.windowSizeUnits !== 'physical') {
+    const scale = Math.max(1, Number(window.devicePixelRatio) || 1);
+    savedTts.windowWidth = Math.max(320, Math.round(savedTts.windowWidth * scale));
+    savedTts.windowHeight = Math.max(360, Math.round(savedTts.windowHeight * scale));
+    savedTts.windowSizeUnits = 'physical';
+    suppressAutoWindowSizeSaveUntil = performance.now() + 1500;
+    copilot.saveSettings({
+        windowWidth: savedTts.windowWidth,
+        windowHeight: savedTts.windowHeight,
+        windowSizeUnits: savedTts.windowSizeUnits,
+    }).catch(() => {});
+}
+
+function readWindowSize() {
+    const scale = Math.max(1, Number(window.devicePixelRatio) || 1);
+    return {
+        windowWidth: Math.max(320, Math.round((window.outerWidth || window.innerWidth || container.clientWidth || 600) * scale)),
+        windowHeight: Math.max(360, Math.round((window.outerHeight || window.innerHeight || container.clientHeight || 800) * scale)),
+        windowSizeUnits: 'physical',
+    };
+}
+
+let saveWindowSizeTimer = null;
+
+function scheduleWindowSizeSave() {
+    if (performance.now() < suppressAutoWindowSizeSaveUntil) {
+        return;
+    }
+
+    if (saveWindowSizeTimer) {
+        clearTimeout(saveWindowSizeTimer);
+    }
+
+    saveWindowSizeTimer = setTimeout(() => {
+        saveWindowSizeTimer = null;
+        copilot.saveSettings(readWindowSize()).catch(() => {});
+    }, 220);
+}
+
 if (savedTts.rate) {
     ttsRate = savedTts.rate;
     ttsRateInput.value = ttsRate;
@@ -3736,9 +4243,34 @@ if (savedTts.clippyVoxtralVoice && savedTts.clippyVoxtralVoice !== CLIPPY_LEGACY
 }
 if (savedTts.voxtralVoiceSource) {
     voxtralVoiceSource = savedTts.voxtralVoiceSource;
-    document.querySelectorAll('input[name="voxtral-voice-source"]').forEach((radio) => {
+    document.querySelectorAll('input[name="ai-voice-source"]').forEach((radio) => {
         radio.checked = radio.value === voxtralVoiceSource;
     });
+}
+if (savedTts.elevenlabsApiKey) {
+    elevenlabsApiKey = savedTts.elevenlabsApiKey;
+    elevenlabsApikeyInput.value = elevenlabsApiKey;
+}
+if (savedTts.elevenlabsVoice) {
+    elevenlabsVoice = savedTts.elevenlabsVoice;
+}
+if (savedTts.elevenlabsClonedVoiceId) {
+    elevenlabsClonedVoiceId = savedTts.elevenlabsClonedVoiceId;
+}
+if (savedTts.elevenlabsClonedVoiceName) {
+    elevenlabsClonedVoiceName = savedTts.elevenlabsClonedVoiceName;
+}
+if (savedTts.elevenlabsCloneSourceHash) {
+    elevenlabsCloneSourceHash = savedTts.elevenlabsCloneSourceHash;
+}
+if (savedTts.clippyElevenlabsVoiceId) {
+    clippyElevenlabsVoiceId = savedTts.clippyElevenlabsVoiceId;
+}
+if (savedTts.clippyElevenlabsVoiceName) {
+    clippyElevenlabsVoiceName = savedTts.clippyElevenlabsVoiceName;
+}
+if (savedTts.clippyElevenlabsCloneSourceHash) {
+    clippyElevenlabsCloneSourceHash = savedTts.clippyElevenlabsCloneSourceHash;
 }
 if (savedTts.clippyRefAudio) {
     clippyRefAudio = savedTts.clippyRefAudio;
@@ -3755,11 +4287,17 @@ if (savedTts.showAvatarBadges != null) {
 if (savedTts.showModelBadges != null) {
     showModelBadges = !!savedTts.showModelBadges;
 }
+if (savedTts.transparentWindow != null) {
+    transparentWindow = !!savedTts.transparentWindow;
+}
+setSettingsTab('general');
 applyAvatarStyle({ enforceVoiceDefaults: avatarStyle === 'clippy' });
 updateTtsButton();
 updateEngineUI();
 updateMessageVisibility();
 updateBadgeVisibility();
+updateWindowTransparency();
+updateVoicePreviewButtons();
 
 function saveTtsSettings() {
     copilot.saveSettings({
@@ -3776,10 +4314,20 @@ function saveTtsSettings() {
         voxtralVoiceSource,
         voxtralRefAudio,
         clippyVoxtralVoice,
+        elevenlabsApiKey,
+        elevenlabsVoice,
+        elevenlabsClonedVoiceId,
+        elevenlabsClonedVoiceName,
+        elevenlabsCloneSourceHash,
+        clippyElevenlabsVoiceId,
+        clippyElevenlabsVoiceName,
+        clippyElevenlabsCloneSourceHash,
         clippyRefAudio,
         showSpokenText,
         showAvatarBadges,
         showModelBadges,
+        transparentWindow,
+        ...readWindowSize(),
     }).catch(() => {});
 }
 
@@ -3792,14 +4340,26 @@ function updateBackendUI() {
 
 function updateEngineUI() {
     const isVoxtral = ttsEngine === 'voxtral';
-    ttsWebspeechSection.classList.toggle('hidden', isVoxtral);
+    const isElevenLabs = ttsEngine === 'elevenlabs';
+    const isAiEngine = isVoxtral || isElevenLabs;
+    const isMyVoice = voxtralVoiceSource === 'myvoice';
+    ttsWebspeechSection.classList.toggle('hidden', isAiEngine);
     ttsVoxtralSection.classList.toggle('hidden', !isVoxtral);
+    ttsElevenlabsSection.classList.toggle('hidden', !isElevenLabs);
+    ttsAiVoiceSection.classList.toggle('hidden', !isAiEngine);
+    ttsAiVoiceSourceLabel.classList.toggle('hidden', !isVoxtral);
+    ttsAiPresetSection.classList.toggle('hidden', !isElevenLabs && (!isVoxtral || isMyVoice));
+    ttsAiRecordSection.classList.toggle('hidden', !isVoxtral || !isMyVoice);
+    voxtralVoiceSelect.parentElement.classList.toggle('hidden', !isVoxtral);
+    elevenlabsPresetSection.classList.toggle('hidden', !isElevenLabs);
     if (isVoxtral) {
-        const isMyVoice = voxtralVoiceSource === 'myvoice';
-        voxtralPresetSection.classList.toggle('hidden', isMyVoice);
-        voxtralRecordSection.classList.toggle('hidden', !isMyVoice);
         updateBackendUI();
     }
+    if (isElevenLabs) {
+        fetchElevenLabsVoices();
+    }
+    updateElevenLabsCloneUI();
+    updateVoicePreviewButtons();
 }
 
 function populateVoices() {
@@ -3812,6 +4372,7 @@ function populateVoices() {
         option.selected = voice.name === ttsVoiceName;
         ttsVoiceSelect.appendChild(option);
     });
+    updateVoicePreviewButtons();
 }
 
 function populateVoxtralVoices(voices) {
@@ -3827,7 +4388,47 @@ function populateVoxtralVoices(voices) {
     });
     // Sync state var to actual selected value — saved voice may no longer be valid
     voxtralVoice = voxtralVoiceSelect.value;
+    updateVoicePreviewButtons();
     saveTtsSettings();
+}
+
+function populateElevenLabsVoices(voices, { placeholder = 'Select a voice' } = {}) {
+    elevenlabsVoiceSelect.innerHTML = '';
+    if (!voices.length) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = placeholder;
+        option.selected = true;
+        elevenlabsVoiceSelect.appendChild(option);
+        elevenlabsVoice = '';
+        updateVoicePreviewButtons();
+        return;
+    }
+    voices.forEach((voice) => {
+        const option = document.createElement('option');
+        option.value = voice.voice_id;
+        option.textContent = voice.name || voice.voice_id;
+        option.selected = voice.voice_id === elevenlabsVoice;
+        elevenlabsVoiceSelect.appendChild(option);
+    });
+    if (!elevenlabsVoiceSelect.value) {
+        elevenlabsVoiceSelect.selectedIndex = 0;
+    }
+    elevenlabsVoice = elevenlabsVoiceSelect.value;
+    updateVoicePreviewButtons();
+}
+
+async function readErrorDetail(res) {
+    try {
+        const data = await res.clone().json();
+        return data.detail?.message || data.detail || data.message || JSON.stringify(data);
+    } catch {
+        try {
+            return await res.text();
+        } catch {
+            return `HTTP ${res.status}`;
+        }
+    }
 }
 
 async function fetchVoxtralVoices() {
@@ -3855,6 +4456,43 @@ async function fetchVoxtralVoices() {
     populateVoxtralVoices(VOXTRAL_VOICES_FALLBACK);
 }
 
+async function fetchElevenLabsVoices({ force = false } = {}) {
+    if (!elevenlabsApiKey) {
+        populateElevenLabsVoices([], { placeholder: 'Enter API key to load voices' });
+        updateElevenLabsCloneUI();
+        return;
+    }
+    if (!force && elevenlabsVoiceSelect.options.length > 1) {
+        updateElevenLabsCloneUI();
+        return;
+    }
+    const requestId = ++elevenlabsVoicesRequestId;
+    populateElevenLabsVoices([], { placeholder: 'Loading ElevenLabs voices...' });
+    try {
+        const res = await fetch('https://api.elevenlabs.io/v1/voices', {
+            headers: { 'xi-api-key': elevenlabsApiKey },
+        });
+        if (!res.ok) {
+            throw new Error(await readErrorDetail(res));
+        }
+        const data = await res.json();
+        if (requestId !== elevenlabsVoicesRequestId) {
+            return;
+        }
+        const voices = Array.isArray(data?.voices) ? data.voices : [];
+        populateElevenLabsVoices(voices, { placeholder: 'No voices available' });
+        saveTtsSettings();
+    } catch (error) {
+        console.error('ElevenLabs voice fetch failed:', error);
+        if (requestId !== elevenlabsVoicesRequestId) {
+            return;
+        }
+        populateElevenLabsVoices([], { placeholder: 'Unable to load voices' });
+    } finally {
+        updateElevenLabsCloneUI();
+    }
+}
+
 populateVoxtralVoices(VOXTRAL_VOICES_FALLBACK);
 speechSynthesis.onvoiceschanged = populateVoices;
 populateVoices();
@@ -3868,6 +4506,26 @@ function blobToBase64(blob) {
         reader.onerror = reject;
         reader.readAsDataURL(blob);
     });
+}
+
+async function dataUrlToBlob(dataUrl) {
+    const response = await fetch(dataUrl);
+    return response.blob();
+}
+
+async function hashReferenceAudio(dataUrl) {
+    const blob = await dataUrlToBlob(dataUrl);
+    const buffer = await blob.arrayBuffer();
+    const digest = await crypto.subtle.digest('SHA-256', buffer);
+    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('');
+}
+
+function extensionForMimeType(type = '') {
+    if (/wav/i.test(type)) return 'wav';
+    if (/mpeg|mp3/i.test(type)) return 'mp3';
+    if (/ogg/i.test(type)) return 'ogg';
+    if (/webm/i.test(type)) return 'webm';
+    return 'wav';
 }
 
 /** Convert an AudioBuffer to a WAV data URL (PCM 16-bit little-endian) */
@@ -3922,6 +4580,110 @@ async function audioFileToVoxtralRefAudio(file) {
         return audioBufferToWavDataUrl(decoded);
     } catch {
         return originalDataUrl;
+    }
+}
+
+async function deleteElevenLabsVoice(voiceId) {
+    if (!voiceId || !elevenlabsApiKey) return;
+    const res = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(voiceId)}`, {
+        method: 'DELETE',
+        headers: { 'xi-api-key': elevenlabsApiKey },
+    });
+    if (!res.ok && res.status !== 404) {
+        throw new Error(await readErrorDetail(res));
+    }
+}
+
+async function createOrReplaceElevenLabsClone({ clippy = isClippyAvatar() } = {}) {
+    const activeRefAudio = getActiveReferenceAudio({ clippy });
+    if (!elevenlabsApiKey) {
+        setElevenLabsCloneStatus('Enter your ElevenLabs API key first.');
+        return;
+    }
+    if (!activeRefAudio) {
+        setElevenLabsCloneStatus('Record, import, or generate a sample before creating a cloned voice.');
+        return;
+    }
+
+    elevenlabsCloneBusy = true;
+    updateElevenLabsCloneUI();
+    try {
+        const sourceHash = await hashReferenceAudio(activeRefAudio);
+        const existingClone = getElevenLabsCloneState({ clippy });
+        if (existingClone.voiceId && existingClone.sourceHash === sourceHash) {
+            setElevenLabsCloneStatus(`Using cloned ElevenLabs voice: ${existingClone.voiceName || existingClone.voiceId}`);
+            return;
+        }
+        if (existingClone.voiceId) {
+            await deleteElevenLabsVoice(existingClone.voiceId);
+            setElevenLabsCloneState({}, { clippy, save: false });
+        }
+
+        const blob = await dataUrlToBlob(activeRefAudio);
+        const filename = clippy
+            ? `clippy-reference.${extensionForMimeType(blob.type)}`
+            : `avatar-reference.${extensionForMimeType(blob.type)}`;
+        const form = new FormData();
+        form.append('name', clippy ? 'Copilot Avatar Clippy' : 'Copilot Avatar Voice');
+        form.append(
+            'description',
+            clippy
+                ? 'Clippy reference voice created from Copilot Avatar settings.'
+                : 'Custom reference voice created from Copilot Avatar settings.',
+        );
+        form.append('files', new File([blob], filename, { type: blob.type || 'audio/wav' }));
+
+        const res = await fetch('https://api.elevenlabs.io/v1/voices/add', {
+            method: 'POST',
+            headers: { 'xi-api-key': elevenlabsApiKey },
+            body: form,
+        });
+        if (!res.ok) {
+            throw new Error(await readErrorDetail(res));
+        }
+
+        const data = await res.json();
+        setElevenLabsCloneState(
+            {
+                voiceId: data.voice_id || '',
+                voiceName: data.name || '',
+                sourceHash,
+            },
+            { clippy, save: false },
+        );
+        setElevenLabsCloneStatus(`Created ElevenLabs voice: ${data.name || data.voice_id}`);
+        await fetchElevenLabsVoices({ force: true });
+        saveTtsSettings();
+    } catch (error) {
+        console.error('ElevenLabs clone creation failed:', error);
+        setElevenLabsCloneStatus(`ElevenLabs clone failed: ${error?.message || error}`);
+    } finally {
+        elevenlabsCloneBusy = false;
+        updateElevenLabsCloneUI();
+    }
+}
+
+async function deleteActiveElevenLabsClone({ clippy = isClippyAvatar() } = {}) {
+    const existingClone = getElevenLabsCloneState({ clippy });
+    if (!existingClone.voiceId) {
+        setElevenLabsCloneStatus('');
+        return;
+    }
+
+    elevenlabsCloneBusy = true;
+    updateElevenLabsCloneUI();
+    try {
+        await deleteElevenLabsVoice(existingClone.voiceId);
+        setElevenLabsCloneState({}, { clippy, save: false });
+        setElevenLabsCloneStatus('Deleted cloned ElevenLabs voice.');
+        await fetchElevenLabsVoices({ force: true });
+        saveTtsSettings();
+    } catch (error) {
+        console.error('ElevenLabs clone deletion failed:', error);
+        setElevenLabsCloneStatus(`Unable to delete cloned voice: ${error?.message || error}`);
+    } finally {
+        elevenlabsCloneBusy = false;
+        updateElevenLabsCloneUI();
     }
 }
 
@@ -3988,11 +4750,15 @@ async function generateRetroClippyVoice() {
         const dataUrl = await copilot.generateRetroClippyVoice();
         avatarStyle = 'clippy';
         ttsEnabled = true;
-        ttsEngine = 'voxtral';
-        voxtralVoiceSource = 'myvoice';
+        if (ttsEngine !== 'voxtral' && ttsEngine !== 'elevenlabs') {
+            ttsEngine = 'voxtral';
+        }
         avatarStyleSelect.value = avatarStyle;
         ttsEngineSelect.value = ttsEngine;
-        setRadioGroupValue('voxtral-voice-source', voxtralVoiceSource);
+        if (ttsEngine === 'voxtral') {
+            voxtralVoiceSource = 'myvoice';
+            setRadioGroupValue('ai-voice-source', voxtralVoiceSource);
+        }
         setVoxtralRefAudio(dataUrl, { rememberForClippy: true, save: false });
         applyAvatarStyle({ enforceVoiceDefaults: true });
         saveTtsSettings();
@@ -4007,7 +4773,9 @@ async function generateRetroClippyVoice() {
 // ── TTS engines ───────────────────────────────────────────────────────────────
 
 function speakWebSpeech(text, { clippy = false } = {}) {
+    const requestId = beginSpeechRequest();
     speechSynthesis.cancel();
+    stopGeneratedSpeechPlayback();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = ttsRate;
     utterance.pitch = ttsPitch;
@@ -4017,21 +4785,37 @@ function speakWebSpeech(text, { clippy = false } = {}) {
     }
     if (clippy) {
         setClippySpeaking(true);
-        utterance.onend = () => setClippySpeaking(false);
-        utterance.onerror = () => setClippySpeaking(false);
+        utterance.onend = () => {
+            if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+        };
+        utterance.onerror = () => {
+            if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+        };
     }
     speechSynthesis.speak(utterance);
 }
 
+function releaseGeneratedAudioUrl() {
+    if (activeGeneratedAudioUrl) {
+        URL.revokeObjectURL(activeGeneratedAudioUrl);
+        activeGeneratedAudioUrl = null;
+    }
+}
+
 function fallbackClippySpeech(text) {
-    if (!clippyRefAudio && !voxtralRefAudio) {
+    if (ttsEngine === 'elevenlabs') {
+        console.warn('Clippy ElevenLabs speech failed; falling back to Web Speech.');
+    } else if (!clippyRefAudio && !voxtralRefAudio) {
         console.warn('Clippy Voxtral speech failed; falling back to Web Speech. Add a Voxtral API key or local server in settings for Clippy voice cloning.');
     }
     speakWebSpeech(text, { clippy: true });
 }
 
 async function speakVoxtral(text, { clippy = false } = {}) {
+    const requestId = beginSpeechRequest();
     try {
+        speechSynthesis.cancel();
+        stopGeneratedSpeechPlayback();
         const isCloud = voxtralBackend === 'cloud';
         const apiUrl = isCloud ? 'https://api.mistral.ai' : voxtralUrl;
         const model = isCloud ? 'voxtral-mini-tts-latest' : 'mistralai/Voxtral-4B-TTS-2603';
@@ -4058,9 +4842,12 @@ async function speakVoxtral(text, { clippy = false } = {}) {
             headers: reqHeaders,
             body: JSON.stringify(body),
         });
+        if (!isCurrentSpeechRequest(requestId)) {
+            return;
+        }
         if (!res.ok) {
             console.error('Voxtral TTS error:', res.status, await res.text());
-            if (clippy) fallbackClippySpeech(text);
+            if (clippy && isCurrentSpeechRequest(requestId)) fallbackClippySpeech(text);
             return;
         }
         // Mistral cloud returns { audio_data: "<base64 WAV>" }
@@ -4075,28 +4862,91 @@ async function speakVoxtral(text, { clippy = false } = {}) {
             const binary = String.fromCharCode(...new Uint8Array(buf));
             audioSrc = `data:audio/wav;base64,${btoa(binary)}`;
         }
+        if (!isCurrentSpeechRequest(requestId)) {
+            return;
+        }
         const audio = new Audio(audioSrc);
         applyVoiceWarming(audio);
-        voxtralAudioPlayer = audio;
+        ttsAudioPlayer = audio;
         if (clippy) {
             setClippySpeaking(true);
-            audio.addEventListener('ended', () => setClippySpeaking(false), { once: true });
-            audio.addEventListener('error', () => setClippySpeaking(false), { once: true });
+            audio.addEventListener('ended', () => {
+                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+            }, { once: true });
+            audio.addEventListener('error', () => {
+                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+            }, { once: true });
         }
         await audio.play();
     } catch (err) {
-        if (clippy) setClippySpeaking(false);
+        if (clippy && isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
         console.error('Voxtral TTS failed:', err);
+        if (clippy && isCurrentSpeechRequest(requestId)) fallbackClippySpeech(text);
+    }
+}
+
+async function speakElevenLabs(text, { clippy = false } = {}) {
+    const requestId = beginSpeechRequest();
+    const voiceId = getActiveElevenLabsVoiceId({ clippy });
+    if (!elevenlabsApiKey || !voiceId) {
         if (clippy) fallbackClippySpeech(text);
+        return;
+    }
+
+    try {
+        speechSynthesis.cancel();
+        stopGeneratedSpeechPlayback();
+
+        const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
+            method: 'POST',
+            headers: {
+                'xi-api-key': elevenlabsApiKey,
+                'Content-Type': 'application/json',
+                Accept: 'audio/mpeg',
+            },
+            body: JSON.stringify({
+                text,
+                model_id: 'eleven_multilingual_v2',
+            }),
+        });
+        if (!isCurrentSpeechRequest(requestId)) {
+            return;
+        }
+        if (!res.ok) {
+            console.error('ElevenLabs TTS error:', res.status, await readErrorDetail(res));
+            if (clippy && isCurrentSpeechRequest(requestId)) fallbackClippySpeech(text);
+            return;
+        }
+
+        const blob = await res.blob();
+        if (!isCurrentSpeechRequest(requestId)) {
+            return;
+        }
+        activeGeneratedAudioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(activeGeneratedAudioUrl);
+        applyVoiceWarming(audio);
+        ttsAudioPlayer = audio;
+        if (clippy) {
+            setClippySpeaking(true);
+            audio.addEventListener('ended', () => {
+                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+            }, { once: true });
+            audio.addEventListener('error', () => {
+                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+            }, { once: true });
+        }
+        await audio.play();
+    } catch (error) {
+        if (clippy && isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+        console.error('ElevenLabs TTS failed:', error);
+        if (clippy && isCurrentSpeechRequest(requestId)) fallbackClippySpeech(text);
     }
 }
 
 function stopAllSpeech() {
+    beginSpeechRequest();
     speechSynthesis.cancel();
-    if (voxtralAudioPlayer) {
-        voxtralAudioPlayer.pause();
-        voxtralAudioPlayer = null;
-    }
+    stopGeneratedSpeechPlayback();
     setClippySpeaking(false);
 }
 
@@ -4113,15 +4963,23 @@ ttsSettingsBtn.addEventListener('click', () => {
     toggleTtsSettings();
 });
 
+settingsGeneralTabBtn.addEventListener('click', () => {
+    setSettingsTab('general');
+});
+
+settingsSpeechTabBtn.addEventListener('click', () => {
+    setSettingsTab('speech');
+});
+
 container.addEventListener('contextmenu', (event) => {
     if (!isClippyAvatar()) return;
     event.preventDefault();
     setTtsSettingsOpen(true);
 });
 
-// Single click on Clippy toggles settings (right-click blocked by OS drag region)
-container.addEventListener('click', () => {
-    if (!isClippyAvatar()) return;
+// Single click on the avatar scene toggles settings in both modes.
+container.addEventListener('click', (event) => {
+    if (ttsControls.contains(event.target)) return;
     toggleTtsSettings();
 });
 
@@ -4168,9 +5026,20 @@ modelVisibilityToggle.addEventListener('change', () => {
     saveTtsSettings();
 });
 
+transparentWindowToggle.addEventListener('change', () => {
+    transparentWindow = transparentWindowToggle.checked;
+    updateWindowTransparency();
+    saveTtsSettings();
+});
+
 ttsVoiceSelect.addEventListener('change', () => {
     ttsVoiceName = ttsVoiceSelect.value;
+    updateVoicePreviewButtons();
     saveTtsSettings();
+});
+
+ttsWebspeechTestBtn.addEventListener('click', () => {
+    previewCurrentVoice('webspeech');
 });
 
 ttsRateInput.addEventListener('input', () => {
@@ -4192,6 +5061,15 @@ voxtralUrlInput.addEventListener('change', () => {
 
 voxtralApikeyInput.addEventListener('change', () => {
     voxtralApiKey = voxtralApikeyInput.value.trim();
+    updateVoicePreviewButtons();
+    saveTtsSettings();
+});
+
+elevenlabsApikeyInput.addEventListener('change', () => {
+    elevenlabsApiKey = elevenlabsApikeyInput.value.trim();
+    fetchElevenLabsVoices({ force: true });
+    updateElevenLabsCloneUI();
+    updateVoicePreviewButtons();
     saveTtsSettings();
 });
 
@@ -4204,21 +5082,33 @@ document.querySelectorAll('input[name="voxtral-backend"]').forEach((radio) => {
 });
 
 voxtralRefreshBtn.addEventListener('click', () => fetchVoxtralVoices());
+elevenlabsRefreshBtn.addEventListener('click', () => fetchElevenLabsVoices({ force: true }));
 
 voxtralVoiceSelect.addEventListener('change', () => {
     voxtralVoice = voxtralVoiceSelect.value;
     if (isClippyAvatar()) {
         clippyVoxtralVoice = voxtralVoice;
     }
+    updateVoicePreviewButtons();
     saveTtsSettings();
 });
 
-document.querySelectorAll('input[name="voxtral-voice-source"]').forEach((radio) => {
+elevenlabsVoiceSelect.addEventListener('change', () => {
+    elevenlabsVoice = elevenlabsVoiceSelect.value;
+    updateVoicePreviewButtons();
+    saveTtsSettings();
+});
+
+document.querySelectorAll('input[name="ai-voice-source"]').forEach((radio) => {
     radio.addEventListener('change', () => {
         voxtralVoiceSource = radio.value;
         updateEngineUI();
         saveTtsSettings();
     });
+});
+
+ttsAiTestBtn.addEventListener('click', () => {
+    previewCurrentVoice();
 });
 
 voxtralRecordBtn.addEventListener('click', () => startRecording());
@@ -4229,13 +5119,19 @@ voxtralFileInput.addEventListener('change', async () => {
     if (!file) return;
     const dataUrl = await audioFileToVoxtralRefAudio(file);
     voxtralVoiceSource = 'myvoice';
-    setRadioGroupValue('voxtral-voice-source', voxtralVoiceSource);
+    setRadioGroupValue('ai-voice-source', voxtralVoiceSource);
     setVoxtralRefAudio(dataUrl);
     updateEngineUI();
     voxtralFileInput.value = '';
 });
 voxtralRerecordBtn.addEventListener('click', () => {
     setVoxtralRefAudio(null);
+});
+elevenlabsCloneBtn.addEventListener('click', () => {
+    createOrReplaceElevenLabsClone();
+});
+elevenlabsDeleteBtn.addEventListener('click', () => {
+    deleteActiveElevenLabsClone();
 });
 
 window.setTts = (enabled) => {
@@ -4249,6 +5145,7 @@ window.setTts = (enabled) => {
 window.getTts = () => ttsEnabled;
 window.speak = (text) => speak(text, { clippy: true });
 window.speakClippySummary = (text) => speakClippySummary(text);
+window.flushClippySummary = (text) => flushClippySummary(text);
 window.setAvatarStyle = (style) => {
     avatarStyle = style === 'clippy' ? 'clippy' : 'copilot';
     applyAvatarStyle({ enforceVoiceDefaults: avatarStyle === 'clippy' });
@@ -4290,6 +5187,10 @@ window.getTtsSettings = () => JSON.stringify({
     voxtralVoice,
     voxtralVoiceSource,
     clippyVoxtralVoice,
+    elevenlabsVoice,
+    elevenlabsHasApiKey: !!elevenlabsApiKey,
+    elevenlabsClonedVoiceId,
+    clippyElevenlabsVoiceId,
     hasClippyRefAudio: !!clippyRefAudio,
     hasClippyModel: !!clippyRoot,
     clippyAnimations: clippyActions.map((action) => action.getClip().name),
@@ -4381,16 +5282,35 @@ function summarizeForClippy(text) {
 }
 
 function speakClippySummary(text) {
-    speak(summarizeForClippy(text), { clippy: true, forceEngine: 'voxtral' });
+    speak(summarizeForClippy(text), { clippy: true });
+}
+
+function flushClippySummary(text = pendingClippyMessage) {
+    const sourceText = String(text || '').trim();
+    pendingClippyMessage = '';
+    if (!sourceText) return false;
+
+    const summary = summarizeForClippy(sourceText);
+    const now = performance.now();
+    if (summary === lastSpokenClippySummary && now - lastSpokenClippySummaryAt < 8000) {
+        return false;
+    }
+
+    lastSpokenClippySummary = summary;
+    lastSpokenClippySummaryAt = now;
+    speak(summary, { clippy: true });
+    return true;
 }
 
 function speak(text, { clippy = false, forceEngine = null } = {}) {
     if (!ttsEnabled || !text) return;
     const spokenText = stripMarkdownForSpeech(text);
     if (!spokenText) return;
-    const engine = forceEngine || (clippy ? 'voxtral' : ttsEngine);
+    const engine = forceEngine || ttsEngine;
     if (engine === 'voxtral') {
         speakVoxtral(spokenText, { clippy });
+    } else if (engine === 'elevenlabs') {
+        speakElevenLabs(spokenText, { clippy });
     } else {
         speakWebSpeech(spokenText, { clippy });
     }
@@ -4398,6 +5318,7 @@ function speak(text, { clippy = false, forceEngine = null } = {}) {
 
 const resizeObserver = new ResizeObserver(() => {
     layoutSubagents();
+    scheduleWindowSizeSave();
 });
 resizeObserver.observe(container);
 
