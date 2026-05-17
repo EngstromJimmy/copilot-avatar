@@ -30,6 +30,13 @@ Probe suite hardened to 74/74 for Peter's confirmed full SAM formant implementat
 
 ## Recent Sessions
 
+### 2026-05-18 — SAM TTS Regression Coverage Completion (COMPLETED)
+- **Agent:** howard-the-duck-1
+- **Status:** Delivered final regression test suite with 74/74 passing probes
+- **Scope:** SAM browser-only/no-network constraints, persistence, sub-agent visibility, late-open replay, weak-hint selection
+- **Commits:** f820751, 74404dd, 0f30416
+- **Validation:** All regression vectors exercised; ready for integration
+
 ### 2026-05-18 — Peter's SAM Formant Implementation Pass — Probe Hardening (COMPLETED)
 - **Task:** Harden Groups 3 and 13 for Peter's confirmed full formant synthesizer (removed seam-agnostic relaxations from Shuri's pass)
 - **Group 3:** Added `synthesizeSamAudio`, `audioBufferToWavDataUrl`, `SAM_PHONEME_DATA` assertions; added SAM_VOICES schema check (pitch/formantShift/rate per entry)
