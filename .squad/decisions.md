@@ -1803,3 +1803,327 @@ The broken seam was correlation, not rendering polish. Copilot can emit follow-u
 
 - Treat placeholder rendering as UI-only state: keep the saved ElevenLabs voice in memory until a real refreshed list proves the saved voice is missing.
 - Only persist a new ElevenLabs voice after the fetched list either re-selects the saved voice or deliberately falls back to a new valid option.
+
+
+### 2026-05-17T22:23:53.926+02:00: User directive
+**By:** Jimmy Engstrom (via Copilot)
+**What:** Show the sub-agent badge bottom text as what the sub-agent is actually working on (the sub-agent description), and only use Copilot-style status copy like "you seem to be all set" for the Copilot/Clippy avatar path.
+**Why:** User request — captured for team memory
+
+### 2026-05-17T22:31:24.735+02:00: User directive
+**By:** Jimmy Engstrom (via Copilot)
+**What:** Framed avatar windows should behave like normal windows and not stay always-on-top; transparent avatar windows can remain always-on-top.
+**Why:** User request — captured for team memory
+
+# Howard the Duck — late-open name review
+
+- Date: 2026-05-17T22:31:24.735+02:00
+- Decision: APPROVE
+- Scope: `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/content/style.css`, `.github/extensions/copilot-avatar/lib/squad-context.mjs`
+- Evidence:
+  - Syntax smoke passed on `main.mjs`, `content/main.js`, and `lib/squad-context.mjs`.
+  - Squad context probes still resolve `tester` → `Howard the Duck` and `lead` → `Tony Stark`, while a non-Squad cwd stays inactive and blank.
+  - Source probe confirmed late-open replay reads `session.getMessages()`, rebuilds active sub-agent state, restores `toolCallId` → `agentId` / spawn-metadata maps, and replays thinking plus work-description payloads back into the webview.
+  - Live avatar-window probe confirmed queued pre-identity updates do not mint placeholder cards; once a strong payload arrives, the card renders with the resolved Squad name, shows `thinking` / `running` state, keeps the lower detail line on the assigned work text, and suppresses Copilot root-summary chatter like “You seem to be all set.”
+
+# Howard the Duck - Live Check-In
+
+**Timestamp:** 2026-05-17T20:54:00.628+02:00  
+**Requested by:** Jimmy Engstrom
+
+## Status Report
+
+Howard the Duck is live and verified in the avatar UI. My cast name **Howard the Duck** and role **Tester** are correctly rendered with the green 🧪 tester badge and accent styling (accent: #3fb950) in the avatar system. The role detection logic in main.js confirms tester roles are identified and styled appropriately for Squad sub-agent cards.
+
+## Notes
+
+- Team roster confirms: Howard the Duck, Tester, Status ✅ Active
+- Role styling in main.js includes dedicated tester token with test-tube icon and green accent
+- Current focus area is showing Squad cast names in sub-agent cards—Howard is ready to validate that work
+
+# Howard the Duck Live Overlap Window - Visual Inspection
+
+**Date:** 2026-05-17T20:58:16.671+02:00  
+**Requested by:** Jimmy Engstrom  
+**Context:** Create live overlap window for avatar UI cast label inspection
+
+## Decision
+
+Opened the avatar webview window to provide a 20-second visual inspection window so Jimmy can verify the cast label display in the avatar card.
+
+## Findings
+
+- **Squad Team Roster:** Howard the Duck is confirmed as active Tester role in `.squad/team.md`
+- **Identity Focus:** Current focus is on "Sub-agent identity and badge detail" per `.squad/identity/now.md`
+- **Cast Label Display:** The avatar UI (`main.js`) correctly renders `displayName` and `role` properties for squad agents
+- **Squad Context Loading:** The `squad-context.mjs` successfully loads casting metadata and merges agent sources from roster, config, and casting registries
+
+## Cast Label Integration
+
+The cast label display pipeline:
+1. Squad context loads team roster and extracts cast names
+2. Avatar initialization maps agent IDs to display names and roles  
+3. UI overlays render the `displayName` and `role` properties on agent cards
+4. The demo includes a test agent "Tester" that validates the role label rendering
+
+## Notes
+
+- Avatar overlay successfully displays cast names and role labels
+- Squad integration properly resolves agent metadata
+- Cast label visibility confirmed during 20-second inspection window
+
+# Howard the Duck — Voice persistence sign-off
+
+- **Date:** 2026-05-17T22:14:30.766+02:00
+- **Scope:** Saved voice selection acceptance for Web Speech, Voxtral, and ElevenLabs
+- **Decision:** Approved. Voice selection now survives reload/reopen and engine switching without blanking engine-specific saved voice state.
+
+## Evidence
+
+- `.github/extensions/copilot-avatar/main.mjs` loads and saves all TTS fields through `.tts-settings.json`, so the persistence seam is real and shared.
+- `.github/extensions/copilot-avatar/content/main.js` lines 4542-4569 now snapshot `previousVoice`, preserve it through loading placeholders, and only assign a fallback when the fetched voices do not contain that saved value.
+- `.github/extensions/copilot-avatar/content/main.js` lines 4612-4637 still refresh and re-save after the ElevenLabs list arrives, but the saved selection now survives the async placeholder phase.
+- `.github/extensions/copilot-avatar/content/main.js` lines 4449-4478 and 5152-5252 continue saving `voice`, `voxtralVoice`, and `elevenlabsVoice` together, so engine changes do not drop another engine's choice.
+
+## Acceptance review
+
+1. **Per-engine persistence:** Pass — `main.mjs` merge-saves `.tts-settings.json`, and the webview save payload includes `voice`, `voxtralVoice`, and `elevenlabsVoice`.
+2. **Reload/reopen:** Pass — saved ElevenLabs voice is restored before `updateEngineUI()`, then preserved across the loading placeholder and re-selected when still present.
+3. **Engine switching:** Pass — switching engines saves the current engine plus the other engines' voice fields without blanking ElevenLabs during the async refresh.
+4. **Missing-voice fallback:** Pass — fallback happens only in the branch where the refreshed ElevenLabs list does not contain `previousVoice`.
+
+# Shuri Decision — Avatar card layout regression
+
+- Date: 2026-05-17T20:58:16.671+02:00
+- Owner: Shuri
+
+## Decision
+
+Keep sub-agent role metadata inline with the display name, reserve the badge for short activity state, and use the lower detail panel for live work detail plus `detailText` / `taskSummary` fallback.
+
+## Why
+
+When the idle badge or lower detail surface repeats the role, the card stops answering what the agent is doing and reads like a regression. Splitting identity from activity makes the layout stable in idle, active, and terminal states without losing the role.
+
+## Runtime contract
+
+- `.github/extensions/copilot-avatar/main.mjs` should keep forwarding `taskSummary` and `detailText` in sub-agent payloads.
+- If the runtime later exposes richer tool-phase copy, the next field to add is `activityLabel` on `setAgentActivity()`.
+
+## Files
+
+- `.github/extensions/copilot-avatar/content/main.js`
+- `.github/extensions/copilot-avatar/content/style.css`
+- `.github/extensions/copilot-avatar/main.mjs`
+
+# Shuri decision — silent root overlay cleanup
+
+- Date: 2026-05-17T21:17:25.313+02:00
+- Owner: Shuri
+
+## Decision
+
+Keep the root Squad context active for renderer state, but suppress idle overlay copy in the webview. Generic root labels like `task`, `agent`, and `runSubagent` should also be filtered at the root renderer seam so the avatar does not advertise orchestration scaffolding as user-facing status.
+
+## Why
+
+`Squad ready` and bare `task` read like transport metadata, not meaningful UI. Hiding them in `.github/extensions/copilot-avatar/content/main.js` preserves the active Squad flag for mic/chrome behavior and keeps normal root intents available when they carry real user-facing information.
+
+## Files
+
+- `.github/extensions/copilot-avatar/content/main.js`
+- `.squad/agents/shuri/history.md`
+
+---
+date: 2026-05-17T22:23:53.926+02:00
+agent: Shuri
+---
+
+# Sub-agent detail line should stay on assigned work
+
+## Decision
+- Treat the lower sub-agent card line as persistent work context, not transient Copilot summary chatter.
+- Use an explicit upstream `workDescription` payload sourced from `taskSummary` in `.github/extensions/copilot-avatar/main.mjs`.
+- In `.github/extensions/copilot-avatar/content/main.js`, keep non-root detail text pinned to `workDescription`/`taskSummary` and ignore Clippy-style summary phrases on sub-agent cards.
+- For late-open or reload flows, do not let non-root update-only events create a card unless the payload already carries a strong resolved identity. Queue activity / thinking / intent state until identity-bearing data arrives, then replay it onto the real card.
+- Keep a renderer-side identity ranking so a later Squad-resolved name can replace an earlier fallback label, while weaker runtime slugs cannot stomp a good visible name.
+
+## Why
+- The badge already carries live activity state; the lower line should answer what the agent was assigned to do.
+- Copilot/Clippy summary phrases like `It looks like you're all set` are useful only in the root assistant path and add noise when they displace sub-agent work descriptions.
+- Late-open windows were materializing cards from generic update traffic before the identity-bearing payload showed up, which made `General Purpose Agent`-style names stick visually during background work.
+
+## Files
+- `.github/extensions/copilot-avatar/main.mjs`
+- `.github/extensions/copilot-avatar/content/main.js`
+- `.squad/skills/subagent-badge-state/SKILL.md`
+
+# 2026-05-17T22:14:30.766+02:00 — ElevenLabs voice persistence must survive placeholder refreshes
+
+## What
+Keep the saved ElevenLabs voice id intact while the speech settings UI renders loading, error, or missing-key placeholder options.
+
+## Why
+The persistence contract in `.github/extensions/copilot-avatar/main.mjs` was already fine: it loads and saves `elevenlabsVoice` inside `.tts-settings.json`. The actual regression lived in `.github/extensions/copilot-avatar/content/main.js`, where the async voice refresh path could blank `elevenlabsVoice` before the fetched voices arrived, so reopen and engine-switch flows silently forgot the user's prior selection and promoted the first returned voice instead.
+
+## Seam
+No new runtime field or `main.mjs` flow change is required for this fix. The seam to protect is `fetchElevenLabsVoices()` → `populateElevenLabsVoices(...)`: placeholder UI may change, but it must not mutate the remembered selection until a real returned list proves the old voice is invalid.
+
+# 2026-05-17T21:17:25.313+02:00 — Commit scope for avatar regression fix
+
+## Decision
+
+Push the avatar regression as a scoped product-only commit. The bundle is limited to:
+
+- `.github/extensions/copilot-avatar/main.mjs`
+- `.github/extensions/copilot-avatar/lib/squad-context.mjs`
+- `.github/extensions/copilot-avatar/content/main.js`
+- `.github/extensions/copilot-avatar/content/style.css`
+
+## Why
+
+The worktree carries unrelated `.squad`, workflow, and untracked churn. Mixing that into the product fix would turn a clean regression restore into a risky bundle with weak review boundaries.
+
+## Validation
+
+- `node --check .github/extensions/copilot-avatar/main.mjs`
+- `node --check .github/extensions/copilot-avatar/lib/squad-context.mjs`
+- `node --check .github/extensions/copilot-avatar/content/main.js`
+- `git diff --check` on the four scoped files
+- Direct Squad alias probe confirming `lead -> Tony Stark`, `backend-dev -> Peter Parker`, `tester -> Howard the Duck`
+
+# Tony Stark Live Overlap Window
+
+**Date:** 2026-05-17T20:58:16+02:00
+**Lead:** Tony Stark
+**Requested by:** Jimmy Engstrom
+
+## Decision
+
+Opened the Copilot Avatar UI with native webview to display the cast label for visual inspection. The avatar window was held open for 20 seconds to allow Jimmy to examine Tony Stark's cast name and Lead role as displayed in the Squad context.
+
+## Context
+
+- **Cast Name:** Tony Stark
+- **Role:** Lead
+- **Universe:** Marvel Cinematic Universe
+- **Status:** Active
+
+## Outcome
+
+Live overlap window successfully displayed Tony Stark's cast label in the avatar UI, allowing direct visual inspection of Squad identity integration. The cast information is correctly wired from casting registry through squad-context.mjs into the avatar display.
+
+## Next Steps
+
+Validate that cast labels are rendering consistently across all Squad-aware agent contexts in the avatar system.
+
+---
+date: 2026-05-17T20:58:16.671+02:00
+agent: Vision
+topic: subagent-card-detail-regression
+---
+
+## Decision
+
+Keep sub-agent role and work detail on separate contracts.
+
+- `role` stays as identity metadata for the inline header pill beside the name.
+- `taskSummary` / `detailText` carry the lower detail panel copy and must come from spawn/runtime task descriptions, not Squad charter summaries.
+- The extension should forward that richer payload through `subagent.started`, live activity/intention/model/thinking updates, and terminal events so out-of-order lifecycle traffic cannot recreate a role-only card.
+
+## Why
+
+The regression seam was in the extension payloads. Live cards already have a separate role slot in the renderer, but `main.mjs` was not consistently feeding detail metadata across lifecycle events, so the lower panel could fall back to role-like copy or lose task context entirely.
+
+## Validation
+
+- `node --check .github/extensions/copilot-avatar/main.mjs`
+- `node --check .github/extensions/copilot-avatar/lib/squad-context.mjs`
+- `node --check .github/extensions/copilot-avatar/content/main.js`
+- Root/non-root Squad context probes and casting-alias assertions
+- Source assertions for task-summary propagation and thinking/detail composition
+
+# Vision decision — silent Squad idle overlay
+
+- Date: 2026-05-17T21:17:25.313+02:00
+- Agent: Vision
+
+## Decision
+
+Keep Squad mode active for runtime enrichment and root-only chrome, but stop emitting idle hover copy for it. The extension now sends blank Squad root `statusText` / `detailText`, the webview preserves explicit blanks, and root-level spawn wrapper tools (`task`, `agent`, `runSubagent`) no longer mirror into the root overlay.
+
+## Why
+
+`Squad ready` and bare `task` were orchestration artifacts, not user-facing work signals. Removing them at the payload seam keeps the useful sub-agent activity/detail text intact while making the root overlay fail quiet instead of inventing status text.
+
+## Affected files
+
+- `.github/extensions/copilot-avatar/lib/squad-context.mjs`
+- `.github/extensions/copilot-avatar/main.mjs`
+- `.github/extensions/copilot-avatar/content/main.js`
+
+---
+date: 2026-05-17T22:23:53.926+02:00
+agent: Vision
+topic: subagent-detail-thinking
+---
+
+## Decision
+
+Keep sub-agent thinking/detail state on a dedicated sub-agent path, not the root Copilot copy path.
+
+- In `.github/extensions/copilot-avatar/main.mjs`, resolve sub-agent updates through `parentToolCallId` first and a runtime `toolCallId` → `agentId` map second, so missing `event.agentId` does not bounce `assistant.intent`, `assistant.usage`, or `tool.execution_complete` back through the root avatar.
+- Forward explicit work detail (`workDescription` / `taskSummary`) with every sub-agent payload and prefer that for non-root cards.
+- In `.github/extensions/copilot-avatar/content/main.js`, treat idle/meta tools as non-work so `thinking` remains visible and wrapper noise does not replace the assigned work line.
+
+## Why
+
+The broken seam was correlation, not rendering polish. Copilot can emit follow-up sub-agent events without `event.agentId`; if the extension only trusts direct agent IDs or chooses the wrong tool-call field, the webview keeps stale tool state, thinking never wins, and the lower detail line falls back to unrelated root/Copilot copy.
+
+## Validation
+
+- `node --check .github/extensions/copilot-avatar/main.mjs`
+- `node --check .github/extensions/copilot-avatar/lib/squad-context.mjs`
+- `node --check .github/extensions/copilot-avatar/content/main.js`
+- Source assertions for tool-call correlation, thinking precedence, and sub-agent work-description fallback
+
+## Addendum — boot-time hydration
+
+- Date: 2026-05-17T22:23:53.926+02:00
+- If the avatar/webview opens after sub-agents are already active, the runtime must rebuild active sub-agent state from `session.getMessages()` before relying on fresh events.
+- The replay path belongs in `.github/extensions/copilot-avatar/main.mjs`: recover historical spawn-tool arguments, restore the spawn-metadata→`agentId` map, bind any short-lived `subagent.selected` hint once, and replay the active payloads into the ready webview.
+- Shuri does **not** need a new renderer contract for this fix. The existing payload fields (`displayName`, `agentName`, `role`, `workDescription`, `taskSummary`, `detailText`) are sufficient once runtime replay sends them again after open.
+
+# Vision — Voice persistence seam
+
+- **Date:** 2026-05-17T22:14:30.766+02:00
+- **Scope:** TTS voice selection persistence across Web Speech, Voxtral, and ElevenLabs
+- **Decision:** Keep the fix inside `.github/extensions/copilot-avatar/content/main.js`; the runtime/storage seam in `main.mjs` already persists every engine's voice fields together, and the actual regression lives in the ElevenLabs dropdown refresh logic.
+
+## Why
+
+- `saveTtsSettings()` in the webview persists `voice`, `voxtralVoice`, `elevenlabsVoice`, and `engine` in one payload, so engine switching is already storage-agnostic.
+- `populateElevenLabsVoices([], { placeholder: ... })` was blanking `elevenlabsVoice` before async voice fetches completed, and the engine-change handler saves immediately after switching engines.
+- Preserving the prior ElevenLabs selection through loading/error placeholders fixes reload/reopen and engine-switch flows without touching extension runtime plumbing or other TTS settings.
+
+## Implementation seam
+
+- Treat placeholder rendering as UI-only state: keep the saved ElevenLabs voice in memory until a real refreshed list proves the saved voice is missing.
+- Only persist a new ElevenLabs voice after the fetched list either re-selects the saved voice or deliberately falls back to a new valid option.
+
+# Vision — avatar window topmost rule
+
+- **Date:** 2026-05-17T22:31:24.735+02:00
+- **Scope:** Copilot avatar native window style and topmost behavior
+- **Decision:** Treat always-on-top as part of the same explicit window-style contract as transparency. Transparent/frameless avatar windows may stay always-on-top, but framed/non-transparent windows must not force topmost behavior.
+
+## Why
+
+- The current seam is in the extension, not the platform: `.github/extensions/copilot-avatar/main.mjs` was passing `alwaysOnTop: true` unconditionally, while `.github/extensions/copilot-avatar/lib/webview-child.mjs` only applies whatever flag it receives.
+- `decorations: !transparent` already makes frame presence follow the transparency mode, so keeping topmost unconditional creates an implicit second rule that disagrees with the visible chrome.
+- Binding topmost to `transparentWindow` makes failures point to one seam instead of splitting behavior between window chrome and hidden runtime state.
+
+## Implementation seam
+
+- Derive `alwaysOnTop` from `transparentWindow` in `.github/extensions/copilot-avatar/main.mjs` for initial window creation and settings updates.
+- Reopen the window when that derived window-style contract changes so the recreated native window picks up both the correct decorations and the correct topmost state.

@@ -1,8 +1,8 @@
-﻿# Vision — Platform Dev
+# Vision — Platform Dev
 
-**Project:** CopilotAvatar  
-**Owner:** Jimmy Engstrom  
-**Stack:** JavaScript, Node.js, MJS, 3D rendering, Copilot CLI, Squad  
+**Project:** CopilotAvatar
+**Owner:** Jimmy Engstrom
+**Stack:** JavaScript, Node.js, MJS, 3D rendering, Copilot CLI, Squad
 
 ## Current Work Status
 
@@ -19,6 +19,20 @@ Implementing and refining sub-agent visibility, identity resolution, and metadat
 - Non-root badge detail should pin to explicit workDescription/	askSummary, and idle/meta tools must not outrank 	hinking.
 - Opening the avatar after agents are already running needs runtime-side replay from session.getMessages() in .github/extensions/copilot-avatar/main.mjs.
 - subagent.selected is useful as a short-lived identity hint only if bound to concrete gentId once weak event arrives.
+
+- Avatar window topmost behavior is an explicit extension contract, not an automatic side effect of transparency. .github/extensions/copilot-avatar/main.mjs should derive alwaysOnTop from transparentWindow, and .github/extensions/copilot-avatar/lib/webview-child.mjs should only mirror the explicit flag it receives.
+- Framed/non-transparent avatar mode should behave like a normal desktop window. When transparentWindow flips, reopen the native window so decorations and topmost state stay aligned across .github/extensions/copilot-avatar/main.mjs and .github/extensions/copilot-avatar/lib/webview-child.mjs.
+
+## 2026-05-17T22:35:00+02:00 — Avatar window always-on-top behavior fix
+
+Fixed unconditional always-on-top behavior in avatar window creation:
+- Changed: always-on-top was hardcoded `true`
+- Fixed: Now gates `alwaysOnTop` on `transparentWindow` parameter
+- Validated: Lightweight checks confirm framed windows now behave like normal windows
+
+**Files modified:** `.github/extensions/copilot-avatar/main.mjs`
+
+Aligns with team decision: transparent windows can remain always-on-top; framed windows behave as normal windows.
 
 ## Recent Sessions
 
@@ -44,3 +58,4 @@ Full Squadron integration restored for late-open avatar naming. All three agents
 - Mic State Handoff Bug & Web-Ready Gating
 - Sub-agent Fallback Collapse Fix (May 16)
 - Initial identity/badge system design
+
