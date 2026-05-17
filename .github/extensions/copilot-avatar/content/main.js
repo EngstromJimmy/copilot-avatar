@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import SamJs from 'sam-js';
 
 const ROOT_AGENT_ID = 'root';
 const ROOT_SCALE = 1;
@@ -285,6 +286,9 @@ const ttsEngineSelect = document.getElementById('tts-engine-select');
 const ttsWebspeechSection = document.getElementById('tts-webspeech-section');
 const ttsVoxtralSection = document.getElementById('tts-voxtral-section');
 const ttsElevenlabsSection = document.getElementById('tts-elevenlabs-section');
+const ttsSamSection = document.getElementById('tts-sam-section');
+const samVoiceSelect = document.getElementById('sam-voice-select');
+const ttsSamTestBtn = document.getElementById('tts-sam-test-btn');
 const ttsAiVoiceSection = document.getElementById('tts-ai-voice-section');
 const ttsAiVoiceSourceLabel = document.getElementById('tts-ai-voice-source-label');
 const ttsAiPresetSection = document.getElementById('tts-ai-preset-section');
@@ -1930,6 +1934,9 @@ function canPreviewCurrentVoice(engine = ttsEngine) {
     if (engine === 'elevenlabs') {
         return !!elevenlabsApiKey && !!elevenlabsVoiceSelect.value;
     }
+    if (engine === 'sam') {
+        return samVoiceSelect.options.length > 0;
+    }
     return false;
 }
 
@@ -1939,8 +1946,10 @@ function updateVoicePreviewButtons() {
     const busyLabel = voicePreviewBusy ? 'Testing...' : 'Test selected voice';
     ttsWebspeechTestBtn.textContent = busyLabel;
     ttsAiTestBtn.textContent = busyLabel;
+    ttsSamTestBtn.textContent = busyLabel;
     ttsWebspeechTestBtn.disabled = voicePreviewBusy || !webspeechReady;
     ttsAiTestBtn.disabled = voicePreviewBusy || !aiReady;
+    ttsSamTestBtn.disabled = voicePreviewBusy || !canPreviewCurrentVoice('sam');
 }
 
 async function previewCurrentVoice(engine = ttsEngine) {
@@ -1965,6 +1974,10 @@ async function previewCurrentVoice(engine = ttsEngine) {
         }
         if (engine === 'elevenlabs') {
             await speakElevenLabs(text, { clippy });
+            return true;
+        }
+        if (engine === 'sam') {
+            await speakSam(text, { clippy });
             return true;
         }
         return false;
@@ -4451,6 +4464,15 @@ const VOXTRAL_VOICES_FALLBACK = [
     { slug: 'gb_jane_sarcasm',    name: 'Jane - Sarcasm'    },
 ];
 
+const SAM_VOICES = [
+    { id: 'sam',     name: 'SAM (Default)',  speed: 72, pitch: 64,  throat: 128, mouth: 128 },
+    { id: 'elf',     name: 'Elf',            speed: 72, pitch: 64,  throat: 110, mouth: 160 },
+    { id: 'cylon',   name: 'Cylon',          speed: 92, pitch: 60,  throat: 190, mouth: 190 },
+    { id: 'vader',   name: 'Darth Vader',    speed: 52, pitch: 90,  throat: 250, mouth: 200 },
+    { id: 'stuffy',  name: 'Stuffy',         speed: 72, pitch: 72,  throat: 110, mouth: 105 },
+    { id: 'gruff',   name: 'Gruff',          speed: 52, pitch: 96,  throat: 200, mouth: 100 },
+];
+
 let ttsEnabled = false;
 let ttsRate = 1.1;
 let ttsPitch = 1.0;
@@ -4473,6 +4495,7 @@ let clippyElevenlabsVoiceId = '';
 let clippyElevenlabsVoiceName = '';
 let clippyElevenlabsCloneSourceHash = '';
 let clippyRefAudio = null;
+let samVoice = 'sam';
 let ttsAudioPlayer = null;
 let voxtralAudioCtx = null;
 let activeGeneratedAudioUrl = null;
@@ -4671,6 +4694,9 @@ if (savedTts.clippyRefAudio) {
 if (savedTts.voxtralRefAudio) {
     setVoxtralRefAudio(savedTts.voxtralRefAudio, { rememberForClippy: false, save: false });
 }
+if (savedTts.samVoice) {
+    samVoice = savedTts.samVoice;
+}
 if (savedTts.showSpokenText != null) {
     showSpokenText = !!savedTts.showSpokenText;
 }
@@ -4716,6 +4742,7 @@ function saveTtsSettings() {
         clippyElevenlabsVoiceName,
         clippyElevenlabsCloneSourceHash,
         clippyRefAudio,
+        samVoice,
         showSpokenText,
         showAvatarBadges,
         showModelBadges,
@@ -4734,11 +4761,13 @@ function updateBackendUI() {
 function updateEngineUI() {
     const isVoxtral = ttsEngine === 'voxtral';
     const isElevenLabs = ttsEngine === 'elevenlabs';
+    const isSam = ttsEngine === 'sam';
     const isAiEngine = isVoxtral || isElevenLabs;
     const isMyVoice = voxtralVoiceSource === 'myvoice';
-    ttsWebspeechSection.classList.toggle('hidden', isAiEngine);
+    ttsWebspeechSection.classList.toggle('hidden', isAiEngine || isSam);
     ttsVoxtralSection.classList.toggle('hidden', !isVoxtral);
     ttsElevenlabsSection.classList.toggle('hidden', !isElevenLabs);
+    ttsSamSection.classList.toggle('hidden', !isSam);
     ttsAiVoiceSection.classList.toggle('hidden', !isAiEngine);
     ttsAiVoiceSourceLabel.classList.toggle('hidden', !isVoxtral);
     ttsAiPresetSection.classList.toggle('hidden', !isElevenLabs && (!isVoxtral || isMyVoice));
@@ -4895,6 +4924,24 @@ async function fetchElevenLabsVoices({ force = false } = {}) {
 populateVoxtralVoices(VOXTRAL_VOICES_FALLBACK);
 speechSynthesis.onvoiceschanged = populateVoices;
 populateVoices();
+
+function populateSamVoices() {
+    samVoiceSelect.innerHTML = '';
+    SAM_VOICES.forEach(({ id, name }) => {
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = name;
+        option.selected = id === samVoice;
+        samVoiceSelect.appendChild(option);
+    });
+    if (!SAM_VOICES.some(v => v.id === samVoice)) {
+        samVoiceSelect.selectedIndex = 0;
+        samVoice = samVoiceSelect.value;
+    }
+    updateVoicePreviewButtons();
+}
+
+populateSamVoices();
 
 // ── Recording ─────────────────────────────────────────────────────────────────
 
@@ -5204,6 +5251,8 @@ function releaseGeneratedAudioUrl() {
 function fallbackClippySpeech(text) {
     if (ttsEngine === 'elevenlabs') {
         console.warn('Clippy ElevenLabs speech failed; falling back to Web Speech.');
+    } else if (ttsEngine === 'sam') {
+        console.warn('Clippy SAM speech failed; falling back to Web Speech.');
     } else if (!clippyRefAudio && !voxtralRefAudio) {
         console.warn('Clippy Voxtral speech failed; falling back to Web Speech. Add a Voxtral API key or local server in settings for Clippy voice cloning.');
     }
@@ -5347,6 +5396,39 @@ function stopAllSpeech() {
     speechSynthesis.cancel();
     stopGeneratedSpeechPlayback();
     setClippySpeaking(false);
+}
+
+async function speakSam(text, { clippy = false } = {}) {
+    const requestId = beginSpeechRequest();
+    try {
+        speechSynthesis.cancel();
+        stopGeneratedSpeechPlayback();
+        const preset = SAM_VOICES.find(v => v.id === samVoice) || SAM_VOICES[0];
+        const sam = new SamJs({ speed: preset.speed, pitch: preset.pitch, throat: preset.throat, mouth: preset.mouth });
+        const wavData = sam.wav(text);
+        if (!wavData || !wavData.length) {
+            throw new Error('SAM TTS returned no audio data');
+        }
+        if (!isCurrentSpeechRequest(requestId)) return;
+        const blob = new Blob([wavData], { type: 'audio/wav' });
+        activeGeneratedAudioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(activeGeneratedAudioUrl);
+        ttsAudioPlayer = audio;
+        if (clippy) {
+            setClippySpeaking(true);
+            audio.addEventListener('ended', () => {
+                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+            }, { once: true });
+            audio.addEventListener('error', () => {
+                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+            }, { once: true });
+        }
+        await audio.play();
+    } catch (err) {
+        if (clippy && isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+        console.error('SAM TTS failed:', err);
+        if (clippy && isCurrentSpeechRequest(requestId)) fallbackClippySpeech(text);
+    }
 }
 
 // ── Event handlers ────────────────────────────────────────────────────────────
@@ -5498,6 +5580,16 @@ elevenlabsVoiceSelect.addEventListener('change', () => {
     saveTtsSettings();
 });
 
+samVoiceSelect.addEventListener('change', () => {
+    samVoice = samVoiceSelect.value;
+    updateVoicePreviewButtons();
+    saveTtsSettings();
+});
+
+ttsSamTestBtn.addEventListener('click', () => {
+    previewCurrentVoice('sam');
+});
+
 document.querySelectorAll('input[name="ai-voice-source"]').forEach((radio) => {
     radio.addEventListener('change', () => {
         voxtralVoiceSource = radio.value;
@@ -5590,6 +5682,7 @@ window.getTtsSettings = () => JSON.stringify({
     elevenlabsHasApiKey: !!elevenlabsApiKey,
     elevenlabsClonedVoiceId,
     clippyElevenlabsVoiceId,
+    samVoice,
     hasClippyRefAudio: !!clippyRefAudio,
     hasClippyModel: !!clippyRoot,
     clippyAnimations: clippyActions.map((action) => action.getClip().name),
@@ -5710,6 +5803,8 @@ function speak(text, { clippy = false, forceEngine = null } = {}) {
         speakVoxtral(spokenText, { clippy });
     } else if (engine === 'elevenlabs') {
         speakElevenLabs(spokenText, { clippy });
+    } else if (engine === 'sam') {
+        speakSam(spokenText, { clippy });
     } else {
         speakWebSpeech(spokenText, { clippy });
     }

@@ -33,6 +33,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     clippyElevenlabsVoiceName: '',
     clippyElevenlabsCloneSourceHash: '',
     clippyRefAudio: null,
+    samVoice: 'sam',
     showSpokenText: true,
     showAvatarBadges: true,
     showModelBadges: false,

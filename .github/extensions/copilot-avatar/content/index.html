@@ -9,7 +9,8 @@
   {
     "imports": {
       "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+      "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/",
+      "sam-js": "https://cdn.jsdelivr.net/npm/sam-js@0.3.1/dist/samjs.esm.min.js"
     }
   }
 </script>
@@ -72,6 +73,7 @@
         <label>Engine
           <select id="tts-engine-select">
             <option value="webspeech">Web Speech</option>
+            <option value="sam">Microsoft SAM</option>
             <option value="voxtral">Voxtral</option>
             <option value="elevenlabs">ElevenLabs</option>
           </select>
@@ -93,6 +95,15 @@
             <span id="tts-rate-value">1.1×</span>
           </label>
           <button id="tts-webspeech-test-btn" type="button">Test selected voice</button>
+        </div>
+
+        <!-- SAM controls -->
+        <div id="tts-sam-section" class="hidden">
+          <label>Voice
+            <select id="sam-voice-select"></select>
+          </label>
+          <button id="tts-sam-test-btn" type="button">Test selected voice</button>
+          <div class="tts-hint">Retro speech engine — runs entirely in the browser, no API key needed.</div>
         </div>
 
         <!-- Voxtral controls -->
