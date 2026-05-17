@@ -1,4 +1,4 @@
-# Project Context
+﻿# Project Context
 
 - **Owner:** Jimmy Engstrom
 - **Project:** CopilotAvatar
@@ -7,6 +7,7 @@
 
 ## Learnings
 
+- 2026-05-17T22:31:24.735+02:00 — Late-open avatar review: the reliable regression proof is a two-part check. First source-probe `.github/extensions/copilot-avatar/main.mjs` for `session.getMessages()` hydration plus restored `toolCallId`/spawn-metadata maps; then live-probe `.github/extensions/copilot-avatar/content/main.js` by queueing `setAgentThinking` / `setAgentIntent` / `setAgentActivity` before `addSubagent` and confirming no placeholder card appears until a strong identity payload lands, at which point the card upgrades to the Squad name and keeps `workDescription` in the lower detail line while Copilot root-summary chatter stays suppressed.
 - 2026-05-16T23:33:39.835+02:00 — Scribe UI name-loss repro analysis: Read-only probe of main.mjs, content/main.js, and content/style.css identified metadata loss seam in `syncKnownSubagents()`. When the function refreshes known sub-agents during context change or window rehydration, it calls `upsertSubagentState(state.agentId)` with only the agentId and no cached metadata, forcing `resolveSubagentState()` to recompute from scratch. The fallback chain in `buildSubagentPayload()` then collapses to raw agentId when display names aren't recovered: `displayName: cleanText(overrides.displayName ?? state.displayName) || cleanText(state.agentId)`. Result: agent "Scribe" loses its name and renders as "agent-xyz" in the UI. The seam is at `.github/extensions/copilot-avatar/main.mjs` lines ~440-450, where `freshState = upsertSubagentState(state.agentId)` should preserve or pass the original agent metadata from the cached state.
 - Day-1 context: CopilotAvatar is a Copilot CLI extension for a 3D avatar experience with Squad integration.
 - 2026-05-16T15:42:38.842+02:00 — Name-mapping review: `.github/extensions/copilot-avatar/lib/squad-context.mjs` builds Squad lookup keys from roster/charted agent slugs like `howard-the-duck`, while failing runtime IDs are opaque handles like `agent-call_H`; adding `agentId` to the lookup does not bridge that mismatch, so `.github/extensions/copilot-avatar/main.mjs` still falls back to internal IDs.
@@ -15,6 +16,8 @@
 - 2026-05-16T21:23:20.636+02:00 — Duplicate identity collapse is critical; sub-agents without terminal events still need retirement logic.
 - 2026-05-16T21:39:14.337+02:00 — Static probes alone are not enough; live DOM snapshots are required for visibility sign-offs.
 - 2026-05-16T22:42:24.111+02:00 — Live overlap probes require immediate DOM snapshots during active work windows, not late polls after agents retire.
+- 2026-05-17T22:14:30.766+02:00 — Voice persistence review: `.github/extensions/copilot-avatar/main.mjs` persists TTS state in `.github/extensions/copilot-avatar/.tts-settings.json` by merging incoming settings over the current file, but `.github/extensions/copilot-avatar/content/main.js` clears `elevenlabsVoice` during the loading placeholder path in `populateElevenLabsVoices()`. That means opening or switching to the ElevenLabs engine can save a blank voice before the async list returns, so future reviews need to probe async option-refresh paths, not just the final save call.
+- 2026-05-17T22:14:30.766+02:00 — Voice persistence re-review: the fixed `populateElevenLabsVoices()` now snapshots `previousVoice`, preserves it through loading/error placeholders, and only falls back after the fetched voice list proves the saved voice is absent. Combined with `saveTtsSettings()` writing `voice`, `voxtralVoice`, and `elevenlabsVoice` together and `main.mjs` merge-saving over `.tts-settings.json`, reload/reopen and engine-switch reviews can be accepted from this seam.
 
 ## Current Focus
 
@@ -164,3 +167,28 @@ The proper implementation exists on feat/microsoft-sam-tts branch (commit 877d26
 **Coordination:** Awaiting merge strategy decision and WIP resolution before fix validation.
 
 ---
+
+
+## 2026-05-17T22:31:24.735+02:00 — Late-open naming session complete
+
+The avatar late-open naming session concluded with full Squadron integration restored:
+
+- **Shuri:** Fixed sub-agent card detail precedence; queued updates until strong identity; resolved names replace placeholders
+- **Vision:** Restored thinking/detail wiring; rebuilt identity/history replay for mid-run opens
+- **Howard the Duck:** Validated bundle with source and live testing; approved late-open naming implementation
+
+### Decisions merged
+
+16 inbox entries consolidated into .squad/decisions.md:
+- Sub-agent badge and detail line contracts
+- Voice persistence seams across TTS engines
+- Squad idle overlay cleanup
+- Late-open card update sequencing
+- Window behavior directives (framed vs transparent)
+
+### Registry updates
+
+All three agents' names resolve through casting aliases and Squad context:
+- shuri → Shuri
+- ision → Vision
+- 	ester → Howard the Duck

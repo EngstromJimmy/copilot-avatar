@@ -1,4 +1,4 @@
-# Project Context
+﻿# Project Context
 
 - **Owner:** Jimmy Engstrom
 - **Project:** CopilotAvatar
@@ -43,6 +43,11 @@ Avatar 3D rendering and Squad-specific visual flair.
 - 2026-05-17T20:00:51.651+02:00 — Final mic failure path: `.github/extensions/copilot-avatar/main.mjs` was already polling `window.__copilotAvatarReady`, but `.github/extensions/copilot-avatar/content/main.js` never set that flag, so `syncSquadContext()` skipped the first show/reopen replay and the root mic stayed hidden despite an active Squad context. Safe fix: set the ready flag after page boot, keep mic visibility on the existing `setSquadContext()` → `updateRootSquadMicBoom()` seam, and expose `window.__copilotAvatarState.rootMicVisible` for live regression probes.
 - 2026-05-17T20:10:26.460+02:00 — Generic Copilot labels like `General Purpose Agent` must be filtered in `.github/extensions/copilot-avatar/main.mjs` before payloads hit the webview. `content/main.js` already treats those labels as low-confidence, but it still needs richer upstream data, so `.github/extensions/copilot-avatar/lib/squad-context.mjs` now loads `.squad/casting/history.json` slot aliases (`lead`, `tester`, etc.) and the extension prefers cast metadata/roles over generic runtime labels.
 - 2026-05-17T20:43:07.849+02:00 — Renderer-side label fallback is still healthy in `.github/extensions/copilot-avatar/content/main.js`: `resolveAvatarDisplayName()` rejects placeholder labels like `General Purpose Agent`, agent-id echoes, and default `agent-xxxxxx` fallbacks when a stronger name exists. The live regression seam is upstream payload construction in the committed `.github/extensions/copilot-avatar/main.mjs`, where `subagent.started` / `.completed` / `.failed` still let SDK `agentDisplayName` outrank Squad/cast names before the webview sees the payload.
+- 2026-05-17T20:58:16.671+02:00 — Sub-agent card clarity depends on splitting identity from activity. `.github/extensions/copilot-avatar/content/main.js` now renders an inline `.agent-role` pill beside `.agent-name`, keeps `.agent-badge` as the short state label, and uses `.agent-detail` for live work detail. The runtime seam to preserve is `.github/extensions/copilot-avatar/main.mjs` forwarding `detailText` / `taskSummary`; if future tool events can supply richer copy, the exact field to add is `activityLabel` on `setAgentActivity()`.
+- 2026-05-17T21:17:25.313+02:00 — Root idle overlay copy is safest to suppress in the webview, not by deleting Squad context upstream. `.github/extensions/copilot-avatar/content/main.js` now keeps `window.setSquadContext({ active })` for root-only Squad chrome like the mic, but ignores idle `statusText` / `detailText` and filters generic root labels such as `task`, `agent`, and `runSubagent` in `setSubtask()`, `setAgentIntent()`, and `setAgentActivity()`. Live probe: injected `Squad ready` + `task` stayed hidden while a normal intent still rendered in `#root-model-badge-text`.
+- 2026-05-17T22:14:30.766+02:00 — ElevenLabs voice persistence lives entirely in the webview-side async option loader. `.github/extensions/copilot-avatar/main.mjs` already persists `elevenlabsVoice` in `.tts-settings.json`; the actual regression was `.github/extensions/copilot-avatar/content/main.js` clearing the in-memory selection while rendering `Loading ElevenLabs voices...`, which forced reopen/engine-switch flows to fall back to the first returned voice unless the loader preserved the previous selection through the placeholder state.
+- 2026-05-17T22:23:53.926+02:00 — Sub-agent detail cards should treat upstream `taskSummary` as a persistent `workDescription`, separate from Copilot intent chatter. `.github/extensions/copilot-avatar/main.mjs` now forwards `workDescription` explicitly, and `.github/extensions/copilot-avatar/content/main.js` keeps the lower detail line pinned to that work text for non-root avatars while filtering Clippy-style summary phrases like `It looks like you're all set`.
+- 2026-05-17T22:23:53.926+02:00 — Late-open sub-agent cards should not materialize from update-only signals unless the payload already carries a strong identity. `.github/extensions/copilot-avatar/content/main.js` now queues non-root activity/intent/thinking updates until `addSubagent` or another identity-bearing payload arrives, then replays the queued state; it also tracks `displayNameSource` so a later resolved name can outrank an earlier fallback label.
 
 
 ## 2026-05-17 — Scribe Session Wrap-up
@@ -112,3 +117,28 @@ Avatar 3D rendering and Squad-specific visual flair.
 **Next:** Extension-side fix exists; awaiting merge/commit coordination.
 
 ---
+
+
+## 2026-05-17T22:31:24.735+02:00 — Late-open naming session complete
+
+The avatar late-open naming session concluded with full Squadron integration restored:
+
+- **Shuri:** Fixed sub-agent card detail precedence; queued updates until strong identity; resolved names replace placeholders
+- **Vision:** Restored thinking/detail wiring; rebuilt identity/history replay for mid-run opens
+- **Howard the Duck:** Validated bundle with source and live testing; approved late-open naming implementation
+
+### Decisions merged
+
+16 inbox entries consolidated into .squad/decisions.md:
+- Sub-agent badge and detail line contracts
+- Voice persistence seams across TTS engines
+- Squad idle overlay cleanup
+- Late-open card update sequencing
+- Window behavior directives (framed vs transparent)
+
+### Registry updates
+
+All three agents' names resolve through casting aliases and Squad context:
+- shuri → Shuri
+- ision → Vision
+- 	ester → Howard the Duck

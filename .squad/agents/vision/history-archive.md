@@ -1,60 +1,74 @@
-# Vision — Platform Dev — Archived Sessions
+﻿# Vision — Platform Dev — Archived Sessions
 
-## 2026-05-17 — Sub-agent Identity Regression Investigation (CONSOLIDATED)
+This file contains older investigation and implementation work (before 2026-05-17 mid-day).
 
-**Problem:** UI displays generic "general-purpose" agent placeholder instead of Squad cast names and roles.
+## Detailed Sub-agent Identity Regression Investigation (2026-05-16 to 2026-05-17)
 
-**Root Cause — Seam Misalignment:**
-Commit c8724b0 added webview-side low-confidence detection without matching extension-layer filter logic. Extension sends generic labels (line 405 fallback) before Squad enrichment, breaking contract.
+**Root Cause:** Commit c8724b0 added webview-side low-confidence filter without updating extension-layer logic. Line 405 fallback sends generic labels directly before Squad enrichment can apply.
 
-**Mechanism:**
-```
-Copilot SDK { agentDisplayName: "General Purpose Agent" }
-    ↓ (no filter in main.mjs)
-webview receives { displayName: "Generic label", role: "" }
-    ↓ (no Squad fallback in payload)
-Renders generic placeholder
-```
+**Fix Applied:** Mirror webview isLowConfidenceLabel() in extension; prefer Squad displayName/role when Copilot sends generic label.
 
-**Last Working:** Commit 3d4ed87 — Squad metadata properly consulted, no webview-side filter yet.
+**Key Insight:** Extension is the Copilot↔Squad boundary; filtering must originate there, not in webview cleanup alone.
 
-**Fix Direction:** Mirror webview `isLowConfidenceLabel()` in extension before line 405 fallback. If low-confidence AND squadAgent exists, prefer Squad displayName + role over generic Copilot labels. Apply to all three handlers (started/completed/failed).
+### Label Regression Seam Details
 
-**Key Insight:** Webview filtering is good hygiene but insufficient—extension must filter at source (Copilot ↔ Squad boundary) so Squad metadata reaches payload for all cases.
+- Merged main.mjs still builds sub-agent payloads with vent.data?.agentDisplayName ?? squadAgent?.displayName ?? event.data?.agentName, allowing "General Purpose Agent" to outrank Squad/cast identity.
+- Working-tree fix resolves display through esolveSubagentDisplayData() preferring Squad metadata and cached spawn metadata ahead of runtime placeholders.
+- Live extension regressions can be a process seam: check that running project:copilot-avatar extension is active and run xtensions_reload after edits.
 
-## 2026-05-17 — Auto-Generated Squad Files in .gitattributes
+## Cast Identity Resolution & Spawn Metadata Binding
 
-**What:** Marked squad state files as auto-generated for GitHub PR collapse.
+Copilot's parent spawn tool keeps cast identity in 	ool.execution_start.arguments (
+ame / description), not in subagent.started when runtime agent is generic. Solution:
+- Cache identity hint by 	oolCallId
+- Bind it to concrete gentId on first start
+- Let it outrank placeholder labels in extension
 
-**Changes Applied:**
-1. Added `generated=true` to: `.squad/log/**`, `.squad/orchestration-log/**`, health reports, precheck reports, state markers, temp files
-2. Preserved union merge: `.squad/decisions.md`, `.squad/agents/*/history.md`, `.squad/log/**`, `.squad/orchestration-log/**`
+**Files modified:** .github/extensions/copilot-avatar/main.mjs, .github/extensions/copilot-avatar/lib/squad-context.mjs
 
-**Why:** Auto-generated files change frequently; marking them collapses diffs in PR review, keeping focus on actual code changes. Union merge remains for distributed team workflow.
+.github/extensions/copilot-avatar/lib/squad-context.mjs must resolve casting aliases from .squad/casting/registry.json; .squad/casting/history.json tracks persistent cast inventory for assignment snapshot (lead / 	ester → cast-name).
 
-## 2026-05-16 — Sub-agent Fallback Collapse Fix
+## Squad SDK Casting Integration Analysis (2026-05-17)
+
+**Question:** Should extension source cast identity from Squad SDK instead of reading .squad/casting/registry.json directly?
+
+**Findings:**
+- Squad SDK @bradygaster/squad-sdk@0.9.4 exports CastingEngine and CastingRegistry (filesystem stub, incomplete)
+- SDK does **not** provide stable runtime API for current role assignments
+- File-based design is more reliable: explicit source of truth, decoupled from SDK volatility
+
+**Decision:** Keep current file-based design. No SDK refactoring needed now.
+
+## Mic State Handoff Bug & Web-Ready Gating (2026-05-17T20:00:51Z)
+
+**Problem:** Squad root mic boom did not render despite geometry existing and being correctly wired. Root cause: timing gap in Squad context sync—extension calls syncSquadContext() before webview exists, so window.setSquadContext() cannot be invoked until after initializeRootAvatar() already created root avatar with squadRootMicActive = false.
+
+**Solution:** Webview-ready handshake gates Squad context replay:
+- Page sets __copilotAvatarReady flag
+- Extension waits for that signal before calling setSquadContext()
+- Combined with mic boom replay in root-avatar init, ensures first-paint visibility
+
+## Sub-agent Fallback Collapse Fix (2026-05-16)
 
 **Problem:** Reconnects after context change could mint third generic card beside two real Copilot-owned agents.
 
 **Root Issues:**
-1. Cached metadata lost during rehydration
-2. Fallback identity keyed to opaque runtime IDs instead of human labels
-3. Collapse not invoked at all rehydration/render points
+1. Cached metadata lost during syncKnownSubagents() rehydration
+2. Fallback identity keys derived from runtime IDs (opaque) instead of human labels
+3. Collapse helpers not invoked at all rehydration/render points
 
 **Fixes Applied:**
 1. Preserve cached identity metadata during rehydrate
 2. Derive fallback identity only from human labels (displayName, agentName)
-3. Invoke collapse on first-render, rehydrate, and webview addSubagent
-4. Avoid fallback to runtime agentId
+3. Invoke duplicate collapse on first-render, rehydrate, and webview addSubagent
+4. Avoid fallback to runtime agentId to prevent generic cards
 
-**Result:** Reconnects maintain exactly 2 visible cards without minting third generic card. Full coverage achieved.
+**Result:** Reconnects maintain exactly 2 visible cards without minting third generic card.
 
-## 2026-05-15+ — Older Sessions
+## Key Architectural Decisions
 
-Earlier work consolidated into this archive:
-- Squad sub-agent display integration analysis
-- Initial sub-agent naming fix (agentId lookup approach, later superseded)
-- Implementation of corrected sub-agent display name lookup
-- Copilot-owned sub-agent visibility implementation
-- First-render gate removal
-- Multi-agent identity & badge system design review
+- **Copilot SDK owns visibility & lifecycle:** Cards appear on subagent.started, disappear on terminal events
+- **Squad SDK is enrichment-only:** Roster/casting data improves naming/role but never creates/suppresses/collapses live Copilot cards
+- **Webview seam isolation:** ddSubagent is sole card-creation entrypoint; updates must no-op if card not created yet
+- **First-render gate removed:** Copilot sub-agent presence alone is sufficient for visibility
+- **Identity hints accepted:** Recent subagent.selected cached as short-lived naming hint, reused across sync events
