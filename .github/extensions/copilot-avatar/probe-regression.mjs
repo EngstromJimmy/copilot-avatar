@@ -4,6 +4,8 @@
  * Coverage:
  *   A. SAM TTS browser-native formant engine (feat/microsoft-sam-tts)
  *   B. Sub-agent visibility: late-open replay + turn_start reset guard
+ *   C. SAM browser-only provenance — no remote calls, no CDN/npm sam-js dep [Tony constraint]
+ *   D. subagent.selected weak-hint contract — not deterministic correlation [Tony / SDK 0.1.32]
  *
  * Run: node probe-regression.mjs  (from the extension root)
  *
@@ -319,6 +321,103 @@ for (const label of ["general-purpose agent", "general purpose agent", "coding a
         `GENERIC_AGENT_LABELS includes '${label}'`,
         mainMjs.includes(label)
     );
+}
+
+// ── 13. SAM TTS: browser-only — no remote calls, no CDN import ────────────────
+//
+// Tony's constraint: SAM synthesis must be 100% browser-native Web Audio API.
+// The old tetyys.com remote SAM path must be absent. No external library import.
+//
+console.log("\n[13] SAM TTS: browser-only synthesis — no remote calls");
+
+// No reference to old remote SAM server
+assert("SAM: no tetyys.com reference in main.js", !mainJs.includes("tetyys"));
+assert("SAM: no tetyys.com reference in index.html", !htmlSrc.includes("tetyys"));
+
+// No CDN or npm sam-js import in main.js (library was removed; synthesis is custom)
+assert(
+    "SAM: no 'import SamJs' CDN/npm dependency in main.js",
+    !/import\s+SamJs\b/.test(mainJs) && !/from\s+['"]sam-js['"]/.test(mainJs)
+);
+
+// synthesizeSamAudio must use OfflineAudioContext (Web Audio — browser only, no network)
+assert(
+    "SAM: synthesizeSamAudio uses OfflineAudioContext (pure Web Audio, no network)",
+    /new\s+OfflineAudioContext\s*\(/.test(mainJs)
+);
+
+// samG2P must be a pure text transform (no fetch/remote call)
+// Use a 3200-char window from the declaration — function body is ~2820 chars.
+const g2pStart = mainJs.indexOf("function samG2P(");
+if (g2pStart !== -1) {
+    const g2pWindow = mainJs.slice(g2pStart, g2pStart + 3200);
+    assert("SAM: samG2P contains no fetch() call", !g2pWindow.includes("fetch("));
+    assert("SAM: samG2P contains no XMLHttpRequest", !g2pWindow.includes("XMLHttpRequest"));
+} else {
+    assert("SAM: samG2P function present (indexOf check)", false, "function samG2P( not found");
+    assert("SAM: samG2P contains no fetch() call", false);
+}
+
+// speakSam must use only local synthesis — no fetch, no WebSocket, no remote URL
+const speakSamBodyMatch = mainJs.match(/async\s+function\s+speakSam\s*\([\s\S]{0,1200}?\n\}/);
+if (speakSamBodyMatch) {
+    const speakSamBody = speakSamBodyMatch[0];
+    assert("SAM: speakSam contains no fetch() call", !speakSamBody.includes("fetch("));
+    assert("SAM: speakSam contains no XMLHttpRequest", !speakSamBody.includes("XMLHttpRequest"));
+    assert("SAM: speakSam contains no WebSocket", !speakSamBody.includes("WebSocket"));
+} else {
+    assert("SAM: speakSam body parseable", false, "Could not isolate speakSam body");
+    assert("SAM: speakSam contains no fetch() call", false);
+    assert("SAM: speakSam contains no XMLHttpRequest", false);
+}
+
+// ── 14. Sub-agent selection hint: not used as deterministic correlation ────────
+//
+// Tony's constraint (SDK 0.1.32): subagent.selected carries no reliable toolCallId,
+// so it cannot deterministically identify which runtime agent was selected in a
+// concurrent scenario. The code must treat it as a weak, pending hint only.
+//
+console.log("\n[14] subagent.selected: weak hint only — not deterministic correlation");
+
+// Live handler must route to setPendingSubagentSelectionHint, not addSubagent
+assert(
+    "live subagent.selected handler calls setPendingSubagentSelectionHint",
+    /session\.on\s*\(\s*["']subagent\.selected["'][\s\S]{0,300}setPendingSubagentSelectionHint/.test(mainMjs)
+);
+assert(
+    "live subagent.selected handler does NOT call addSubagent (no card creation)",
+    !/session\.on\s*\(\s*["']subagent\.selected["'][\s\S]{0,300}addSubagent/.test(mainMjs)
+);
+assert(
+    "live subagent.selected handler does NOT call callWindowFunction",
+    !/session\.on\s*\(\s*["']subagent\.selected["'][\s\S]{0,300}callWindowFunction/.test(mainMjs)
+);
+
+// History replay case must also route to setPendingSubagentSelectionHint
+assert(
+    "history replay subagent.selected case calls setPendingSubagentSelectionHint",
+    /["']subagent\.selected["'][\s\S]{0,100}setPendingSubagentSelectionHint/.test(mainMjs)
+);
+
+// shouldBindPendingSelectionHint must require a truthy agentId before binding
+assert(
+    "shouldBindPendingSelectionHint: guards on !agentId before binding",
+    /function\s+shouldBindPendingSelectionHint[\s\S]{0,200}!agentId/.test(mainMjs)
+);
+
+// Binding should only happen via shouldBindPendingSelectionHint — not via a
+// direct hintsByAgentId.set inside the subagent.selected handler itself.
+const liveSelHandlerMatch = mainMjs.match(
+    /session\.on\s*\(\s*["']subagent\.selected["'][^,]*,\s*\(event\)\s*=>\s*\{([\s\S]{0,400}?)\}\s*\)\s*;/
+);
+if (liveSelHandlerMatch) {
+    const body = liveSelHandlerMatch[1];
+    assert(
+        "live subagent.selected handler does NOT directly call hintsByAgentId.set",
+        !body.includes("hintsByAgentId.set")
+    );
+} else {
+    assert("live subagent.selected: handler body parseable", false, "Could not isolate handler body");
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
