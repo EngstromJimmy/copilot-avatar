@@ -16,6 +16,7 @@ This applies when an event-driven extension has to merge runtime agent events wi
 - If the team uses casting, load the latest casting snapshot's slot aliases into the lookup map so stable runtime names like `tester` or `backend-dev` resolve to cast identities without touching runtime instance ids.
 - Treat empty strings as missing before running fallback chains; blank values are common enough that `??` alone is not safe.
 - Treat low-confidence placeholders such as `General Purpose Agent` as missing when richer roster or casting metadata is available.
+- If the parent spawn tool (`task`, `runSubagent`, `agent`) carries a better cast hint in `tool.execution_start.arguments`, cache that `{name, description}` by `toolCallId`, bind it to the concrete runtime `agentId` on `subagent.started`, and feed it into Squad lookup before trusting generic runtime labels.
 - If Copilot emits `subagent.selected` before `subagent.started`, treat that selection payload as a short-lived identity hint only. Bind it to the concrete runtime `agentId` once `subagent.started` arrives, then reuse the bound hint for later updates or reconnect sync.
 - Use instance ids only for per-run state maps, event correlation, and last-resort labels.
 - If the product contract says every Copilot-present sub-agent should stay visible, keep one visible card per runtime `agentId` and use stable identity only to enrich name/role/description metadata.
@@ -32,7 +33,7 @@ This applies when an event-driven extension has to merge runtime agent events wi
 ## Examples
 
 - `.github/extensions/copilot-avatar/lib/squad-context.mjs` builds a roster lookup keyed by stable agent aliases.
-- `.github/extensions/copilot-avatar/lib/squad-context.mjs` enriches that lookup with `.squad/casting/history.json` slot aliases so `tester` can resolve to `Howard the Duck`.
+- `.github/extensions/copilot-avatar/lib/squad-context.mjs` enriches that lookup with `.squad/casting/registry.json` assignment snapshots so `tester` can resolve to `Howard the Duck`.
 - `.github/extensions/copilot-avatar/main.mjs` tracks live avatar state by `event.agentId`, which is appropriate for runtime instance ownership.
 - `.github/extensions/copilot-avatar/main.mjs` reuses that per-agent runtime state to push consistent `displayName`, `model`, and `activityLabel` data through started/completed/failed/tool events.
 - `.github/extensions/copilot-avatar/main.mjs` can gate root Squad chrome through `getVisibleSquadContext()` while still resolving sub-agent metadata from `resolvedSquadContext` via a dedicated helper.
@@ -42,6 +43,7 @@ This applies when an event-driven extension has to merge runtime agent events wi
 - `.github/extensions/copilot-avatar/main.mjs` can also keep every live Copilot-owned runtime `agentId` visible while still resolving each card's display name and role from Squad roster or casting metadata.
 - `.github/extensions/copilot-avatar/content/main.js` can derive a fallback identity key from `resolveAvatarDisplayName()` and call `collapseAvatarIdentityDuplicates()` inside `window.addSubagent`, so the page-side surface matches the extension's duplicate policy.
 - `.github/extensions/copilot-avatar/main.mjs` can cache a recent `subagent.selected` payload for `Scribe`, then attach that metadata to the first low-confidence `subagent.started` instance so the rendered card shows `Scribe` without letting selection events mint cards.
+- `.github/extensions/copilot-avatar/main.mjs` can cache `task` spawn metadata like `name: "howard-the-duck"` or `description: "Howard the Duck: Run validation"` from `tool.execution_start`, then let `resolveSubagentDisplayData()` prefer that hint over a later `General Purpose Agent` payload.
 - `.github/extensions/copilot-avatar/main.mjs` can keep two `Peter Parker` runtime instances visible when both still have live tool activity, but fold a stale/no-tool duplicate back into one owner once only one instance is actually working.
 - `.github/extensions/copilot-avatar/main.mjs` can merge a stale sibling's richer `displayName` / `role` / `description` into the surviving runtime owner so fresh-but-blank events do not wipe the visible card label.
 - In Squad UI flows, a placeholder SDK label like `General Purpose Agent` should not outrank roster names such as `Howard the Duck`.
@@ -51,6 +53,7 @@ This applies when an event-driven extension has to merge runtime agent events wi
 
 - Using runtime `agentId` to join against roster metadata.
 - Letting `subagent.selected` create or suppress cards instead of treating it as metadata-only enrichment for a later `subagent.started`.
+- Ignoring the parent spawn tool’s `name` / `description` arguments and assuming `subagent.started` will always carry the final cast identity.
 - Reusing a root-visibility gate as the only source of sub-agent roster metadata.
 - Letting stable-identity collapse override an explicit product rule that visibility should mirror Copilot runtime presence.
 - Driving visible-card ownership straight from runtime `agentId` when multiple live instances can resolve to the same cast identity.
