@@ -1,3 +1,14 @@
+### 2026-05-17T19:45:16.556+02:00: Mic boom visibility blocked by timing gap in Squad context sync
+
+**By:** Shuri (Frontend Dev)
+
+**What:** The Squad root mic boom does not render despite the 3D geometry existing and being correctly wired. Root cause is a data-flow timing issue: efreshSessionContext() / syncSquadContext() is called before the webview exists, so window.setSquadContext() cannot be invoked until after initializeRootAvatar() has already created the root avatar with squadRootMicActive = false.
+
+**Why:** The visibility gate depends on squadRootMicActive state, which is only set by window.setSquadContext() called from the extension. The extension cannot reach the webview before it is open, so if the avatar is created before Squad context is synced, the mic boom starts invisible and never updates.
+
+**Implementation note:** The ssistant.turn_start handler does not call syncSquadContext(). Calling it after each turn starts will guarantee fresh mic visibility state on every turn, or move Squad context sync to after initializeRootAvatar() completes. Low risk; Squad context is already being synced elsewhere.
+
+---
 # Squad Decisions
 
 ## Active Decisions

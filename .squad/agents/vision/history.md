@@ -20,8 +20,53 @@ Implementing and refining sub-agent visibility, identity resolution, and metadat
 - If `subagent.started` arrives with blank identity fields, cache recent `subagent.selected` metadata as short-lived hint, bind to runtime `agentId`, reuse for later sync.
 - Stable-identity duplicate cleanup requires invocation at extension first-render, rehydrate, AND webview addSubagent; fallback keys from human labels only, not runtime IDs.
 - README is the contract with users: document that Copilot SDK owns all visibility/lifecycle, Squad is enrichment-only, and ghost cards were eliminated so rendered agents match the real active set.
+- Low-confidence label filtering in the webview is not enough if the extension layer passes generic Copilot labels before consulting Squad metadata; the filtering seam must be at the source (extension).
+- Webview improvements must be paired with extension-layer changes to avoid payload seams; generic labels like "General Purpose Agent" from Copilot SDK should be filtered in main.mjs before reaching `displayName` and `role` in the webview payload.
 
 ## Recent Work
+
+### 2026-05-17 — Sub-agent Identity Regression Investigation
+
+**Problem:** UI displays generic "general-purpose" agent placeholder instead of Squad cast names and roles.
+
+**Investigation:** Traced the regression through git history and code flow analysis.
+
+**Root Cause — Seam Misalignment:**
+- **Commit c8724b0** added low-confidence label detection to the webview (`content/main.js`): `GENERIC_AGENT_LABELS`, `isLowConfidenceDisplayName()`, `resolveAvatarDisplayName()`
+- Extension (`main.mjs`) was **not updated** with matching filter logic
+- When Copilot SDK sends `agentDisplayName: "General Purpose Agent"` (opaque runtime label):
+  - Line 405 fallback: `displayName: event.data?.agentDisplayName ?? squadAgent?.displayName ?? event.data?.agentName ?? ""`
+  - Since first term is truthy, it short-circuits before ever checking `squadAgent?.displayName`
+  - Webview receives generic label; its `resolveAvatarDisplayName()` detects it as low-confidence but has no Squad enrichment in payload to fall back to
+  - UI renders placeholder because contract violation happened upstream (extension should filter before payload construction)
+
+**Last Known Working:** Commit **3d4ed87** "Add Squad-aware avatar metadata and release workflow"
+- `resolveSquadAgentMetadata()` was integrated correctly
+- No webview-side low-confidence detection yet; entirely extension-driven enrichment
+- Cast names and roles rendered correctly because generic labels were (accidentally) accepted first, but Squad metadata was properly consulted
+
+**Exact Mechanism:**
+Data flow shows the seam failure point:
+```
+Copilot SDK { agentDisplayName: "General Purpose Agent" }
+    ↓
+main.mjs line 405: uses agentDisplayName directly (no low-confidence check)
+    ↓
+webview receives { displayName: "General Purpose Agent", role: "" }
+    ↓
+content/main.js resolveAvatarDisplayName() detects generic label but no Squad fallback exists
+    ↓
+Renders "General Purpose Agent" — Squad metadata never consulted by extension
+```
+
+**Fix Direction:** Apply **stable-agent-identity** pattern to main.mjs:
+1. Bring `GENERIC_AGENT_LABELS` and `isLowConfidenceLabel()` into main.mjs (mirror content/main.js definitions)
+2. Before line 405, check if `event.data?.agentDisplayName` is low-confidence
+3. **If low-confidence AND `squadAgent` exists**, prefer Squad displayName and role over Copilot generic labels
+4. Apply consistently across all three handlers: `subagent.started`, `subagent.completed`, `subagent.failed`
+5. This moves the filtering seam to the source (extension ↔ Copilot SDK boundary) instead of relying on webview cleanup
+
+**Key Insight:** Webview-layer defensive improvements (c8724b0) are good hygiene but insufficient when the extension doesn't filter first. The extension is the translation layer between Copilot's opaque runtime IDs and Squad's stable identities—low-confidence filtering must originate there.
 
 ### 2026-05-17 — Auto-Generated Squad Files in .gitattributes
 
@@ -123,3 +168,12 @@ Older work documented in `history-archive.md`:
 - Result: Reconnects do not mint third generic card
 
 **Team impact:** Tony Stark's dedup seam work now has metadata preservation complement; full coverage achieved.
+
+
+## 2026-05-17 — Scribe Session Wrap-up
+
+**Cross-Agent Note from Scribe:** Decision merged from Shuri's mic regression analysis to .squad/decisions.md. Shuri identified timing gap in Squad context sync as root cause for mic boom not rendering (extension sync before webview is open). Vision and Shuri findings now consolidated in shared decision record for team visibility.
+
+**Decision Created:** "Mic boom visibility blocked by timing gap in Squad context sync" — covers exact mechanism, suspect commits, and fix directions (sync in assistant.turn_start or after avatar init).
+
+**Orchestration Log:** Scribe recorded both investigations in .squad/orchestration-log/ for audit trail.
