@@ -97,23 +97,51 @@ if (speakBodyMatch) {
     assert("speak() sam branch calls speakSam", false, "Could not isolate speak() body");
 }
 
-// ── 3. SAM TTS: speakSam seam contract (implementation-agnostic) ─────────────
+// ── 3. SAM TTS: speakSam full formant synthesizer contract ───────────────────
 //
-// speakSam is the browser-side SAM TTS seam. The implementation may be the full
-// custom formant synthesizer or a fallback stub — probes here cover the contract
-// boundary only, not implementation specifics (which belong in Group 13's no-remote
-// constraint). When the formant engine is swapped for a stub or vice versa, these
-// assertions must continue to pass unchanged.
+// Peter's pass: the custom formant synthesizer is confirmed live in HEAD.
+// Probes enforce the full implementation chain:
+//   speakSam → synthesizeSamAudio → audioBufferToWavDataUrl → Audio.play()
+// SAM_PHONEME_DATA (F1/F2 acoustic table) and SAM_VOICES (6 presets with
+// pitch/formantShift/rate) must be present as part of the formant engine.
 //
-console.log("\n[3] SAM TTS: speakSam seam contract (implementation-agnostic)");
+console.log("\n[3] SAM TTS: speakSam full formant synthesizer contract");
 
 assert("speakSam function is defined (async)", /async\s+function\s+speakSam\s*\(/.test(mainJs));
 
-// SAM_VOICES must list the 6 presets by id
+// speakSam must call synthesizeSamAudio (the formant synthesis core)
+assert(
+    "speakSam calls synthesizeSamAudio",
+    /async\s+function\s+speakSam\s*\([\s\S]{0,1200}synthesizeSamAudio/.test(mainJs)
+);
+
+// speakSam must call audioBufferToWavDataUrl to get a data URL for playback
+assert(
+    "speakSam calls audioBufferToWavDataUrl",
+    /async\s+function\s+speakSam\s*\([\s\S]{0,1200}audioBufferToWavDataUrl/.test(mainJs)
+);
+
+// The synthesis helper and acoustic table must be defined
+assert(
+    "synthesizeSamAudio function is defined",
+    /function\s+synthesizeSamAudio\s*\(/.test(mainJs)
+);
+assert(
+    "audioBufferToWavDataUrl function is defined",
+    /function\s+audioBufferToWavDataUrl\s*\(/.test(mainJs)
+);
+assert("SAM_PHONEME_DATA acoustic table is defined", mainJs.includes("SAM_PHONEME_DATA"));
+
+// SAM_VOICES must list the 6 presets by id, each with pitch/formantShift/rate
 const voiceIds = ["sam", "elf", "cylon", "vader", "stuffy", "gruff"];
 for (const id of voiceIds) {
     assert(`SAM_VOICES includes preset '${id}'`, mainJs.includes(`'${id}'`) || mainJs.includes(`"${id}"`));
 }
+const svIdx = mainJs.indexOf("const SAM_VOICES");
+const svBlock = mainJs.slice(svIdx, svIdx + 600);
+assert("SAM_VOICES entries have 'pitch' field", svBlock.includes("pitch:"));
+assert("SAM_VOICES entries have 'formantShift' field", svBlock.includes("formantShift:"));
+assert("SAM_VOICES entries have 'rate' field", svBlock.includes("rate:"));
 
 // ── 4. SAM TTS: settings persistence round-trip ────────────────────────────────
 console.log("\n[4] SAM TTS: settings persistence round-trip");
@@ -326,21 +354,25 @@ assert(
     !/import\s+SamJs\b/.test(mainJs) && !/from\s+['"]sam-js['"]/.test(mainJs)
 );
 
-// synthesizeSamAudio uses OfflineAudioContext — implementation-specific check is
-// intentionally omitted here to survive the stub/seam transition. The no-fetch
-// / no-XHR constraints on speakSam below are the durable no-remote guarantees.
+// synthesizeSamAudio uses OfflineAudioContext — browser Web Audio path confirmed
+const synthStart = mainJs.indexOf("function synthesizeSamAudio");
+const synthEnd = mainJs.indexOf("\nfunction ", synthStart + 1);
+const synthBody = mainJs.slice(synthStart, synthEnd > 0 ? synthEnd : synthStart + 2000);
+assert(
+    "SAM: synthesizeSamAudio uses OfflineAudioContext (browser Web Audio)",
+    synthBody.includes("OfflineAudioContext")
+);
 
-// samG2P, if present, must be a pure text transform (no fetch/remote call).
-// In stub/seam mode the function may not exist; both states are acceptable.
+// samG2P is confirmed present in Peter's implementation — absence is now a failure.
 const g2pStart = mainJs.indexOf("function samG2P(");
+assert("SAM: samG2P function is present (confirmed live in Peter's pass)", g2pStart !== -1);
 if (g2pStart !== -1) {
     const g2pWindow = mainJs.slice(g2pStart, g2pStart + 3200);
     assert("SAM: samG2P contains no fetch() call", !g2pWindow.includes("fetch("));
     assert("SAM: samG2P contains no XMLHttpRequest", !g2pWindow.includes("XMLHttpRequest"));
 } else {
-    // samG2P not present — stub/seam mode. No remote G2P is even possible; pass.
-    assert("SAM: samG2P not present — seam mode, no remote G2P possible (skipped)", true);
-    assert("SAM: samG2P remote-call check — skipped (function absent)", true);
+    assert("SAM: samG2P contains no fetch() call", false, "samG2P absent — unexpected in full implementation");
+    assert("SAM: samG2P contains no XMLHttpRequest", false, "samG2P absent");
 }
 
 // speakSam must use only local synthesis — no fetch, no WebSocket, no remote URL
