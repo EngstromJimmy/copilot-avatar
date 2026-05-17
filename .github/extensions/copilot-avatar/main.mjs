@@ -810,7 +810,11 @@ function bindSubagentSelectionHint(agentId, hint, state = null) {
     hintsByAgentId.set(agentId, hint);
 }
 
+// subagent.selected does not carry a reliable correlation ID (SDK constraint). It must remain a
+// weak, short-lived hint only. Identity is locked to an agentId only when subagent.started fires
+// with a confirmed agentId. This function must never return true before that point.
 function shouldBindPendingSelectionHint({ agentId, runtimeAgentName, runtimeDisplayName, spawnMetadata, state = null }) {
+    // Squad agents always have spawnMetadata — never let the selection hint override them.
     if (!agentId || spawnMetadata || getSubagentSelectionHint(agentId, state)) {
         return false;
     }
@@ -910,6 +914,9 @@ function resolveSubagentDisplayData(event, state = null) {
         bindSubagentSelectionHint(agentId, getPendingSubagentSelectionHint(state), state);
         setPendingSubagentSelectionHint(null, state);
     }
+    // Pending hint is used here only for display field resolution (lowest priority in
+    // resolveSubagentDisplayFields). It does NOT lock identity — that only happened above
+    // inside the shouldBindPendingSelectionHint branch where agentId is confirmed.
     const selectionHint = getSubagentSelectionHint(agentId, state) ?? getPendingSubagentSelectionHint(state);
     return resolveSubagentDisplayFields({
         agentId,

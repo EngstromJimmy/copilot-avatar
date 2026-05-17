@@ -67,7 +67,19 @@ Root-caused why three running Squad sub-agents were not visible when the avatar 
 
 **Files modified:** `.github/extensions/copilot-avatar/main.mjs`
 
+## 2026-05-18 — Tony Stark Constraint Audit: subagent.selected as Weak Hint
 
+Audited all uses of `subagent.selected` / `selectionHint` / `bindSubagentSelectionHint` per Tony Stark's architecture constraint: "SDK 0.1.32 does not provide a reliable correlation ID in `subagent.selected`; it must remain a weak hint only; `subagent.started` is the render authority."
+
+**Findings — constraint already satisfied:**
+1. **Card creation** (`callWindowFunction("addSubagent", ...)`) is only reachable from `subagent.started` handlers (live L1348 and history replay `replayHydratedSubagentsToWebview`). No card is ever created from `subagent.selected` alone.
+2. **Permanent identity lock** (`bindSubagentSelectionHint`) is only called inside `resolveSubagentDisplayData`, gated by `shouldBindPendingSelectionHint`. That function requires:
+   - A confirmed `agentId` (from `subagent.started`)
+   - No `spawnMetadata` (Squad agents are fully protected)
+   - Runtime names must be weak (low-confidence labels only)
+3. **Display fallback** (line 917: `?? getPendingSubagentSelectionHint(state)`) uses the pending hint at lowest priority in `resolveSubagentDisplayFields` — it cannot override `squadAgent`, `spawnMetadata`, or strong runtime names, and does not lock identity.
+
+**Action taken:** Added code comments to `shouldBindPendingSelectionHint` and the display-fallback line in `resolveSubagentDisplayData` to make the SDK constraint explicit and prevent future regression.
 
 ### 2026-05-17T20:31:24.735Z — Late-open Naming Session
 
