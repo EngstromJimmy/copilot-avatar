@@ -42,6 +42,7 @@ Avatar 3D rendering and Squad-specific visual flair.
 - 2026-05-17T19:54:11.015+02:00 — Root-only webview chrome needs a latched-state replay path. For the mic fix, `.github/extensions/copilot-avatar/content/main.js` now reapplies `updateRootSquadMicBoom()` inside `initializeRootAvatar()`, and `.github/extensions/copilot-avatar/main.mjs` refreshes `syncSquadContext()` on root `assistant.turn_start` so a pre-open or pre-avatar Squad signal still lands once the webview is live.
 - 2026-05-17T20:00:51.651+02:00 — Final mic failure path: `.github/extensions/copilot-avatar/main.mjs` was already polling `window.__copilotAvatarReady`, but `.github/extensions/copilot-avatar/content/main.js` never set that flag, so `syncSquadContext()` skipped the first show/reopen replay and the root mic stayed hidden despite an active Squad context. Safe fix: set the ready flag after page boot, keep mic visibility on the existing `setSquadContext()` → `updateRootSquadMicBoom()` seam, and expose `window.__copilotAvatarState.rootMicVisible` for live regression probes.
 - 2026-05-17T20:10:26.460+02:00 — Generic Copilot labels like `General Purpose Agent` must be filtered in `.github/extensions/copilot-avatar/main.mjs` before payloads hit the webview. `content/main.js` already treats those labels as low-confidence, but it still needs richer upstream data, so `.github/extensions/copilot-avatar/lib/squad-context.mjs` now loads `.squad/casting/history.json` slot aliases (`lead`, `tester`, etc.) and the extension prefers cast metadata/roles over generic runtime labels.
+- 2026-05-17T20:43:07.849+02:00 — Renderer-side label fallback is still healthy in `.github/extensions/copilot-avatar/content/main.js`: `resolveAvatarDisplayName()` rejects placeholder labels like `General Purpose Agent`, agent-id echoes, and default `agent-xxxxxx` fallbacks when a stronger name exists. The live regression seam is upstream payload construction in the committed `.github/extensions/copilot-avatar/main.mjs`, where `subagent.started` / `.completed` / `.failed` still let SDK `agentDisplayName` outrank Squad/cast names before the webview sees the payload.
 
 
 ## 2026-05-17 — Scribe Session Wrap-up
@@ -103,3 +104,11 @@ Avatar 3D rendering and Squad-specific visual flair.
 **Files to Update:**
 - `.github/extensions/copilot-avatar/main.mjs` (filter + Squad preference on `subagent.started`, `.completed`, `.failed`)
 - `.github/extensions/copilot-avatar/lib/squad-context.mjs` (load `.squad/casting/history.json` for slot alias resolution)
+
+## Team Update: Label Regression Investigation (2026-05-17)
+
+**From Scribe:** Renderer is clean; content/main.js still correctly demotes placeholder labels. The regression source is upstream in main.mjs where the label construction vent.data?.agentDisplayName ?? squadAgent?.displayName allows SDK placeholders to outrank Squad identity before payload reaches the page.
+
+**Next:** Extension-side fix exists; awaiting merge/commit coordination.
+
+---

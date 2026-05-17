@@ -18,7 +18,47 @@
 
 ## Current Focus
 
-Mic boom visibility regression testing and validation protocol. Fix pending from Shuri (Frontend Dev).
+UI label regression analysis and branch merge verification.
+
+## 2026-05-17T20:43:07.849+02:00 — UI Label Regression Hunting: "General Purpose Agent" showing instead of Squad cast names
+
+**Context:** Jimmy flagged "The names in the UI still say General Purpose Agent. This worked earlier today."
+
+**Investigation Method:**
+- Traced git history for code changes since last known working state
+- Identified divergent branches: feat/microsoft-sam-tts (commit 877d269) vs. main (HEAD 834a2ba)
+- Examined working directory uncommitted changes
+
+**Root Cause Found:**
+The proper implementation exists on feat/microsoft-sam-tts branch (commit 877d269) but was NEVER MERGED to main. Main branch has the broken version. Additionally, WIP uncommitted changes in the working directory appear to be an attempt to fix main by cherry-picking the fix, but the work is incomplete.
+
+**Broken Code Path (main HEAD 834a2ba):**
+- File: `.github/extensions/copilot-avatar/main.mjs` lines ~655-670
+- `subagent.started` handler calls `resolveSquadAgentMetadata` WITHOUT passing `agentId`, `spawnName`, or `spawnDisplayName`
+- Missing helper functions: `GENERIC_AGENT_LABELS`, `isLowConfidenceAgentLabel()`, `pickPreferredAgentLabel()`, spawn metadata extraction
+- Result: No Squad lookup succeeds; falls back to raw runtime name which is "general purpose agent"
+
+**Correct Implementation (feat/microsoft-sam-tts 877d269):**
+- Full `resolveSubagentDisplayData(event)` function with 3-tier lookup:
+  1. Squad casting registry lookup (uses agentId, spawnName, spawnDisplayName)
+  2. Tool spawn metadata enrichment (extracts cast name from task/agent arguments)
+  3. Runtime fallback (cleans generic labels, humanizes agent names)
+- Generic label detection prevents "general purpose" from winning
+- Spawn metadata caching by toolCallId and agentId
+
+**Key Evidence:**
+- `.github/extensions/copilot-avatar/lib/squad-context.mjs` line 599: `resolveSquadAgentMetadata()` CAN accept spawnName/spawnDisplayName but main code doesn't pass them
+- Working directory diff shows 210+ new lines of proper helper functions not in committed HEAD
+- Commits on feat branch are after v0.2.0 tag; never merged back to main
+
+**Regression Window:** Tight — fix was written but never integrated. User experienced it after code merge/reset to main from feat branch.
+
+**Outstanding Questions:**
+1. Is feat/microsoft-sam-tts intended for merge or permanent isolation?
+2. Who started the WIP changes in the working directory? Are they intentional?
+3. Which branch state was "working earlier today"?
+
+**Recommendation for Coordinator:** Clarify branch merge intent before I can validate a fix. Either merge feat/microsoft-sam-tts clean, or commit+test the WIP working directory changes.
 
 ## 2026-05-17T19:54:11.015+02:00 — Mic Boom Visibility Repro & Validation Probes
 
@@ -116,3 +156,11 @@ Mic boom visibility regression testing and validation protocol. Fix pending from
 
 **Outcome:** Spawn manifest verified; both agents checked in with correct cast names and roles. All shared memory consolidated.
 
+
+## Team Update: Label Regression Investigation (2026-05-17)
+
+**From Scribe:** Regression window pinned. Broken version on main HEAD (834a2ba); proper fix on eat/microsoft-sam-tts branch (commit 877d269) and WIP working tree. Three sign-off blockers identified: (1) Branch merge strategy undecided; (2) WIP state unresolved; (3) End-to-end validation with live Copilot sub-agents needed.
+
+**Coordination:** Awaiting merge strategy decision and WIP resolution before fix validation.
+
+---

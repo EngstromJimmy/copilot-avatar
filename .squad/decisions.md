@@ -1341,3 +1341,158 @@ When Copilot emits a real `subagent.started` event with weak identity fields, th
 
 
 
+
+
+---
+title: "UI Label Regression: General Purpose Agent showing instead of Squad cast names"
+date: 2026-05-17T20:43:07.849+02:00
+author: Howard the Duck (Tester)
+status: Investigation Complete — Regression Identified
+---
+
+# Regression Analysis: UI Label Bug
+
+## What the User Reported
+
+"The names in the UI still say 'General Purpose Agent'. This worked earlier today. I think this worked before we did the last PR, but I'm not 100% sure about that."
+
+## Root Cause Found
+
+**The fix exists but was never merged to main.** The proper implementation lives on branch `feat/microsoft-sam-tts` (commit 877d269) and in an uncommitted WIP state in the working directory. The committed main branch (HEAD = 834a2ba) has the broken version.
+
+### The Broken Code Path (Committed on main)
+
+File: `.github/extensions/copilot-avatar/main.mjs` lines ~655-670
+
+Current broken handler in `subagent.started`:
+```javascript
+const squadAgent = resolveSquadAgentMetadata(squadContext, {
+    agentName: event.data?.agentName,
+    agentDisplayName: event.data?.agentDisplayName,
+});
+await callWindowFunction("addSubagent", {
+    agentId: event.agentId ?? null,
+    agentName: event.data?.agentName ?? "",
+    displayName: event.data?.agentDisplayName ?? squadAgent?.displayName ?? event.data?.agentName ?? "",
+    description: event.data?.agentDescription ?? squadAgent?.description ?? "",
+    role: squadAgent?.role ?? "",
+    // ...
+});
+```
+
+**Problems with this code:**
+
+1. **Missing agentId in lookup** — The `resolveSquadAgentMetadata` call doesn't pass `agentId`, so it can't resolve stable agent identities from the casting registry
+2. **Missing spawnMetadata enrichment** — No attempt to extract display name from tool spawn arguments (which would contain cast names like "Tony Stark" or "Howard the Duck")
+3. **Broken fallback chain** — When Squad lookup fails and runtime name is generic (like "general purpose agent"), there's no fallback to humanized spawn name or other non-generic candidates
+4. **No generic label detection** — The current code doesn't have the `isLowConfidenceAgentLabel()` logic to skip generic labels like "general purpose" and prefer better sources
+
+### The Correct Fix (On feat/microsoft-sam-tts branch, commit 877d269)
+
+The proper implementation exists and includes:
+
+- Full `resolveSubagentDisplayData(event)` function with complete metadata resolution
+- Includes `agentId`, `spawnMetadata`, and runtime names in Squad lookup
+- Smart fallback chain: Squad → spawn metadata → runtime displayName → runtime agentName → humanized spawn name → agentId
+- Generic label detection via `isLowConfidenceAgentLabel()` to avoid showing "general purpose"
+- Tool argument parsing to extract cast names from task/agent spawn calls
+- Spawn metadata caching by both toolCallId and agentId for session persistence
+
+## Evidence Chain
+
+### File: `.github/extensions/copilot-avatar/main.mjs`
+
+**Line 44-55 (main — MISSING on HEAD):**
+- `GENERIC_AGENT_LABELS` set — needed to detect and skip generic labels
+- **Status:** Not in committed HEAD, only in WIP working directory
+
+**Line 508-521 (feat branch, commit 877d269 — MISSING on HEAD):**
+```javascript
+const squadAgent = resolveSquadAgentMetadata(squadContext, {
+    agentId,
+    agentName: runtimeAgentName,
+    agentDisplayName: runtimeDisplayName,
+    spawnName: spawnMetadata?.name,
+    spawnDisplayName: spawnMetadata?.displayName,
+});
+const displayName = pickPreferredAgentLabel([
+    squadAgent?.displayName,
+    spawnMetadata?.displayName,
+    runtimeDisplayName,
+    runtimeAgentName,
+    humanizeAgentName(spawnMetadata?.name),
+], agentId) || runtimeDisplayName || runtimeAgentName || agentId || "";
+```
+- **Status:** Not in committed HEAD; WIP working directory has it
+
+### File: `.github/extensions/copilot-avatar/lib/squad-context.mjs`
+
+**Line 599-619 (resolveSquadAgentMetadata):**
+```javascript
+export function resolveSquadAgentMetadata(context, agentData = {}) {
+    if (!(context?.agentsByKey instanceof Map) || context.agentsByKey.size === 0) {
+        return null;
+    }
+
+    const keys = [
+        normalizeAgentKey(agentData.spawnDisplayName),
+        normalizeAgentKey(agentData.spawnName),
+        normalizeAgentKey(agentData.agentName),
+        normalizeAgentKey(agentData.agentDisplayName),
+        isStableLookupAgentId(agentData.agentId) ? normalizeAgentKey(agentData.agentId) : "",
+    ].filter(Boolean);
+
+    for (const key of keys) {
+        if (context.agentsByKey.has(key)) {
+            return context.agentsByKey.get(key);
+        }
+    }
+
+    return null;
+}
+```
+- **Status:** This function CAN accept `spawnName` and `spawnDisplayName`, but the broken code on main doesn't pass them
+
+## Regression Window
+
+- **Broken version is on:** main branch HEAD (834a2ba)
+- **Fix is on:** feat/microsoft-sam-tts branch (commit 877d269)
+- **The fix was never merged** — feat/microsoft-sam-tts branched from b8b8282 (v0.2.0 tag) and hasn't been integrated back to main
+
+### Timeline
+
+1. 2026-05-17 commit 877d269 on feat/microsoft-sam-tts — proper implementation added
+2. Separate WIP work on main — uncommitted changes that add the same implementation but incomplete
+3. Current state: main has neither the fix nor complete WIP
+
+## Sign-Off Blockers
+
+**I cannot sign off on a fix until:**
+
+1. **Branch merge strategy is decided** — Is feat/microsoft-sam-tts being merged? If yes, it should land clean. If no, the WIP working directory changes should be committed or cleared.
+2. **WIP state is resolved** — The uncommitted changes need to either be committed OR reverted. Leaving them hanging creates confusion about what's "real" code.
+3. **End-to-end test with live sub-agents** — After merge/commit, run a test with actual Copilot sub-agents (not demo mode) and verify Squad cast names appear instead of "general purpose agent".
+
+## Key Questions for Coordinator
+
+- Should feat/microsoft-sam-tts be merged to main, or is it WIP work-in-progress that should stay isolated?
+- Who added the WIP changes to the working directory? Are those intentional or accidental?
+- When was the last time the UI labels worked correctly with Squad cast names?
+
+
+### 2026-05-17T20:43:07.849+02:00: Renderer already demotes placeholder agent labels
+
+**By:** Shuri (Frontend Dev)
+
+**What:** `content/main.js` is not the source of the `General Purpose Agent` regression. The page still treats placeholder labels as low-confidence and prefers a better current name or `agentName` when that data arrives. The committed extension path in `main.mjs` is the failing seam: `subagent.started`, `subagent.completed`, and `subagent.failed` still prioritize SDK `agentDisplayName` before Squad/cast metadata when building the payload sent to the webview.
+
+**Why:** Renderer source assertions still show `resolveAvatarDisplayName()` rejecting placeholder `displayName` values and weak `agentId`-style fallbacks. The committed `main.mjs` path still constructs labels with `event.data?.agentDisplayName ?? squadAgent?.displayName ?? event.data?.agentName`, so a generic SDK label can reach the page even when roster/casting metadata would have produced `Shuri`, `Howard the Duck`, or other Squad names.
+
+
+### 2026-05-17T20:43:07.849+02:00: Extension-side identity fix exists locally; merged main.mjs still prefers generic runtime labels
+
+**By:** Vision (Platform Dev)
+
+**What:** The active regression seam is extension-side. The merged `main.mjs` still builds sub-agent payloads with `event.data?.agentDisplayName ?? squadAgent?.displayName ?? event.data?.agentName`, so Copilot's placeholder `General Purpose Agent` label outranks Squad/cast identity before the webview ever sees the payload. The current working tree fixes that by resolving display data through `resolveSubagentDisplayData()` and preferring Squad metadata and cached spawn metadata ahead of runtime placeholders; `lib/squad-context.mjs` also expands lookup keys with spawn aliases and casting snapshots.
+
+**Why:** PR #5 (`feat: integrate avatar speech updates`) touched `main.mjs`, but the merged file still carries the older runtime-first path from the May 15 Squad metadata work. Focused probes prove the committed path returns `General Purpose Agent` for a generic runtime payload while the current working-tree path resolves the same scenario to `Tony Stark`. The live UI can also lag behind the fixed files until the project extension process is reloaded, so extension reload is part of validating this seam.

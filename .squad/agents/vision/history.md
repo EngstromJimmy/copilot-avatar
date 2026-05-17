@@ -25,6 +25,8 @@ Implementing and refining sub-agent visibility, identity resolution, and metadat
 - In CopilotWebview flows, `webview.show()` is not proof that page APIs exist yet; latch `window.__copilotAvatarReady` in `content/main.js` and wait for it in `main.mjs` before emitting `setSquadContext`, or root-only Squad chrome can miss first paint.
 - 2026-05-17T20:10:26.460+02:00 — Copilot’s parent spawn tool keeps the cast identity in `tool.execution_start.arguments` (`name` / `description`), not in `subagent.started` when the runtime agent type is generic. Cache that hint by `toolCallId`, bind it to the concrete `agentId` on first start, and let it outrank placeholder labels in `.github/extensions/copilot-avatar/main.mjs`.
 - 2026-05-17T20:10:26.460+02:00 — `.github/extensions/copilot-avatar/lib/squad-context.mjs` must resolve casting aliases from `.squad/casting/registry.json`; `.squad/casting/history.json` tracks persistent cast inventory but does not carry the assignment snapshot needed for `lead` / `tester` → cast-name lookup.
+- 2026-05-17T20:43:07.849+02:00 — The generic-label seam is still owned in `.github/extensions/copilot-avatar/main.mjs`: the merged runtime-first payload (`agentDisplayName ?? squad`) yields `General Purpose Agent`, while the corrected working-tree path resolves labels in `resolveSubagentDisplayData()` as Squad → spawn metadata → runtime.
+- 2026-05-17T20:43:07.849+02:00 — Live extension regressions can be a process seam, not a source seam. Check that the running `project:copilot-avatar` extension is the active instance and run `extensions_reload` after local extension edits, or the avatar window can keep serving stale label behavior.
 
 ## Recent Work
 
@@ -167,3 +169,11 @@ Older work documented in `history-archive.md`:
 - The extension correctly reads `.squad/casting/history.json` directly—this is the right approach
 - If the SDK ever stabilizes a casting retrieval API, adoption can happen as an optional refactor
 - Detailed analysis: `.squad/agents/vision/sdk-casting-analysis.md`
+
+## Team Update: Label Regression Investigation (2026-05-17)
+
+**From Scribe:** Label regression confirmed in extension-side label precedence (main.mjs lines ~655-670). The merged path prioritizes SDK gentDisplayName before Squad metadata, allowing "General Purpose Agent" to outrank cast names. Proper fix exists on eat/microsoft-sam-tts branch (commit 877d269) and in WIP working directory but not merged to main HEAD (834a2ba).
+
+**Coordination needed:** Branch merge strategy and WIP state resolution before this fix lands.
+
+---
