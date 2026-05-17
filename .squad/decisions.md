@@ -93,6 +93,34 @@ After resolving, retry: `git checkout feat/microsoft-sam-tts`
 
 *Decision made to preserve all user changes per project policy.*
 
+# Decision: Remove `waitingForRetire` cleanup from history replay
+
+**Agent:** Vision (Platform Dev)  
+**Date:** 2026-05-18  
+**Status:** Implemented  
+
+## Context
+
+When the avatar window was opened while 3 Squad sub-agents were actively running, none of them appeared in the window.
+
+## Root Cause
+
+`hydrateSubagentRuntimeFromHistory()` in `main.mjs` ran a post-loop cleanup that deleted any sub-agent whose `waitingForRetire` flag was `true` and had no active tools. This flag is set by `tool.execution_complete` when a sub-agent's last in-flight tool finishes — exactly the state a running agent is in while its model is computing the next tool call. The history snapshot is indistinguishable from a cleanly-completed agent, so all three were deleted before replay.
+
+## Decision
+
+**Remove the post-loop `waitingForRetire` cleanup from `hydrateSubagentRuntimeFromHistory()`.**
+
+Correctly-completed agents are removed by their `subagent.completed` / `subagent.failed` events, which are non-ephemeral (confirmed from SDK type: `ephemeral?: boolean` is optional, defaulting to persisted). The `waitingForRetire` fallback-retire mechanism belongs only in the live-runtime path where timer-based grace windows are possible.
+
+## Secondary change
+
+Forward `SubagentStartedData.model` (optional, present for auto-selected agents like rubber-duck) in both the live `subagent.started` handler and the history hydration case. Sub-agent cards now show their model immediately at start.
+
+## File changed
+
+`.github/extensions/copilot-avatar/main.mjs`
+
 ## 2026-05-18
 
 # Microsoft SAM Text-to-Speech Engine Implementation
