@@ -1131,12 +1131,15 @@ async function hydrateSubagentRuntimeFromHistory({ replayToWebview = false } = {
             }
             case "subagent.started": {
                 const displayData = resolveSubagentDisplayData(event, historyState);
+                const startedModel = event.data?.model ?? "";
                 if (event.agentId && displayData.toolCallId) {
                     historyState.subagentIdsByToolCallId.set(displayData.toolCallId, event.agentId);
                 }
-                markHydratedSubagentLive(
-                    upsertHydratedSubagentState(historyState.activeSubagentsByAgentId, buildSubagentPayload(displayData))
-                );
+                const startedState = upsertHydratedSubagentState(historyState.activeSubagentsByAgentId, buildSubagentPayload(displayData, { model: startedModel }));
+                if (startedState && startedModel) {
+                    startedState.model = startedModel;
+                }
+                markHydratedSubagentLive(startedState);
                 break;
             }
             case "assistant.usage": {
@@ -1215,12 +1218,6 @@ async function hydrateSubagentRuntimeFromHistory({ replayToWebview = false } = {
             }
             default:
                 break;
-        }
-    }
-
-    for (const [agentId, activeState] of historyState.activeSubagentsByAgentId.entries()) {
-        if (activeState.waitingForRetire && activeState.activeTools.size === 0) {
-            historyState.activeSubagentsByAgentId.delete(agentId);
         }
     }
 
@@ -1351,12 +1348,13 @@ session.on("subagent.deselected", () => {
 session.on("subagent.started", async (event) => {
     const displayData = resolveSubagentDisplayData(event);
     const toolCallId = displayData.toolCallId;
+    const model = event.data?.model ?? "";
     noteLiveSubagentSignal(displayData.agentId);
     if (event.agentId && toolCallId) {
         subagentIdsByToolCallId.set(toolCallId, event.agentId);
     }
 
-    await callWindowFunction("addSubagent", buildSubagentPayload(displayData), 3000);
+    await callWindowFunction("addSubagent", buildSubagentPayload(displayData, { model }), 3000);
 
     await syncPendingModelForSubagent(event.agentId ?? null, toolCallId);
     await syncPendingThinkingForSubagent(event.agentId ?? null, toolCallId);

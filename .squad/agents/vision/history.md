@@ -8,7 +8,7 @@
 
 Implementing and refining sub-agent visibility, identity resolution, and metadata enrichment integration with Copilot SDK.
 
-**Latest Focus:** Late-open naming restoration, sub-agent identity/history replay, mid-run avatar opens.
+**Latest Focus:** Sub-agent visibility regression fix — `waitingForRetire` history cleanup removing running agents + model forwarding from `subagent.started`.
 
 ## Key Learnings — 2026-05-17
 
@@ -48,7 +48,26 @@ Fixed unconditional always-on-top behavior in avatar window creation:
 
 Aligns with team decision: transparent windows can remain always-on-top; framed windows behave as normal windows.
 
-## Recent Sessions
+## 2026-05-18 — Sub-agent Visibility Fix (waitingForRetire cleanup bug)
+
+Root-caused why three running Squad sub-agents were not visible when the avatar window opened mid-run.
+
+**Root cause:** `hydrateSubagentRuntimeFromHistory()` contained a post-loop cleanup that removed sub-agents with `waitingForRetire = true && activeTools.size === 0`. This flag is set by `tool.execution_complete` when a sub-agent's last active tool finishes. For a sub-agent "between tool calls" (last tool done, model computing next action), the history snapshot looked identical to a cleanly-completed sub-agent — resulting in the running agent being deleted from `activeSubagentsByAgentId` before it could be replayed to the webview.
+
+**Why the cleanup was wrong for history replay:** The `waitingForRetire` mechanism (and `scheduleFallbackSubagentRetire` in the live path) is a timer-based safeguard for the live runtime — it gives running agents a grace window to emit their next tool call. In history replay there is no "later"; agents that completed are removed by their `subagent.completed` / `subagent.failed` events. The cleanup was redundant for cleanly-completed agents and destructive for still-running ones.
+
+**Fix applied:**
+1. Removed the post-loop `waitingForRetire` cleanup from `hydrateSubagentRuntimeFromHistory()` (`.github/extensions/copilot-avatar/main.mjs`). Completion is now driven solely by `subagent.completed` / `subagent.failed` terminal events from history, which are non-ephemeral.
+2. Forwarded `SubagentStartedData.model` (optional field, present for auto-selected agents) in both the live `subagent.started` handler and the history hydration case, so sub-agent cards show the model immediately at start rather than waiting for `assistant.usage`.
+
+**SDK insight confirmed:**
+- `SubagentStartedEvent.ephemeral?: boolean` is optional (not always true) — these events ARE persisted in `session.getMessages()`.
+- `BackgroundTasksChangedEvent` has empty `BackgroundTasksChangedData {}` — not actionable.
+- `session.idle` has no `backgroundTasks` field — it signals idle with NO background agents, not the opposite.
+
+**Files modified:** `.github/extensions/copilot-avatar/main.mjs`
+
+
 
 ### 2026-05-17T20:31:24.735Z — Late-open Naming Session
 
