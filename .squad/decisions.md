@@ -9,6 +9,41 @@
 **Implementation note:** The ssistant.turn_start handler does not call syncSquadContext(). Calling it after each turn starts will guarantee fresh mic visibility state on every turn, or move Squad context sync to after initializeRootAvatar() completes. Low risk; Squad context is already being synced elsewhere.
 
 ---
+
+## 2026-05-17T19:54:11.015+02:00: Mic boom visibility — validation protocol and failure modes
+
+**By:** Howard the Duck (Tester)
+
+**What:** Created tight manual repro checklist and post-fix validation probes for the Squad root mic boom visibility bug. Two failure modes documented and ready for regression testing after Shuri's fix lands.
+
+**Root Cause Summary:** Timing gap between `initializeRootAvatar()` (page load) and `window.setSquadContext()` call (main.mjs) means mic boom starts invisible and never updates if avatar is rendered before Squad context syncs.
+
+**Key Test Assets:**
+- `.squad/tests/mic-boom-visibility-manual-repro.md` — Steps to reproduce the missing mic symptom
+- `.squad/tests/mic-boom-validation-probes.md` — 4 probes (static checks + live window inspection) to verify fix + catch regressions
+
+**Failure Modes to Watch:**
+1. Mic boom stays invisible after Squad context sync (gate not working)
+2. Mic boom appears then disappears on window reopen (state not preserved)
+
+**Regression Risk:** Squad sub-agent identity (names, roles) must stay stable after mic boom fix. If metadata lookup breaks, escalate to Vision.
+
+**Next Step:** Shuri's implementation should wire `syncSquadContext()` to either:
+- Option A: Call after `webview.show()` (ensures sync after window open)
+- Option B: Call in `assistant.turn_start` (ensures fresh state each turn)
+- Option C: Both (safest, guarantees sync on open + refresh on turn)
+
+
+### 2026-05-17T19:54:11.015+02:00: Replay latched Squad mic state when root avatar initializes
+
+**By:** Shuri (Frontend Dev)
+
+**What:** Keep the Squad mic boom driven by `window.setSquadContext(payload.active)`, but replay that latched page-side state once the root avatar is actually created. Also refresh Squad context again on root `assistant.turn_start`.
+
+**Why:** The webview can accept `setSquadContext()` before `initializeRootAvatar()` finishes. Without a replay seam, `squadRootMicActive` becomes true while the mesh does not exist yet, and the mic stays invisible until some later sync. Reapplying the flag during root-avatar init fixes the first-render race without changing Squad identity ownership.
+
+**Scope:** `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/main.mjs`
+
 # Squad Decisions
 
 ## Active Decisions
@@ -1225,4 +1260,5 @@ When Copilot emits a real `subagent.started` event with weak identity fields, th
 **Guardrails:** Keep Copilot SDK as visibility/lifecycle owner; Squad enrichment metadata stays metadata-only.
 
 ---
+
 

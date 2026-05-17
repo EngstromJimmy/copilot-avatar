@@ -39,6 +39,7 @@ Avatar 3D rendering and Squad-specific visual flair.
 
 - 2026-05-17T19:45:16.556+02:00 — Mic boom regression: visibility controlled by `squadRootMicActive` flag, set only via `window.setSquadContext()` from extension. Root avatar created at webview init (line 5334) before Squad context sync arrives, leaving boom hidden. Extension calls `syncSquadContext()` during session startup but webview not yet open (checked at evalWebview line 161), so call returns early. Fix: ensure `syncSquadContext()` runs after webview is ready and avatar initialized, or add sync to `assistant.turn_start` handler to refresh context each turn.
 - Mic boom 3D geometry and lifecycle pattern: created in `createSquadMicBoom()` (lines 731-778), added to root avatar only (line 2381), visibility set by `squadRootMicActive` boolean via `updateRootSquadMicBoom()` (line 2310). Squad-gating means boom is hidden until `window.setSquadContext({active: true})` is called from extension.
+- 2026-05-17T19:54:11.015+02:00 — Root-only webview chrome needs a latched-state replay path. For the mic fix, `.github/extensions/copilot-avatar/content/main.js` now reapplies `updateRootSquadMicBoom()` inside `initializeRootAvatar()`, and `.github/extensions/copilot-avatar/main.mjs` refreshes `syncSquadContext()` on root `assistant.turn_start` so a pre-open or pre-avatar Squad signal still lands once the webview is live.
 
 
 ## 2026-05-17 — Scribe Session Wrap-up
@@ -48,3 +49,18 @@ Avatar 3D rendering and Squad-specific visual flair.
 **Decision ID:** "Mic boom visibility blocked by timing gap in Squad context sync" — available for future reference and implementation.
 
 **Session Artifact:** Session log written to .squad/log/2026-05-17T17-45-16Z-squad-investigation-wrap.md summarizing both investigations.
+
+## Cross-Agent Update: Howard the Duck (Tester)
+
+**Date:** 2026-05-17T19:54:11.015+02:00  
+**From:** Scribe  
+**Context:** Howard prepared validation protocol for your mic visibility fix
+
+**What Howard Created:**
+- Manual repro checklist: .squad/tests/mic-boom-visibility-manual-repro.md
+- 4-probe validation suite: .squad/tests/mic-boom-validation-probes.md
+- Documented 2 failure modes to watch:
+  1. Mic stays invisible after Squad context sync
+  2. Mic disappears on window reopen
+
+**For You:** Your scope (replay during root-avatar init + sync on turn_start) must handle both modes. Howard flagged Squad identity regression risk — if your sync breaks metadata lookup, escalate to Vision.

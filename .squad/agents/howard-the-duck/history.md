@@ -18,7 +18,31 @@
 
 ## Current Focus
 
-Sub-agent visibility and identity management QA. All recent work completed and approved for production.
+Mic boom visibility regression testing and validation protocol. Fix pending from Shuri (Frontend Dev).
+
+## 2026-05-17T19:54:11.015+02:00 — Mic Boom Visibility Repro & Validation Probes
+
+**Context:** Jimmy flagged "The mic is still not shown" — Squad root mic boom not rendering despite geometry existing.
+
+**Investigation:** Traced root cause to the data-flow timing gap documented in decisions.md (2026-05-17T19:45:16.556+02:00):
+- `initializeRootAvatar()` runs on page load and creates root avatar with `squadRootMicActive = false`
+- `window.setSquadContext()` called from main.mjs only after webview is open
+- If avatar is created before Squad context syncs, mic boom stays invisible
+
+**Deliverables:**
+1. Manual repro checklist (`.squad/tests/mic-boom-visibility-manual-repro.md`) — tight steps to reproduce the missing mic bug
+2. Post-fix validation probes (`.squad/tests/mic-boom-validation-probes.md`) — minimal static + live checks to verify fix without regressing Squad identity
+3. Two failure modes documented:
+   - **Mode 1:** Mic boom stays invisible after Squad context sync (visibility gate not working)
+   - **Mode 2:** Mic boom appears then disappears on window reopen (state not preserved across reopen)
+
+**Key Assertions:**
+- Mic boom created only for root avatar in `createAvatarInstance()` (line 2333)
+- Visibility gate: `squadMicBoom.visible = squadRootMicActive` (line 2310 in `updateRootSquadMicBoom()`)
+- TubeGeometry + CapsuleGeometry with dark graphite material (`0x1c1c1c`)
+- Render order: 3 (boom), 4 (capsule)
+
+**Regression Risk:** Fix timing interaction with Squad metadata lookup — must verify sub-agent names stay stable after mic boom visibility fix.
 
 ## Recent Work
 
@@ -57,3 +81,20 @@ Sub-agent visibility and identity management QA. All recent work completed and a
 **Outcome:** Agent delivered exact cast name in tester check-in and highlighted current name-loss failure mode. Visibility system stable.
 
 **Orchestration:** Full logs recorded in `.squad/orchestration-log/`
+
+## Cross-Agent Update: Shuri (Frontend Dev)
+
+**Date:** 2026-05-17T19:54:11.015+02:00  
+**From:** Scribe  
+**Context:** Shuri's implementation details for your validation protocol
+
+**What Shuri Implemented:**
+- Replay latched Squad mic state during root avatar initialization
+- Refresh Squad context on root ssistant.turn_start
+- Scope: content/main.js, main.mjs
+- Approach keeps Squad mic boom driven by window.setSquadContext(payload.active)
+
+**For You:** Your validation probes should confirm:
+1. Mic visible immediately after root avatar init (not waiting for turn_start)
+2. Mic state persists correctly on webview reopen
+3. Squad identity lookup stays stable during sync calls
