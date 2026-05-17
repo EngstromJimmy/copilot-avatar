@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import SamJs from 'sam-js';
 
 const ROOT_AGENT_ID = 'root';
 const ROOT_SCALE = 1;
@@ -4465,12 +4464,12 @@ const VOXTRAL_VOICES_FALLBACK = [
 ];
 
 const SAM_VOICES = [
-    { id: 'sam',     name: 'SAM (Default)',  speed: 72, pitch: 64,  throat: 128, mouth: 128 },
-    { id: 'elf',     name: 'Elf',            speed: 72, pitch: 64,  throat: 110, mouth: 160 },
-    { id: 'cylon',   name: 'Cylon',          speed: 92, pitch: 60,  throat: 190, mouth: 190 },
-    { id: 'vader',   name: 'Darth Vader',    speed: 52, pitch: 90,  throat: 250, mouth: 200 },
-    { id: 'stuffy',  name: 'Stuffy',         speed: 72, pitch: 72,  throat: 110, mouth: 105 },
-    { id: 'gruff',   name: 'Gruff',          speed: 52, pitch: 96,  throat: 200, mouth: 100 },
+    { id: 'sam',     name: 'SAM (Default)' },
+    { id: 'elf',     name: 'Elf'           },
+    { id: 'cylon',   name: 'Cylon'         },
+    { id: 'vader',   name: 'Darth Vader'   },
+    { id: 'stuffy',  name: 'Stuffy'        },
+    { id: 'gruff',   name: 'Gruff'         },
 ];
 
 let ttsEnabled = false;
@@ -5210,6 +5209,7 @@ async function generateRetroClippyVoice() {
         saveTtsSettings();
     } catch (err) {
         console.error('Retro Clippy voice generation failed:', err);
+        clippyRetroVoiceBtn.title = 'Not available: remote SAM server removed';
     } finally {
         clippyRetroVoiceBtn.disabled = false;
         clippyRetroVoiceBtn.textContent = previousText;
@@ -5399,36 +5399,10 @@ function stopAllSpeech() {
 }
 
 async function speakSam(text, { clippy = false } = {}) {
-    const requestId = beginSpeechRequest();
-    try {
-        speechSynthesis.cancel();
-        stopGeneratedSpeechPlayback();
-        const preset = SAM_VOICES.find(v => v.id === samVoice) || SAM_VOICES[0];
-        const sam = new SamJs({ speed: preset.speed, pitch: preset.pitch, throat: preset.throat, mouth: preset.mouth });
-        const wavData = sam.wav(text);
-        if (!wavData || !wavData.length) {
-            throw new Error('SAM TTS returned no audio data');
-        }
-        if (!isCurrentSpeechRequest(requestId)) return;
-        const blob = new Blob([wavData], { type: 'audio/wav' });
-        activeGeneratedAudioUrl = URL.createObjectURL(blob);
-        const audio = new Audio(activeGeneratedAudioUrl);
-        ttsAudioPlayer = audio;
-        if (clippy) {
-            setClippySpeaking(true);
-            audio.addEventListener('ended', () => {
-                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
-            }, { once: true });
-            audio.addEventListener('error', () => {
-                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
-            }, { once: true });
-        }
-        await audio.play();
-    } catch (err) {
-        if (clippy && isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
-        console.error('SAM TTS failed:', err);
-        if (clippy && isCurrentSpeechRequest(requestId)) fallbackClippySpeech(text);
-    }
+    // Browser-native SAM engine not yet wired — placeholder seam for Peter's implementation.
+    // Voice picker and persistence are live; swap this body out when a legitimate engine lands.
+    console.info('SAM TTS: browser-native engine not yet available. Falling back to Web Speech.');
+    speakWebSpeech(text, { clippy });
 }
 
 // ── Event handlers ────────────────────────────────────────────────────────────

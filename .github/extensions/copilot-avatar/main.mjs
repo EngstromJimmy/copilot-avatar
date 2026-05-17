@@ -144,19 +144,9 @@ async function saveSettings(settings) {
 }
 
 async function generateRetroClippyVoice() {
-    const params = new URLSearchParams({
-        text: retroClippySampleText,
-        voice: "Sam",
-        pitch: "160",
-        speed: "165",
-    });
-    const response = await fetch(`https://www.tetyys.com/SAPI4/SAPI4?${params}`);
-    if (!response.ok) {
-        throw new Error(`SAPI4 voice generation failed (${response.status})`);
-    }
-    const contentType = response.headers.get("content-type") || "audio/wav";
-    const bytes = Buffer.from(await response.arrayBuffer());
-    return `data:${contentType};base64,${bytes.toString("base64")}`;
+    // Remote SAPI4 generation via tetyys.com has been removed.
+    // This seam is reserved for a browser-native implementation.
+    throw new Error("Retro Clippy voice generation is not available: remote SAM server removed, browser-native path not yet implemented.");
 }
 
 const initialSettings = await loadSettings();
