@@ -75,3 +75,13 @@ Older work documented in `history-archive.md`:
 **Why:** Clarify contract with users and maintainers about ownership model.
 
 **Team Impact:** All agents now have clear reference for how Copilot and Squad interact in sub-agent visibility.
+
+## 2026-05-17T17:40:04.980Z — Cast Name Verification Session
+
+**From:** Scribe (Session Logger)
+
+**Context:** Squad spawn manifest recorded Tony Stark (Lead) and Howard the Duck (Tester) background agents for cast-name verification.
+
+**Outcome:** Both agents delivered exact cast names in their check-ins. Identity and badge detail system operating nominally.
+
+**Orchestration:** Full logs recorded in `.squad/orchestration-log/`

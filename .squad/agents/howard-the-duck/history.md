@@ -48,10 +48,12 @@ Sub-agent visibility and identity management QA. All recent work completed and a
 
 **Team Impact:** All agents now have clear reference for how Copilot and Squad interact in sub-agent visibility.
 
-## Archived Sessions
+## 2026-05-17T17:40:04.980Z — Cast Name Verification Session
 
-Older session work (13:42–20:58) documented in `history-archive.md`:
-- Initial QA gate definition and stale-state regression identification
-- Shuri's name-mapping fix approval
-- Tony Stark's runtime naming revision and guarded fallback design
-- Live avatar visibility pass and badge rendering validation
+**From:** Scribe (Session Logger)
+
+**Context:** Squad spawn manifest recorded Howard the Duck (Tester) background agent for cast-name verification.
+
+**Outcome:** Agent delivered exact cast name in tester check-in and highlighted current name-loss failure mode. Visibility system stable.
+
+**Orchestration:** Full logs recorded in `.squad/orchestration-log/`
