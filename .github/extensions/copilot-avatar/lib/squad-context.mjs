@@ -519,16 +519,6 @@ function mergeAgentSources(rosterAgents, configAgents, castingAgents = []) {
     return [...merged.values()];
 }
 
-function getIdleSubtaskText(teamName, coordinatorName) {
-    if (teamName) {
-        return `Team: ${teamName}`;
-    }
-    if (coordinatorName) {
-        return `Coordinator: ${coordinatorName}`;
-    }
-    return "Squad metadata linked";
-}
-
 export async function loadSquadContext(cwd = process.cwd()) {
     const resolvedCwd = resolve(cwd || process.cwd());
     const clientName = getSquadClientName();
@@ -565,8 +555,8 @@ export async function loadSquadContext(cwd = process.cwd()) {
             teamName,
             coordinatorName,
             clientName,
-            idleStatusText: "● Squad ready",
-            idleSubtaskText: getIdleSubtaskText(teamName, coordinatorName),
+            idleStatusText: "",
+            idleSubtaskText: "",
             agentsByKey: buildAgentLookup(agents),
         });
     } catch (error) {
@@ -591,8 +581,8 @@ export function getSquadWindowContext(context) {
 
     return {
         active: true,
-        statusText: context.idleStatusText || "● Squad ready",
-        detailText: context.idleSubtaskText || "Squad metadata linked",
+        statusText: context.idleStatusText || "",
+        detailText: context.idleSubtaskText || "",
     };
 }
 

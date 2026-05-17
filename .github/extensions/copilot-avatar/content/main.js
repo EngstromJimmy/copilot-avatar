@@ -57,6 +57,18 @@ const GENERIC_AGENT_LABELS = new Set([
     'subagent',
     'task agent',
 ]);
+const SUPPRESSED_ROOT_CHROME_TEXT = new Set([
+    'agent',
+    'runsubagent',
+    'run subagent',
+    'squad ready',
+    'task',
+]);
+const SUPPRESSED_ROOT_TOOL_NAMES = new Set([
+    'agent',
+    'runSubagent',
+    'task',
+]);
 const ROLE_STYLES = {
     default: {
         token: 'default',
@@ -315,6 +327,9 @@ const transparentWindowToggle = document.getElementById('transparent-window-togg
 const avatars = new Map();
 const pendingSubagents = [];
 const pendingAgentModels = new Map();
+const pendingAgentActivities = new Map();
+const pendingAgentIntents = new Map();
+const pendingAgentThinking = new Set();
 const particles = [];
 const DEMO_AGENT_IDS = ['demo-planner', 'demo-coder', 'demo-reviewer', 'demo-tester', 'demo-docs'];
 
@@ -881,11 +896,46 @@ function getLiveIntentText(avatar, now = performance.now()) {
     return avatar.intentText && avatar.intentUntil > now ? avatar.intentText : '';
 }
 
+function isCopilotSummaryIntent(value) {
+    const cleaned = cleanAgentLabel(value);
+    if (!cleaned) return false;
+    return /^it looks like\b/i.test(cleaned)
+        || /^you(?:'re| are| seem to be)\s+all set\b/i.test(cleaned)
+        || /^there(?:'s| is)\s+an update\b/i.test(cleaned)
+        || /^we hit a snag\b/i.test(cleaned);
+}
+
+function getRenderableIntentText(avatar, now = performance.now()) {
+    const liveIntent = getLiveIntentText(avatar, now);
+    if (!liveIntent) return '';
+    if (!avatar?.isRoot && isCopilotSummaryIntent(liveIntent)) {
+        return '';
+    }
+    return liveIntent;
+}
+
 function normalizeComparisonText(value) {
     return cleanAgentLabel(value)
         .replace(/[^\p{L}\p{N}]+/gu, ' ')
         .trim()
         .toLowerCase();
+}
+
+function normalizeRootChromeText(value) {
+    return cleanAgentLabel(value)
+        .replace(/^[•●▪◦]+\s*/u, '')
+        .replace(/[_-]+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function shouldSuppressRootChromeText(value) {
+    const normalized = normalizeRootChromeText(value);
+    return !!normalized && SUPPRESSED_ROOT_CHROME_TEXT.has(normalized);
+}
+
+function shouldSuppressRootToolName(toolName) {
+    return SUPPRESSED_ROOT_TOOL_NAMES.has(String(toolName || '').trim());
 }
 
 function isRoleLikeDetailText(value, role = '') {
@@ -896,6 +946,11 @@ function isRoleLikeDetailText(value, role = '') {
 }
 
 function getAvatarTaskSummary(avatar) {
+    const workDescription = cleanAgentLabel(avatar?.workDescription || '');
+    if (workDescription) {
+        return workDescription;
+    }
+
     const detailText = cleanAgentLabel(avatar?.detailText || '');
     if (detailText) {
         return detailText;
@@ -934,18 +989,39 @@ function getAvatarBadgeText(avatar, activity, now = performance.now()) {
 }
 
 function getAvatarDetailText(avatar, activity, now = performance.now()) {
-    const liveIntent = getLiveIntentText(avatar, now);
+    const liveIntent = getRenderableIntentText(avatar, now);
     const latestTool = getLatestToolEntry(avatar);
+    const activeWorkTool = hasWorkToolEntry(latestTool) ? latestTool : null;
     const explicitToolDetail = latestTool?.explicitActivityLabel ? latestTool.activityLabel : '';
     const fallbackToolDetail = latestTool?.activityLabel || describeToolActivity(latestTool?.toolName);
     const taskSummary = getAvatarTaskSummary(avatar);
     const modelThinkingDetail = avatar.modelLabel ? `Thinking with ${avatar.modelLabel}` : '';
 
+    if (!avatar?.isRoot) {
+        if (avatar.effectState === 'success' || avatar.effectState === 'failed') {
+            return liveIntent || taskSummary || '';
+        }
+
+        if (taskSummary) {
+            return taskSummary;
+        }
+
+        if (latestTool) {
+            return explicitToolDetail || fallbackToolDetail || liveIntent || '';
+        }
+
+        if (activity === 'thinking') {
+            return liveIntent || modelThinkingDetail || '';
+        }
+
+        return liveIntent || '';
+    }
+
     if (avatar.effectState === 'success' || avatar.effectState === 'failed') {
         return liveIntent || '';
     }
 
-    if (latestTool) {
+    if (activeWorkTool) {
         return joinDistinctDetailParts([liveIntent || taskSummary, explicitToolDetail || fallbackToolDetail])
             || liveIntent
             || taskSummary
@@ -2164,24 +2240,48 @@ function isLowConfidenceDisplayName(value, agentId) {
     return !!fallbackLabel && normalized === fallbackLabel;
 }
 
-function resolveAvatarDisplayName(agentId, data = {}, currentDisplayName = '') {
-    const nextDisplayName = cleanAgentLabel(data.displayName);
-    const nextAgentName = cleanAgentLabel(data.agentName);
-    const currentLabel = cleanAgentLabel(currentDisplayName);
+function getDisplayIdentityCandidate(agentId, value, source = 'fallback') {
+    const label = cleanAgentLabel(value);
+    if (!label) return null;
 
-    if (nextDisplayName && !isLowConfidenceDisplayName(nextDisplayName, agentId)) {
-        return nextDisplayName;
+    const strong = !isLowConfidenceDisplayName(label, agentId);
+    const normalizedSource = source === 'displayName' || source === 'agentName' ? source : 'fallback';
+    const rank = strong
+        ? normalizedSource === 'displayName'
+            ? 4
+            : normalizedSource === 'agentName'
+                ? 3
+                : 2
+        : 1;
+
+    return { label, source: normalizedSource, rank };
+}
+
+function resolveAvatarDisplayIdentity(agentId, data = {}, currentDisplayName = '', currentSource = 'fallback') {
+    const candidates = [
+        getDisplayIdentityCandidate(agentId, data.displayName, 'displayName'),
+        getDisplayIdentityCandidate(agentId, data.agentName, 'agentName'),
+        getDisplayIdentityCandidate(agentId, currentDisplayName, currentSource),
+    ].filter(Boolean);
+
+    if (!candidates.length) {
+        return {
+            displayName: defaultDisplayName(agentId),
+            displayNameSource: 'fallback',
+        };
     }
 
-    if (currentLabel && !isLowConfidenceDisplayName(currentLabel, agentId)) {
-        return currentLabel;
-    }
+    const best = candidates.reduce((selected, candidate) => {
+        if (!selected || candidate.rank > selected.rank) {
+            return candidate;
+        }
+        return selected;
+    }, null);
 
-    if (nextAgentName && !isLowConfidenceDisplayName(nextAgentName, agentId)) {
-        return nextAgentName;
-    }
-
-    return nextDisplayName || nextAgentName || currentLabel || defaultDisplayName(agentId);
+    return {
+        displayName: best?.label || defaultDisplayName(agentId),
+        displayNameSource: best?.source || 'fallback',
+    };
 }
 
 function isDuckAgent(data = {}) {
@@ -2237,6 +2337,10 @@ function getLatestToolEntry(avatar) {
         }
     }
     return latest;
+}
+
+function hasWorkToolEntry(entry) {
+    return !!entry && !!entry.activity && entry.activity !== 'idle';
 }
 
 function getToolActivityKey(payload = {}) {
@@ -2469,11 +2573,14 @@ function createAvatarInstance(agentId, data = {}) {
     const baseScale = isRoot ? ROOT_SCALE : SUBAGENT_SCALE;
     const currentEyeColor = ACTIVITY_COLORS.idle.clone();
 
+    const displayIdentity = resolveAvatarDisplayIdentity(agentId, data);
     const avatar = {
         agentId,
         agentName: data.agentName || '',
-        displayName: resolveAvatarDisplayName(agentId, data),
+        displayName: displayIdentity.displayName,
+        displayNameSource: displayIdentity.displayNameSource,
         description: data.description || '',
+        workDescription: cleanAgentLabel(data.workDescription || data.detailText || data.taskSummary || ''),
         detailText: cleanAgentLabel(data.detailText || data.taskSummary || ''),
         taskSummary: cleanAgentLabel(data.taskSummary || ''),
         role: data.role || '',
@@ -2590,15 +2697,19 @@ function disposeAvatar(avatar) {
 
 function updateAvatarMetadata(avatar, data = {}) {
     const wasDuck = avatar.isDuck;
+    const hasWorkDescription = Object.prototype.hasOwnProperty.call(data, 'workDescription');
     const hasDetailText = Object.prototype.hasOwnProperty.call(data, 'detailText');
     const hasTaskSummary = Object.prototype.hasOwnProperty.call(data, 'taskSummary');
 
     if (data.agentName) avatar.agentName = data.agentName;
-    avatar.displayName = resolveAvatarDisplayName(avatar.agentId, {
+    const displayIdentity = resolveAvatarDisplayIdentity(avatar.agentId, {
         ...data,
         agentName: data.agentName || avatar.agentName,
-    }, avatar.displayName);
+    }, avatar.displayName, avatar.displayNameSource);
+    avatar.displayName = displayIdentity.displayName;
+    avatar.displayNameSource = displayIdentity.displayNameSource;
     if (data.description) avatar.description = data.description;
+    if (hasWorkDescription) avatar.workDescription = cleanAgentLabel(data.workDescription);
     if (hasDetailText) avatar.detailText = cleanAgentLabel(data.detailText);
     if (hasTaskSummary) avatar.taskSummary = cleanAgentLabel(data.taskSummary);
     if (data.role) avatar.role = data.role;
@@ -2650,6 +2761,95 @@ function consumePendingSubagent(payload = {}) {
     return { ...pending, ...payload };
 }
 
+function queuePendingAgentActivity(agentId, payload = {}) {
+    if (!agentId) return;
+    const key = getToolActivityKey(payload);
+    const pending = pendingAgentActivities.get(agentId) || new Map();
+    const existing = pending.get(key);
+    pending.set(key, {
+        ...payload,
+        startedAt: existing?.startedAt ?? performance.now(),
+    });
+    pendingAgentActivities.set(agentId, pending);
+}
+
+function clearPendingAgentActivity(agentId, payload = {}) {
+    if (!agentId || !pendingAgentActivities.has(agentId)) return;
+    const pending = pendingAgentActivities.get(agentId);
+
+    if (payload.toolCallId && pending.has(payload.toolCallId)) {
+        pending.delete(payload.toolCallId);
+    } else {
+        const toolName = String(payload.toolName || '').trim();
+        const anonymousKey = getToolActivityKey(payload);
+        for (const [key, value] of pending.entries()) {
+            if ((toolName && value.toolName === toolName) || key === anonymousKey) {
+                pending.delete(key);
+            }
+        }
+    }
+
+    if (!pending.size) {
+        pendingAgentActivities.delete(agentId);
+    }
+}
+
+function clearPendingAgentState(agentId, { preserveModel = false } = {}) {
+    if (!agentId || agentId === ROOT_AGENT_ID) return;
+    if (!preserveModel) {
+        pendingAgentModels.delete(agentId);
+    }
+    pendingAgentActivities.delete(agentId);
+    pendingAgentIntents.delete(agentId);
+    pendingAgentThinking.delete(agentId);
+}
+
+function hasStrongAgentIdentity(agentId, payload = {}) {
+    const displayName = cleanAgentLabel(payload.displayName || '');
+    if (displayName && !isLowConfidenceDisplayName(displayName, agentId)) {
+        return true;
+    }
+
+    const agentName = cleanAgentLabel(payload.agentName || '');
+    if (agentName && !isLowConfidenceDisplayName(agentName, agentId)) {
+        return true;
+    }
+
+    return false;
+}
+
+function applyPendingAgentState(avatar) {
+    if (!avatar || avatar.isRoot) return;
+
+    const pendingIntent = pendingAgentIntents.get(avatar.agentId);
+    if (pendingIntent) {
+        avatar.intentText = pendingIntent.intent || '';
+        avatar.intentUntil = performance.now() + INTENT_HOLD_MS;
+        pendingAgentIntents.delete(avatar.agentId);
+    }
+
+    if (pendingAgentThinking.has(avatar.agentId)) {
+        avatar.thinkingUntil = performance.now() + THINKING_HOLD_MS;
+        pendingAgentThinking.delete(avatar.agentId);
+    }
+
+    const pendingActivities = pendingAgentActivities.get(avatar.agentId);
+    if (pendingActivities?.size) {
+        for (const pending of pendingActivities.values()) {
+            const key = getToolActivityKey(pending);
+            avatar.activeTools.set(key, {
+                toolName: pending.toolName || '',
+                activityLabel: pending.activityLabel || describeToolActivity(pending.toolName || '') || formatToolLabel(pending.toolName || ''),
+                explicitActivityLabel: !!pending.activityLabel,
+                activity: classifyTool(pending.toolName || ''),
+                startedAt: pending.startedAt ?? performance.now(),
+            });
+        }
+        avatar.effectState = 'idle';
+        pendingAgentActivities.delete(avatar.agentId);
+    }
+}
+
 function ensureAvatar(agentId, payload = {}) {
     const resolvedId = agentId || ROOT_AGENT_ID;
     if (avatars.has(resolvedId)) {
@@ -2668,6 +2868,8 @@ function ensureAvatar(agentId, payload = {}) {
         applyAvatarModel(avatar, pendingAgentModels.get(resolvedId));
         pendingAgentModels.delete(resolvedId);
     }
+    applyPendingAgentState(avatar);
+    updateAvatarBadge(avatar);
     if (!avatar.isRoot) {
         layoutSubagents();
     }
@@ -3177,7 +3379,7 @@ function layoutSubagents() {
 
 function getResolvedActivity(avatar, now = performance.now()) {
     const latestTool = getLatestToolEntry(avatar);
-    if (latestTool) return latestTool.activity || 'idle';
+    if (hasWorkToolEntry(latestTool)) return latestTool.activity || 'idle';
 
     if (avatar.thinkingUntil > now) {
         return 'thinking';
@@ -3241,7 +3443,7 @@ function finalizeAvatar(agentId) {
     if (!avatar || avatar.isRoot) return;
     disposeAvatar(avatar);
     avatars.delete(agentId);
-    pendingAgentModels.delete(agentId);
+    clearPendingAgentState(agentId);
 }
 
 function spawnParticleBurst(avatar, count = 34) {
@@ -3854,6 +4056,27 @@ function clearSubagents({ preserveRoot = true } = {}) {
         pendingAgentModels.delete(agentId);
     }
 
+    for (const agentId of [...pendingAgentActivities.keys()]) {
+        if (preserveRoot && agentId === ROOT_AGENT_ID) {
+            continue;
+        }
+        clearPendingAgentState(agentId, { preserveModel: true });
+    }
+
+    for (const agentId of [...pendingAgentIntents.keys()]) {
+        if (preserveRoot && agentId === ROOT_AGENT_ID) {
+            continue;
+        }
+        clearPendingAgentState(agentId, { preserveModel: true });
+    }
+
+    for (const agentId of [...pendingAgentThinking.values()]) {
+        if (preserveRoot && agentId === ROOT_AGENT_ID) {
+            continue;
+        }
+        clearPendingAgentState(agentId, { preserveModel: true });
+    }
+
     layoutSubagents();
     updateRootModelIndicator();
     updateSubtaskDisplay();
@@ -4018,15 +4241,16 @@ window.setWorking = (active) => {
 };
 
 window.setSubtask = (text) => {
-    if (text) registerRootActivity();
-    activeSubtaskText = text || '';
+    const nextText = shouldSuppressRootChromeText(text) ? '' : (text || '');
+    if (nextText) registerRootActivity();
+    activeSubtaskText = nextText;
     updateSubtaskDisplay();
 };
 
 window.setSquadContext = (payload = {}) => {
     squadRootMicActive = !!payload.active;
-    idleStatusText = payload.active ? (payload.statusText || '● Squad ready') : '';
-    idleSubtaskText = payload.active ? (payload.detailText || '') : '';
+    idleStatusText = '';
+    idleSubtaskText = '';
     updateRootSquadMicBoom();
     if (!rootWorking) {
         updateSubtaskDisplay();
@@ -4063,8 +4287,30 @@ window.clearSubagents = (payload = {}) => {
     clearSubagents(payload);
 };
 
+window.removeSubagent = (payload = {}) => {
+    if (!payload.agentId) return;
+    if (!avatars.has(payload.agentId)) {
+        clearPendingAgentState(payload.agentId);
+        return;
+    }
+
+    const avatar = avatars.get(payload.agentId);
+    if (!avatar || avatar.isRoot) return;
+    avatar.activeTools.clear();
+    avatar.thinkingUntil = 0;
+    avatar.intentText = '';
+    avatar.intentUntil = 0;
+    avatar.effectState = 'idle';
+    avatar.leaveAt = performance.now();
+    beginAvatarRemoval(avatar);
+};
+
 window.completeSubagent = (payload = {}) => {
     if (!payload.agentId) return;
+    if (!avatars.has(payload.agentId)) {
+        clearPendingAgentState(payload.agentId);
+        return;
+    }
     const avatar = ensureAvatar(payload.agentId, payload);
     avatar.activeTools.clear();
     avatar.thinkingUntil = 0;
@@ -4080,6 +4326,10 @@ window.completeSubagent = (payload = {}) => {
 
 window.failSubagent = (payload = {}) => {
     if (!payload.agentId) return;
+    if (!avatars.has(payload.agentId)) {
+        clearPendingAgentState(payload.agentId);
+        return;
+    }
     const avatar = ensureAvatar(payload.agentId, payload);
     avatar.activeTools.clear();
     avatar.thinkingUntil = 0;
@@ -4093,8 +4343,21 @@ window.failSubagent = (payload = {}) => {
 };
 
 window.setAgentActivity = (payload = {}) => {
-    const avatar = ensureAvatar(payload.agentId || ROOT_AGENT_ID, payload);
+    const resolvedId = payload.agentId || ROOT_AGENT_ID;
+    if (resolvedId !== ROOT_AGENT_ID && !avatars.has(resolvedId)) {
+        if (!hasStrongAgentIdentity(resolvedId, payload)) {
+            queuePendingAgentActivity(resolvedId, payload);
+            return;
+        }
+    }
+    const avatar = ensureAvatar(resolvedId, payload);
     if (!avatar.isRoot && (avatar.effectState === 'success' || avatar.effectState === 'failed')) return;
+    if (avatar.isRoot && shouldSuppressRootToolName(payload.toolName)) {
+        clearAvatarToolActivity(avatar, payload);
+        updateRootModelIndicator();
+        updateSubtaskDisplay();
+        return;
+    }
     const key = getToolActivityKey(payload);
     const existingEntry = avatar.activeTools.get(key);
     avatar.activeTools.set(key, {
@@ -4113,7 +4376,12 @@ window.setAgentActivity = (payload = {}) => {
 };
 
 window.clearAgentActivity = (payload = {}) => {
-    const avatar = avatars.get(payload.agentId || ROOT_AGENT_ID);
+    const resolvedId = payload.agentId || ROOT_AGENT_ID;
+    const avatar = avatars.get(resolvedId);
+    if (!avatar && resolvedId !== ROOT_AGENT_ID) {
+        clearPendingAgentActivity(resolvedId, payload);
+        return;
+    }
     if (!avatar) return;
     if (!avatar.isRoot && (avatar.effectState === 'success' || avatar.effectState === 'failed')) return;
 
@@ -4127,7 +4395,14 @@ window.clearAgentActivity = (payload = {}) => {
 
 window.setAgentThinking = (payload = {}) => {
     const data = typeof payload === 'object' && payload !== null ? payload : { agentId: payload };
-    const avatar = ensureAvatar(data.agentId || ROOT_AGENT_ID, data);
+    const resolvedId = data.agentId || ROOT_AGENT_ID;
+    if (resolvedId !== ROOT_AGENT_ID && !avatars.has(resolvedId)) {
+        if (!hasStrongAgentIdentity(resolvedId, data)) {
+            pendingAgentThinking.add(resolvedId);
+            return;
+        }
+    }
+    const avatar = ensureAvatar(resolvedId, data);
     if (!avatar.isRoot && (avatar.effectState === 'success' || avatar.effectState === 'failed')) return;
     avatar.thinkingUntil = performance.now() + THINKING_HOLD_MS;
     if (avatar.isRoot) {
@@ -4137,9 +4412,18 @@ window.setAgentThinking = (payload = {}) => {
 };
 
 window.setAgentIntent = (payload = {}) => {
-    const avatar = ensureAvatar(payload.agentId || ROOT_AGENT_ID, payload);
+    const resolvedId = payload.agentId || ROOT_AGENT_ID;
+    if (resolvedId !== ROOT_AGENT_ID && !avatars.has(resolvedId)) {
+        if (!hasStrongAgentIdentity(resolvedId, payload)) {
+            pendingAgentIntents.set(resolvedId, payload);
+            return;
+        }
+    }
+    const avatar = ensureAvatar(resolvedId, payload);
     if (!avatar.isRoot && (avatar.effectState === 'success' || avatar.effectState === 'failed')) return;
-    avatar.intentText = payload.intent || '';
+    avatar.intentText = avatar.isRoot && shouldSuppressRootChromeText(payload.intent)
+        ? ''
+        : (payload.intent || '');
     avatar.intentUntil = performance.now() + INTENT_HOLD_MS;
     if (avatar.isRoot) {
         registerRootActivity();
@@ -4501,7 +4785,8 @@ function populateVoxtralVoices(voices) {
     saveTtsSettings();
 }
 
-function populateElevenLabsVoices(voices, { placeholder = 'Select a voice' } = {}) {
+function populateElevenLabsVoices(voices, { placeholder = 'Select a voice', preserveSelection = true } = {}) {
+    const previousVoice = elevenlabsVoice;
     elevenlabsVoiceSelect.innerHTML = '';
     if (!voices.length) {
         const option = document.createElement('option');
@@ -4509,7 +4794,9 @@ function populateElevenLabsVoices(voices, { placeholder = 'Select a voice' } = {
         option.textContent = placeholder;
         option.selected = true;
         elevenlabsVoiceSelect.appendChild(option);
-        elevenlabsVoice = '';
+        if (!preserveSelection) {
+            elevenlabsVoice = '';
+        }
         updateVoicePreviewButtons();
         return;
     }
@@ -4517,13 +4804,16 @@ function populateElevenLabsVoices(voices, { placeholder = 'Select a voice' } = {
         const option = document.createElement('option');
         option.value = voice.voice_id;
         option.textContent = voice.name || voice.voice_id;
-        option.selected = voice.voice_id === elevenlabsVoice;
+        option.selected = voice.voice_id === previousVoice;
         elevenlabsVoiceSelect.appendChild(option);
     });
-    if (!elevenlabsVoiceSelect.value) {
+    if (previousVoice && voices.some((voice) => voice.voice_id === previousVoice)) {
+        elevenlabsVoiceSelect.value = previousVoice;
+        elevenlabsVoice = previousVoice;
+    } else {
         elevenlabsVoiceSelect.selectedIndex = 0;
+        elevenlabsVoice = elevenlabsVoiceSelect.value;
     }
-    elevenlabsVoice = elevenlabsVoiceSelect.value;
     updateVoicePreviewButtons();
 }
 

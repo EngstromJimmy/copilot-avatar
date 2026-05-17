@@ -41,6 +41,7 @@ const clippyDefaultVoxtralVoice = 'en_paul_excited';
 const retroClippySampleText = "It looks like you're writing some code. Need a hand? I can help with that.";
 const WEBVIEW_READY_POLL_MS = 100;
 const WEBVIEW_READY_TIMEOUT_MS = 5000;
+const FALLBACK_SUBAGENT_RETIRE_MS = 1200;
 const SUBAGENT_SPAWN_TOOLS = new Set(["task", "runSubagent", "agent"]);
 const GENERIC_AGENT_LABELS = new Set([
     "agent",
@@ -69,10 +70,14 @@ let squadContext = {
 let lastSquadLogKey = "";
 let contextRefreshId = 0;
 const subagentIdsByToolCallId = new Map();
+const toolAgentIdsByToolCallId = new Map();
 const pendingModelsByToolCallId = new Map();
 const pendingThinkingByToolCallId = new Set();
 const subagentSpawnMetadataByToolCallId = new Map();
 const subagentSpawnMetadataByAgentId = new Map();
+const subagentSelectedHintsByAgentId = new Map();
+const liveSubagentStatesByAgentId = new Map();
+let pendingSubagentSelectionHint = null;
 
 function normalizeSettings(settings) {
     if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
@@ -99,6 +104,10 @@ function formatTitle() {
     return `Copilot Avatar · ${folderName}${squadTitleSuffix ? ` · ${squadTitleSuffix}` : ""}`;
 }
 
+function shouldKeepAvatarAlwaysOnTop(settings) {
+    return !!settings?.transparentWindow;
+}
+
 async function loadSettings() {
     try {
         return normalizeSettings(JSON.parse(await readFile(settingsPath, "utf-8")));
@@ -111,22 +120,25 @@ function applySettingsToWebview(settings) {
     webview.width = settings.windowWidth;
     webview.height = settings.windowHeight;
     webview.transparent = settings.transparentWindow;
+    webview.alwaysOnTop = shouldKeepAvatarAlwaysOnTop(settings);
 }
 
 async function saveSettings(settings) {
     const currentSettings = await loadSettings();
     const nextSettings = normalizeSettings({ ...currentSettings, ...settings });
     const transparencyChanged = webview.transparent !== nextSettings.transparentWindow;
+    const alwaysOnTopChanged = webview.alwaysOnTop !== shouldKeepAvatarAlwaysOnTop(nextSettings);
+    const windowStyleChanged = transparencyChanged || alwaysOnTopChanged;
     await writeFile(settingsPath, JSON.stringify(nextSettings), "utf-8");
     applySettingsToWebview(nextSettings);
-    if (transparencyChanged) {
+    if (windowStyleChanged) {
         void reopenWebviewForWindowStyleChange();
     }
     return {
         windowWidth: nextSettings.windowWidth,
         windowHeight: nextSettings.windowHeight,
         transparentWindow: nextSettings.transparentWindow,
-        reopenedWindow: transparencyChanged && !!webview._handle,
+        reopenedWindow: windowStyleChanged && !!webview._handle,
     };
 }
 
@@ -155,7 +167,7 @@ const webview = new CopilotWebview({
     width: initialSettings.windowWidth,
     height: initialSettings.windowHeight,
     transparent: initialSettings.transparentWindow,
-    alwaysOnTop: true,
+    alwaysOnTop: shouldKeepAvatarAlwaysOnTop(initialSettings),
     callbacks: {
         log: (msg, opts) => session.log(msg, opts),
         loadSettings: () => loadSettings(),
@@ -220,6 +232,11 @@ async function syncVisibleWindowState({ waitForReady = false } = {}) {
 
     await syncTitle();
     await syncSquadContext();
+    if (waitForReady) {
+        await callWindowFunction("clearSubagents", { preserveRoot: true }, 3000);
+        await resetSubagentRuntimeState();
+        await hydrateSubagentRuntimeFromHistory({ replayToWebview: true });
+    }
 }
 
 let pendingWebviewReopen = null;
@@ -286,8 +303,14 @@ async function syncSquadContext() {
 }
 
 async function refreshSessionContext(cwd = process.cwd()) {
-    currentSessionCwd = cwd || process.cwd();
+    const nextCwd = cwd || process.cwd();
+    const cwdChanged = nextCwd !== currentSessionCwd;
+    currentSessionCwd = nextCwd;
     folderName = basename(currentSessionCwd);
+
+    if (cwdChanged) {
+        await resetSubagentRuntimeState({ clearUi: true });
+    }
 
     const refreshId = ++contextRefreshId;
     const nextSquadContext = await loadSquadContext(currentSessionCwd);
@@ -326,9 +349,183 @@ async function syncPendingThinkingForSubagent(agentId, toolCallId) {
     await callWindowFunction("setAgentThinking", buildSubagentPayload(displayData), 3000);
 }
 
-function resolveAgentIdFromEvent(event) {
+function getTrackedToolKey(toolName = "", toolCallId = null) {
+    return toolCallId || `anonymous:${toolName}`;
+}
+
+function ensureLiveSubagentState(agentId) {
+    if (!agentId) {
+        return null;
+    }
+
+    const existing = liveSubagentStatesByAgentId.get(agentId);
+    if (existing) {
+        return existing;
+    }
+
+    const nextState = {
+        activeTools: new Map(),
+        retireTimer: null,
+        hadLiveTool: false,
+    };
+    liveSubagentStatesByAgentId.set(agentId, nextState);
+    return nextState;
+}
+
+function cancelLiveSubagentRetire(agentId) {
+    if (!agentId || !liveSubagentStatesByAgentId.has(agentId)) {
+        return;
+    }
+
+    const state = liveSubagentStatesByAgentId.get(agentId);
+    if (!state?.retireTimer) {
+        return;
+    }
+
+    clearTimeout(state.retireTimer);
+    state.retireTimer = null;
+}
+
+function noteLiveSubagentSignal(agentId, { idleGrace = false } = {}) {
+    if (!agentId) {
+        return;
+    }
+
+    const state = ensureLiveSubagentState(agentId);
+    if (!state) {
+        return;
+    }
+
+    if (idleGrace && state.hadLiveTool && state.activeTools.size === 0) {
+        if (!state.retireTimer) {
+            scheduleFallbackSubagentRetire(agentId);
+        }
+        return;
+    }
+
+    cancelLiveSubagentRetire(agentId);
+}
+
+function trackLiveSubagentTool(agentId, payload = {}) {
+    if (!agentId || !payload.toolName || SUBAGENT_SPAWN_TOOLS.has(payload.toolName)) {
+        return;
+    }
+
+    const state = ensureLiveSubagentState(agentId);
+    if (!state) {
+        return;
+    }
+
+    cancelLiveSubagentRetire(agentId);
+    state.hadLiveTool = true;
+    state.activeTools.set(getTrackedToolKey(payload.toolName, payload.toolCallId ?? null), {
+        toolName: payload.toolName,
+        toolCallId: payload.toolCallId ?? null,
+    });
+}
+
+function clearLiveSubagentTool(agentId, payload = {}) {
+    if (!agentId || !liveSubagentStatesByAgentId.has(agentId)) {
+        return 0;
+    }
+
+    const state = liveSubagentStatesByAgentId.get(agentId);
+    if (!state?.activeTools?.size) {
+        return 0;
+    }
+
+    const trackedKey = getTrackedToolKey(payload.toolName ?? "", payload.toolCallId ?? null);
+    if (payload.toolCallId && state.activeTools.has(trackedKey)) {
+        state.activeTools.delete(trackedKey);
+    } else {
+        const toolName = String(payload.toolName || "").trim();
+        const anonymousKey = toolName ? getTrackedToolKey(toolName, null) : "";
+        for (const [key, value] of state.activeTools.entries()) {
+            if ((toolName && value.toolName === toolName) || key === anonymousKey) {
+                state.activeTools.delete(key);
+            }
+        }
+    }
+
+    return state.activeTools.size;
+}
+
+function scheduleFallbackSubagentRetire(agentId) {
+    if (!agentId) {
+        return;
+    }
+
+    const state = ensureLiveSubagentState(agentId);
+    if (!state) {
+        return;
+    }
+
+    cancelLiveSubagentRetire(agentId);
+    state.retireTimer = setTimeout(() => {
+        const currentState = liveSubagentStatesByAgentId.get(agentId);
+        if (!currentState || currentState.activeTools.size > 0) {
+            return;
+        }
+
+        currentState.retireTimer = null;
+        liveSubagentStatesByAgentId.delete(agentId);
+        void callWindowFunction("removeSubagent", { agentId }, 3000);
+    }, FALLBACK_SUBAGENT_RETIRE_MS);
+}
+
+async function resetSubagentRuntimeState({ clearUi = false } = {}) {
+    for (const state of liveSubagentStatesByAgentId.values()) {
+        if (state?.retireTimer) {
+            clearTimeout(state.retireTimer);
+        }
+    }
+
+    liveSubagentStatesByAgentId.clear();
+    subagentIdsByToolCallId.clear();
+    toolAgentIdsByToolCallId.clear();
+    pendingModelsByToolCallId.clear();
+    pendingThinkingByToolCallId.clear();
+    subagentSpawnMetadataByToolCallId.clear();
+    subagentSpawnMetadataByAgentId.clear();
+    subagentSelectedHintsByAgentId.clear();
+    pendingSubagentSelectionHint = null;
+
+    if (clearUi) {
+        await callWindowFunction("clearSubagents", { preserveRoot: true }, 3000);
+    }
+}
+
+function cloneEventData(data = {}) {
+    return data && typeof data === "object" && !Array.isArray(data) ? { ...data } : {};
+}
+
+function withResolvedAgentId(event, agentId) {
+    return {
+        ...event,
+        agentId,
+        data: cloneEventData(event?.data),
+    };
+}
+
+function getEventToolCallId(event) {
+    return event?.data?.toolCallId ?? null;
+}
+
+function getEventCorrelationToolCallId(event) {
+    return event?.data?.parentToolCallId ?? event?.data?.toolCallId ?? null;
+}
+
+function resolveAgentIdFromEvent(event, state = null) {
+    const toolAgentIds = state?.toolAgentIdsByToolCallId ?? toolAgentIdsByToolCallId;
+    const subagentIds = state?.subagentIdsByToolCallId ?? subagentIdsByToolCallId;
+
     if (event.agentId) {
         return event.agentId;
+    }
+
+    const toolCallId = getEventToolCallId(event);
+    if (toolCallId && toolAgentIds.has(toolCallId)) {
+        return toolAgentIds.get(toolCallId) ?? null;
     }
 
     const parentToolCallId = event.data?.parentToolCallId ?? null;
@@ -336,7 +533,10 @@ function resolveAgentIdFromEvent(event) {
         return null;
     }
 
-    return subagentIdsByToolCallId.get(parentToolCallId) ?? null;
+    if (toolAgentIds.has(parentToolCallId)) {
+        return toolAgentIds.get(parentToolCallId) ?? null;
+    }
+    return subagentIds.get(parentToolCallId) ?? null;
 }
 
 function getIntentText(event) {
@@ -345,6 +545,14 @@ function getIntentText(event) {
 
 function getToolLabel(toolName) {
     return (toolName || "").replace(/[_-]+/g, " ").trim();
+}
+
+function shouldMirrorRootToolActivity(toolName) {
+    const normalizedToolName = String(toolName || "").trim();
+    if (!normalizedToolName) {
+        return false;
+    }
+    return !SUBAGENT_SPAWN_TOOLS.has(normalizedToolName);
 }
 
 function cleanAgentLabel(value) {
@@ -439,7 +647,7 @@ function stripLeadingAgentLabel(text, labels = []) {
     return cleanedText;
 }
 
-function resolveSubagentTaskSummary({ spawnMetadata, runtimeDescription, displayName, agentName, role }) {
+function resolveSubagentTaskSummary({ spawnMetadata, selectionHint, runtimeDescription, displayName, agentName, role }) {
     const labels = [
         displayName,
         agentName,
@@ -447,6 +655,9 @@ function resolveSubagentTaskSummary({ spawnMetadata, runtimeDescription, display
         spawnMetadata?.displayName,
         humanizeAgentName(spawnMetadata?.name),
         spawnMetadata?.name,
+        selectionHint?.displayName,
+        humanizeAgentName(selectionHint?.name),
+        selectionHint?.name,
     ]
         .map((value) => cleanAgentLabel(value))
         .filter(Boolean);
@@ -515,83 +726,160 @@ function extractSubagentSpawnMetadata(toolName, rawArguments) {
     };
 }
 
-function getSubagentSpawnMetadata(toolCallId, agentId = null) {
-    if (agentId && subagentSpawnMetadataByAgentId.has(agentId)) {
-        return subagentSpawnMetadataByAgentId.get(agentId);
+function getSubagentSpawnMetadata(toolCallId, agentId = null, state = null) {
+    const byAgentId = state?.subagentSpawnMetadataByAgentId ?? subagentSpawnMetadataByAgentId;
+    const byToolCallId = state?.subagentSpawnMetadataByToolCallId ?? subagentSpawnMetadataByToolCallId;
+
+    if (agentId && byAgentId.has(agentId)) {
+        return byAgentId.get(agentId);
     }
 
-    if (toolCallId && subagentSpawnMetadataByToolCallId.has(toolCallId)) {
-        return subagentSpawnMetadataByToolCallId.get(toolCallId);
+    if (toolCallId && byToolCallId.has(toolCallId)) {
+        return byToolCallId.get(toolCallId);
     }
 
     return null;
 }
 
-function bindSubagentSpawnMetadata(agentId, toolCallId, metadata) {
+function bindSubagentSpawnMetadata(agentId, toolCallId, metadata, state = null) {
     if (!metadata) {
         return;
     }
 
+    const byToolCallId = state?.subagentSpawnMetadataByToolCallId ?? subagentSpawnMetadataByToolCallId;
+    const byAgentId = state?.subagentSpawnMetadataByAgentId ?? subagentSpawnMetadataByAgentId;
+
     if (toolCallId) {
-        subagentSpawnMetadataByToolCallId.set(toolCallId, metadata);
+        byToolCallId.set(toolCallId, metadata);
     }
 
     if (agentId) {
-        subagentSpawnMetadataByAgentId.set(agentId, metadata);
+        byAgentId.set(agentId, metadata);
     }
 }
 
-function releaseSubagentSpawnMetadata(agentId, toolCallId) {
+function releaseSubagentSpawnMetadata(agentId, toolCallId, state = null) {
+    const byToolCallId = state?.subagentSpawnMetadataByToolCallId ?? subagentSpawnMetadataByToolCallId;
+    const byAgentId = state?.subagentSpawnMetadataByAgentId ?? subagentSpawnMetadataByAgentId;
+
     if (toolCallId) {
-        subagentSpawnMetadataByToolCallId.delete(toolCallId);
+        byToolCallId.delete(toolCallId);
     }
 
     if (agentId) {
-        subagentSpawnMetadataByAgentId.delete(agentId);
+        byAgentId.delete(agentId);
     }
 }
 
-function resolveSubagentDisplayData(event) {
-    const agentId = event.agentId ?? null;
-    const toolCallId = event.data?.toolCallId ?? event.data?.parentToolCallId ?? null;
-    const spawnMetadata = getSubagentSpawnMetadata(toolCallId, agentId);
-    if (agentId && spawnMetadata) {
-        bindSubagentSpawnMetadata(agentId, toolCallId, spawnMetadata);
+function extractSubagentSelectionHint(data = {}) {
+    const name = cleanAgentLabel(data.agentName);
+    const displayName = pickPreferredAgentLabel([
+        cleanAgentLabel(data.agentDisplayName),
+        humanizeAgentName(name),
+        name,
+    ]);
+
+    if (!name && !displayName) {
+        return null;
     }
 
-    const runtimeAgentName = cleanAgentLabel(event.data?.agentName);
-    const runtimeDisplayName = cleanAgentLabel(event.data?.agentDisplayName);
-    const runtimeDescription = cleanAgentLabel(event.data?.agentDescription);
+    return {
+        name,
+        displayName,
+    };
+}
+
+function getPendingSubagentSelectionHint(state = null) {
+    return state ? state.pendingSubagentSelectionHint : pendingSubagentSelectionHint;
+}
+
+function setPendingSubagentSelectionHint(hint, state = null) {
+    if (state) {
+        state.pendingSubagentSelectionHint = hint;
+        return;
+    }
+
+    pendingSubagentSelectionHint = hint;
+}
+
+function getSubagentSelectionHint(agentId, state = null) {
+    const hintsByAgentId = state?.subagentSelectedHintsByAgentId ?? subagentSelectedHintsByAgentId;
+    if (!agentId || !hintsByAgentId.has(agentId)) {
+        return null;
+    }
+    return hintsByAgentId.get(agentId);
+}
+
+function bindSubagentSelectionHint(agentId, hint, state = null) {
+    if (!agentId || !hint) {
+        return;
+    }
+
+    const hintsByAgentId = state?.subagentSelectedHintsByAgentId ?? subagentSelectedHintsByAgentId;
+    hintsByAgentId.set(agentId, hint);
+}
+
+function shouldBindPendingSelectionHint({ agentId, runtimeAgentName, runtimeDisplayName, spawnMetadata, state = null }) {
+    if (!agentId || spawnMetadata || getSubagentSelectionHint(agentId, state)) {
+        return false;
+    }
+
+    const pendingHint = getPendingSubagentSelectionHint(state);
+    if (!pendingHint) {
+        return false;
+    }
+
+    const runtimeNameWeak = !runtimeAgentName || isLowConfidenceAgentLabel(runtimeAgentName, agentId);
+    const runtimeDisplayWeak = !runtimeDisplayName || isLowConfidenceAgentLabel(runtimeDisplayName, agentId);
+    return runtimeNameWeak && runtimeDisplayWeak;
+}
+
+function resolveSubagentDisplayFields({
+    agentId = null,
+    toolCallId = null,
+    runtimeAgentName = "",
+    runtimeDisplayName = "",
+    runtimeDescription = "",
+    spawnMetadata = null,
+    selectionHint = null,
+}) {
     const squadAgent = resolveSquadAgentMetadata(squadContext, {
         agentId,
         agentName: runtimeAgentName,
         agentDisplayName: runtimeDisplayName,
-        spawnName: spawnMetadata?.name,
-        spawnDisplayName: spawnMetadata?.displayName,
+        spawnName: spawnMetadata?.name || selectionHint?.name,
+        spawnDisplayName: spawnMetadata?.displayName || selectionHint?.displayName,
     });
     const displayName = pickPreferredAgentLabel([
         squadAgent?.displayName,
         spawnMetadata?.displayName,
+        selectionHint?.displayName,
         runtimeDisplayName,
         runtimeAgentName,
         humanizeAgentName(spawnMetadata?.name),
-    ], agentId) || runtimeDisplayName || runtimeAgentName || agentId || "";
+        humanizeAgentName(selectionHint?.name),
+        selectionHint?.name,
+    ], agentId) || runtimeDisplayName || runtimeAgentName || selectionHint?.displayName || selectionHint?.name || agentId || "";
     const agentName = pickPreferredAgentLabel([
         squadAgent?.displayName,
         spawnMetadata?.displayName,
+        selectionHint?.displayName,
         runtimeAgentName,
         humanizeAgentName(spawnMetadata?.name),
         spawnMetadata?.name,
-    ], agentId) || runtimeAgentName || cleanAgentLabel(spawnMetadata?.name) || "";
+        humanizeAgentName(selectionHint?.name),
+        selectionHint?.name,
+    ], agentId) || runtimeAgentName || cleanAgentLabel(spawnMetadata?.name) || cleanAgentLabel(selectionHint?.name) || "";
     const role = cleanAgentLabel(squadAgent?.role);
     const taskSummary = resolveSubagentTaskSummary({
         spawnMetadata,
+        selectionHint,
         runtimeDescription,
         displayName,
         agentName,
         role,
     });
-    const description = runtimeDescription || squadAgent?.description || "";
+    const description = runtimeDescription || spawnMetadata?.description || squadAgent?.description || "";
 
     return {
         agentId,
@@ -611,12 +899,45 @@ function resolveSubagentDisplayData(event) {
     };
 }
 
+function resolveSubagentDisplayData(event, state = null) {
+    const agentId = event.agentId ?? null;
+    const toolCallId = getEventCorrelationToolCallId(event);
+    const runtimeAgentName = cleanAgentLabel(event.data?.agentName);
+    const runtimeDisplayName = cleanAgentLabel(event.data?.agentDisplayName);
+    const runtimeDescription = cleanAgentLabel(event.data?.agentDescription);
+    const spawnMetadata = getSubagentSpawnMetadata(toolCallId, agentId, state);
+    if (agentId && spawnMetadata) {
+        bindSubagentSpawnMetadata(agentId, toolCallId, spawnMetadata, state);
+    }
+    if (shouldBindPendingSelectionHint({
+        agentId,
+        runtimeAgentName,
+        runtimeDisplayName,
+        spawnMetadata,
+        state,
+    })) {
+        bindSubagentSelectionHint(agentId, getPendingSubagentSelectionHint(state), state);
+        setPendingSubagentSelectionHint(null, state);
+    }
+    const selectionHint = getSubagentSelectionHint(agentId, state) ?? getPendingSubagentSelectionHint(state);
+    return resolveSubagentDisplayFields({
+        agentId,
+        toolCallId,
+        runtimeAgentName,
+        runtimeDisplayName,
+        runtimeDescription,
+        spawnMetadata,
+        selectionHint,
+    });
+}
+
 function buildSubagentPayload(displayData, extra = {}) {
     return {
         agentId: displayData.agentId,
         agentName: displayData.agentName,
         displayName: displayData.displayName,
         description: displayData.description,
+        workDescription: displayData.taskSummary,
         taskSummary: displayData.taskSummary,
         detailText: displayData.detailText,
         role: displayData.role,
@@ -624,6 +945,299 @@ function buildSubagentPayload(displayData, extra = {}) {
         toolCallId: displayData.toolCallId,
         ...extra,
     };
+}
+
+function createHydratedSubagentRuntimeState() {
+    return {
+        subagentIdsByToolCallId: new Map(),
+        toolAgentIdsByToolCallId: new Map(),
+        subagentSpawnMetadataByToolCallId: new Map(),
+        subagentSpawnMetadataByAgentId: new Map(),
+        subagentSelectedHintsByAgentId: new Map(),
+        pendingSubagentSelectionHint: null,
+        activeSubagentsByAgentId: new Map(),
+    };
+}
+
+function resetHydratedSubagentRuntimeState(state) {
+    state.subagentIdsByToolCallId.clear();
+    state.toolAgentIdsByToolCallId.clear();
+    state.subagentSpawnMetadataByToolCallId.clear();
+    state.subagentSpawnMetadataByAgentId.clear();
+    state.subagentSelectedHintsByAgentId.clear();
+    state.pendingSubagentSelectionHint = null;
+    state.activeSubagentsByAgentId.clear();
+}
+
+function upsertHydratedSubagentState(activeSubagentsByAgentId, payload) {
+    if (!payload?.agentId) {
+        return null;
+    }
+
+    const existing = activeSubagentsByAgentId.get(payload.agentId);
+    if (existing) {
+        existing.payload = {
+            ...existing.payload,
+            ...payload,
+        };
+        return existing;
+    }
+
+    const nextState = {
+        payload: { ...payload },
+        model: "",
+        intent: "",
+        thinking: false,
+        activeTools: new Map(),
+        hadLiveTool: false,
+        waitingForRetire: false,
+    };
+    activeSubagentsByAgentId.set(payload.agentId, nextState);
+    return nextState;
+}
+
+function trackHydratedActiveTool(activeState, payload = {}) {
+    if (!activeState || !payload.toolName) {
+        return;
+    }
+
+    const key = payload.toolCallId || `anonymous:${payload.toolName}`;
+    activeState.hadLiveTool = true;
+    activeState.activeTools.set(key, {
+        toolName: payload.toolName,
+        toolCallId: payload.toolCallId ?? null,
+    });
+}
+
+function clearHydratedActiveTool(activeState, payload = {}) {
+    if (!activeState?.activeTools?.size) {
+        return;
+    }
+
+    if (payload.toolCallId && activeState.activeTools.has(payload.toolCallId)) {
+        activeState.activeTools.delete(payload.toolCallId);
+        return;
+    }
+
+    const toolName = String(payload.toolName || "").trim();
+    const anonymousKey = payload.toolName ? `anonymous:${payload.toolName}` : "";
+    for (const [key, value] of activeState.activeTools.entries()) {
+        if ((toolName && value.toolName === toolName) || key === anonymousKey) {
+            activeState.activeTools.delete(key);
+        }
+    }
+}
+
+function markHydratedSubagentLive(activeState, { idleGrace = false } = {}) {
+    if (!activeState) {
+        return;
+    }
+
+    activeState.waitingForRetire = idleGrace && activeState.hadLiveTool && activeState.activeTools.size === 0;
+}
+
+function mergeHydratedSubagentRuntimeState(state) {
+    for (const [toolCallId, agentId] of state.subagentIdsByToolCallId.entries()) {
+        subagentIdsByToolCallId.set(toolCallId, agentId);
+    }
+    for (const [toolCallId, agentId] of state.toolAgentIdsByToolCallId.entries()) {
+        toolAgentIdsByToolCallId.set(toolCallId, agentId);
+    }
+    for (const [toolCallId, metadata] of state.subagentSpawnMetadataByToolCallId.entries()) {
+        subagentSpawnMetadataByToolCallId.set(toolCallId, metadata);
+    }
+    for (const [agentId, metadata] of state.subagentSpawnMetadataByAgentId.entries()) {
+        subagentSpawnMetadataByAgentId.set(agentId, metadata);
+    }
+    for (const [agentId, hint] of state.subagentSelectedHintsByAgentId.entries()) {
+        subagentSelectedHintsByAgentId.set(agentId, hint);
+    }
+    if (state.pendingSubagentSelectionHint) {
+        pendingSubagentSelectionHint = state.pendingSubagentSelectionHint;
+    }
+}
+
+async function replayHydratedSubagentsToWebview(activeSubagentsByAgentId) {
+    if (!webview._handle || !(activeSubagentsByAgentId instanceof Map) || activeSubagentsByAgentId.size === 0) {
+        return;
+    }
+
+    for (const activeState of activeSubagentsByAgentId.values()) {
+        await callWindowFunction("addSubagent", activeState.payload, 3000);
+        if (activeState.model) {
+            await callWindowFunction("setAgentModel", {
+                ...activeState.payload,
+                model: activeState.model,
+            }, 3000);
+        }
+        if (activeState.intent) {
+            await callWindowFunction("setAgentIntent", {
+                ...activeState.payload,
+                intent: activeState.intent,
+            }, 3000);
+        }
+        for (const activeTool of activeState.activeTools.values()) {
+            await callWindowFunction("setAgentActivity", {
+                ...activeState.payload,
+                toolName: activeTool.toolName,
+                toolCallId: activeTool.toolCallId,
+            }, 3000);
+        }
+        if (!activeState.activeTools.size && activeState.thinking) {
+            await callWindowFunction("setAgentThinking", activeState.payload, 3000);
+        }
+    }
+}
+
+async function hydrateSubagentRuntimeFromHistory({ replayToWebview = false } = {}) {
+    const events = await session.getMessages().catch(() => []);
+    if (!Array.isArray(events) || events.length === 0) {
+        return null;
+    }
+
+    const historyState = createHydratedSubagentRuntimeState();
+    for (const event of events) {
+        switch (event?.type) {
+            case "assistant.turn_start": {
+                if (!event.agentId) {
+                    resetHydratedSubagentRuntimeState(historyState);
+                }
+                break;
+            }
+            case "subagent.selected": {
+                setPendingSubagentSelectionHint(extractSubagentSelectionHint(event.data), historyState);
+                break;
+            }
+            case "subagent.deselected": {
+                setPendingSubagentSelectionHint(null, historyState);
+                break;
+            }
+            case "tool.execution_start": {
+                const toolName = event.data?.toolName ?? "";
+                const spawnMetadata = extractSubagentSpawnMetadata(toolName, event.data?.arguments);
+                if (spawnMetadata && event.data?.toolCallId) {
+                    bindSubagentSpawnMetadata(null, event.data.toolCallId, spawnMetadata, historyState);
+                }
+
+                const agentId = resolveAgentIdFromEvent(event, historyState);
+                const toolCallId = getEventToolCallId(event);
+                if (agentId && toolCallId) {
+                    historyState.toolAgentIdsByToolCallId.set(toolCallId, agentId);
+                }
+
+                if (!agentId || !historyState.activeSubagentsByAgentId.has(agentId)) {
+                    break;
+                }
+
+                const displayData = resolveSubagentDisplayData(withResolvedAgentId(event, agentId), historyState);
+                const payload = buildSubagentPayload(displayData, {
+                    toolName,
+                });
+                const activeState = upsertHydratedSubagentState(historyState.activeSubagentsByAgentId, payload);
+                markHydratedSubagentLive(activeState);
+                trackHydratedActiveTool(activeState, payload);
+                break;
+            }
+            case "subagent.started": {
+                const displayData = resolveSubagentDisplayData(event, historyState);
+                if (event.agentId && displayData.toolCallId) {
+                    historyState.subagentIdsByToolCallId.set(displayData.toolCallId, event.agentId);
+                }
+                markHydratedSubagentLive(
+                    upsertHydratedSubagentState(historyState.activeSubagentsByAgentId, buildSubagentPayload(displayData))
+                );
+                break;
+            }
+            case "assistant.usage": {
+                const model = event.data?.model ?? "";
+                const agentId = resolveAgentIdFromEvent(event, historyState);
+                if (!model || !agentId) {
+                    break;
+                }
+                const displayData = resolveSubagentDisplayData(withResolvedAgentId(event, agentId), historyState);
+                const activeState = upsertHydratedSubagentState(historyState.activeSubagentsByAgentId, buildSubagentPayload(displayData, {
+                    model,
+                }));
+                if (activeState) {
+                    activeState.model = model;
+                }
+                markHydratedSubagentLive(activeState, { idleGrace: true });
+                break;
+            }
+            case "assistant.intent": {
+                const intent = getIntentText(event);
+                const agentId = resolveAgentIdFromEvent(event, historyState);
+                if (!intent || !agentId) {
+                    break;
+                }
+                const displayData = resolveSubagentDisplayData(withResolvedAgentId(event, agentId), historyState);
+                const activeState = upsertHydratedSubagentState(historyState.activeSubagentsByAgentId, buildSubagentPayload(displayData, {
+                    intent,
+                }));
+                if (activeState) {
+                    activeState.intent = intent;
+                }
+                markHydratedSubagentLive(activeState, { idleGrace: true });
+                break;
+            }
+            case "assistant.reasoning": {
+                const agentId = resolveAgentIdFromEvent(event, historyState);
+                if (!agentId || !historyState.activeSubagentsByAgentId.has(agentId)) {
+                    break;
+                }
+                const displayData = resolveSubagentDisplayData(withResolvedAgentId(event, agentId), historyState);
+                const activeState = upsertHydratedSubagentState(historyState.activeSubagentsByAgentId, buildSubagentPayload(displayData));
+                if (activeState) {
+                    activeState.thinking = true;
+                }
+                markHydratedSubagentLive(activeState, { idleGrace: true });
+                break;
+            }
+            case "tool.execution_complete": {
+                const agentId = resolveAgentIdFromEvent(event, historyState);
+                const toolCallId = getEventToolCallId(event);
+                const activeState = agentId ? historyState.activeSubagentsByAgentId.get(agentId) : null;
+                if (activeState) {
+                    clearHydratedActiveTool(activeState, {
+                        toolName: event.data?.toolName ?? "",
+                        toolCallId,
+                    });
+                    if (!SUBAGENT_SPAWN_TOOLS.has(event.data?.toolName ?? "") && !activeState.activeTools.size) {
+                        activeState.waitingForRetire = true;
+                    }
+                }
+                if (toolCallId) {
+                    historyState.toolAgentIdsByToolCallId.delete(toolCallId);
+                }
+                break;
+            }
+            case "subagent.completed":
+            case "subagent.failed": {
+                const displayData = resolveSubagentDisplayData(event, historyState);
+                historyState.activeSubagentsByAgentId.delete(displayData.agentId);
+                releaseSubagentSpawnMetadata(displayData.agentId, displayData.toolCallId, historyState);
+                if (displayData.toolCallId) {
+                    historyState.toolAgentIdsByToolCallId.delete(displayData.toolCallId);
+                    historyState.subagentIdsByToolCallId.delete(displayData.toolCallId);
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    for (const [agentId, activeState] of historyState.activeSubagentsByAgentId.entries()) {
+        if (activeState.waitingForRetire && activeState.activeTools.size === 0) {
+            historyState.activeSubagentsByAgentId.delete(agentId);
+        }
+    }
+
+    mergeHydratedSubagentRuntimeState(historyState);
+    if (replayToWebview) {
+        await replayHydratedSubagentsToWebview(historyState.activeSubagentsByAgentId);
+    }
+    return historyState;
 }
 
 function isDuckAgent(agentData = {}) {
@@ -712,6 +1326,7 @@ const session = await joinSession({
 });
 
 await refreshSessionContext(currentSessionCwd);
+await hydrateSubagentRuntimeFromHistory();
 
 session.on("session.start", (event) => {
     if (event.data?.context?.cwd) {
@@ -734,9 +1349,18 @@ session.on("session.context_changed", (event) => {
     }
 });
 
+session.on("subagent.selected", (event) => {
+    setPendingSubagentSelectionHint(extractSubagentSelectionHint(event.data));
+});
+
+session.on("subagent.deselected", () => {
+    setPendingSubagentSelectionHint(null);
+});
+
 session.on("subagent.started", async (event) => {
     const displayData = resolveSubagentDisplayData(event);
     const toolCallId = displayData.toolCallId;
+    noteLiveSubagentSignal(displayData.agentId);
     if (event.agentId && toolCallId) {
         subagentIdsByToolCallId.set(toolCallId, event.agentId);
     }
@@ -749,19 +1373,29 @@ session.on("subagent.started", async (event) => {
 
 session.on("subagent.completed", async (event) => {
     const displayData = resolveSubagentDisplayData(event);
+    cancelLiveSubagentRetire(displayData.agentId);
+    liveSubagentStatesByAgentId.delete(displayData.agentId);
     await callWindowFunction("completeSubagent", buildSubagentPayload(displayData, {
         durationMs: event.data?.durationMs ?? null,
         totalToolCalls: event.data?.totalToolCalls ?? null,
     }), 3000);
     releaseSubagentSpawnMetadata(displayData.agentId, displayData.toolCallId);
+    if (displayData.toolCallId) {
+        subagentIdsByToolCallId.delete(displayData.toolCallId);
+    }
 });
 
 session.on("subagent.failed", async (event) => {
     const displayData = resolveSubagentDisplayData(event);
+    cancelLiveSubagentRetire(displayData.agentId);
+    liveSubagentStatesByAgentId.delete(displayData.agentId);
     await callWindowFunction("failSubagent", buildSubagentPayload(displayData, {
         error: event.data?.error ?? "",
     }), 3000);
     releaseSubagentSpawnMetadata(displayData.agentId, displayData.toolCallId);
+    if (displayData.toolCallId) {
+        subagentIdsByToolCallId.delete(displayData.toolCallId);
+    }
 });
 
 session.on("tool.execution_start", async (event) => {
@@ -771,12 +1405,22 @@ session.on("tool.execution_start", async (event) => {
         bindSubagentSpawnMetadata(null, event.data.toolCallId, spawnMetadata);
     }
 
-    if (event.agentId) {
-        const displayData = resolveSubagentDisplayData(event);
+    const agentId = resolveAgentIdFromEvent(event);
+    const runtimeToolCallId = getEventToolCallId(event);
+    if (agentId && runtimeToolCallId) {
+        toolAgentIdsByToolCallId.set(runtimeToolCallId, agentId);
+    }
+    trackLiveSubagentTool(agentId, {
+        toolName,
+        toolCallId: runtimeToolCallId,
+    });
+
+    if (agentId) {
+        const displayData = resolveSubagentDisplayData(withResolvedAgentId(event, agentId));
         await callWindowFunction("setAgentActivity", buildSubagentPayload(displayData, {
             toolName,
         }));
-    } else {
+    } else if (shouldMirrorRootToolActivity(toolName)) {
         await callWindowFunction("setAgentActivity", {
             agentId: null,
             toolName,
@@ -784,28 +1428,48 @@ session.on("tool.execution_start", async (event) => {
         });
     }
 
-    if (!event.agentId && toolName) {
-        await callWindowFunction("setSubtask", getToolLabel(toolName));
+    if (!agentId && shouldMirrorRootToolActivity(toolName)) {
+        const toolLabel = getToolLabel(toolName);
+        if (toolLabel) {
+            await callWindowFunction("setSubtask", toolLabel);
+        }
     }
 });
 
 session.on("tool.execution_complete", async (event) => {
-    if (!event.agentId && (event.data?.success === false || event.data?.error)) {
+    const agentId = resolveAgentIdFromEvent(event);
+    if (!agentId && (event.data?.success === false || event.data?.error)) {
         rootTurnState.hadFailure = true;
     }
 
-    const toolCallId = event.data?.toolCallId ?? null;
+    const toolCallId = getEventToolCallId(event);
     await callWindowFunction("clearAgentActivity", {
-        agentId: event.agentId ?? null,
+        agentId,
         toolName: event.data?.toolName ?? "",
         toolCallId,
     });
-    releaseSubagentSpawnMetadata(subagentIdsByToolCallId.get(toolCallId) ?? null, toolCallId);
+    if (agentId && !SUBAGENT_SPAWN_TOOLS.has(event.data?.toolName ?? "")) {
+        const remainingToolCount = clearLiveSubagentTool(agentId, {
+            toolName: event.data?.toolName ?? "",
+            toolCallId,
+        });
+        if (remainingToolCount === 0) {
+            scheduleFallbackSubagentRetire(agentId);
+        }
+    }
+    if (toolCallId) {
+        toolAgentIdsByToolCallId.delete(toolCallId);
+    }
+    if (toolCallId && subagentIdsByToolCallId.has(toolCallId)) {
+        releaseSubagentSpawnMetadata(subagentIdsByToolCallId.get(toolCallId) ?? null, toolCallId);
+        subagentIdsByToolCallId.delete(toolCallId);
+    }
 });
 
 session.on("assistant.reasoning", async (event) => {
     const agentId = resolveAgentIdFromEvent(event);
     if (agentId) {
+        noteLiveSubagentSignal(agentId, { idleGrace: true });
         const displayData = resolveSubagentDisplayData({
             agentId,
             data: {
@@ -816,9 +1480,9 @@ session.on("assistant.reasoning", async (event) => {
         return;
     }
 
-    const parentToolCallId = event.data?.parentToolCallId ?? null;
-    if (parentToolCallId) {
-        pendingThinkingByToolCallId.add(parentToolCallId);
+    const pendingToolCallId = getEventCorrelationToolCallId(event);
+    if (pendingToolCallId) {
+        pendingThinkingByToolCallId.add(pendingToolCallId);
         return;
     }
 
@@ -829,24 +1493,17 @@ session.on("assistant.usage", async (event) => {
     const model = event.data?.model ?? "";
     if (!model) return;
 
-    if (event.agentId) {
-        const displayData = resolveSubagentDisplayData(event);
+    const agentId = resolveAgentIdFromEvent(event);
+    if (agentId) {
+        noteLiveSubagentSignal(agentId, { idleGrace: true });
+        const displayData = resolveSubagentDisplayData(withResolvedAgentId(event, agentId));
         await callWindowFunction("setAgentModel", buildSubagentPayload(displayData, { model }), 3000);
         return;
     }
 
-    const parentToolCallId = event.data?.parentToolCallId ?? null;
-    if (parentToolCallId) {
-        const agentId = subagentIdsByToolCallId.get(parentToolCallId);
-        if (agentId) {
-            const displayData = resolveSubagentDisplayData({
-                agentId,
-                data: { parentToolCallId },
-            });
-            await callWindowFunction("setAgentModel", buildSubagentPayload(displayData, { model }), 3000);
-        } else {
-            pendingModelsByToolCallId.set(parentToolCallId, model);
-        }
+    const pendingToolCallId = getEventCorrelationToolCallId(event);
+    if (pendingToolCallId) {
+        pendingModelsByToolCallId.set(pendingToolCallId, model);
         return;
     }
 
@@ -873,8 +1530,10 @@ session.on("assistant.intent", async (event) => {
     const intent = getIntentText(event);
     if (!intent) return;
 
-    if (event.agentId) {
-        const displayData = resolveSubagentDisplayData(event);
+    const agentId = resolveAgentIdFromEvent(event);
+    if (agentId) {
+        noteLiveSubagentSignal(agentId, { idleGrace: true });
+        const displayData = resolveSubagentDisplayData(withResolvedAgentId(event, agentId));
         await callWindowFunction("setAgentIntent", buildSubagentPayload(displayData, { intent }));
     } else {
         await callWindowFunction("setAgentIntent", {
@@ -883,7 +1542,7 @@ session.on("assistant.intent", async (event) => {
         });
     }
 
-    if (!event.agentId) {
+    if (!agentId) {
         await callWindowFunction("setSubtask", intent);
     }
 });
@@ -903,6 +1562,7 @@ session.on("assistant.turn_start", async (event) => {
     rootTurnState.hadFailure = false;
     rootTurnState.sawMessage = false;
     rootTurnState.lastMessage = "";
+    await resetSubagentRuntimeState({ clearUi: true });
     await syncSquadContext();
     await evalWebview("window.setWorking(true)");
 });

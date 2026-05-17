@@ -6,6 +6,14 @@ A cheerful 3D Copilot sidekick that lives in a native window beside your termina
 
 ## Releases
 
+### 0.2.1
+
+- **Squad sub-agent names**: fixed name resolution and late-open/reload behavior so sub-agents always show correctly
+- **Sub-agent activity detail**: fixed thinking/activity text display so cards show the actual work being done
+- **Cleaner sub-agent scene**: removed stale lingering general-purpose cards from old idle agents
+- **Voice persistence**: fixed voice selection to persist correctly across TTS engines, especially with ElevenLabs
+- **Window behavior**: made always-on-top setting follow transparent window mode instead of forcing it on framed windows
+
 ### 0.2.0
 
 - **Expanded text-to-speech**: Web Speech, Voxtral, and ElevenLabs support in one avatar window
