@@ -4,6 +4,21 @@
 
 A cheerful 3D Copilot sidekick that lives in a native window beside your terminal. It shows the main avatar, brings sub-agents on stage underneath it, tosses out floating messages, and can read final responses aloud with text-to-speech.
 
+## Releases
+
+### 0.2.0
+
+- **Expanded text-to-speech**: Web Speech, Voxtral, and ElevenLabs support in one avatar window
+- **Voxtral options**: use Mistral Cloud or a local vLLM server, plus reference-audio workflows for Clippy
+- **New Clippy avatar mode**: animated paperclip mode with Clippy-specific speech behavior and retro sample generation
+- **Transparent window mode**: keep the avatar floating cleanly beside the terminal
+- **Squad-aware avatar scene**: Squad names, role colors, and metadata-powered sub-agent personality
+- **More desktop controls**: saved TTS settings, live voice previews, optional avatar badges, and optional model badges
+
+### 0.1.1
+
+- Initial public release of the Copilot Avatar extension with the core 3D avatar window, sub-agent activity states, and early Squad integration
+
 ## Why this exists
 
 I love using Copilot CLI, but sometimes the only sign of life is a bleep and a lot of faith. The agent is off doing clever things, and you're left staring at the terminal like it's supposed to wink back.
@@ -36,11 +51,9 @@ If [Squad](https://github.com/bradygaster/squad) is available in the workspace, 
 - **Role-based color coding**: labels, accents, glows, and head tints follow Squad roles
 - **Extra flavor**: roster and charter metadata help each sub-agent feel like its own little specialist
 
-## Releases
+## Installation
 
 GitHub Releases are the easiest way to grab it. Each release includes a `copilot-avatar-vX.Y.Z.zip` asset with the `copilot-avatar/` folder at the ZIP root, ready to drop into your extensions folder.
-
-## Installation
 
 You need [Node.js](https://nodejs.org) installed.
 
