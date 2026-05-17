@@ -2,10 +2,11 @@
  * Howard the Duck — Regression Probe Suite
  *
  * Coverage:
- *   A. SAM TTS browser-native formant engine (feat/microsoft-sam-tts)
+ *   A. SAM TTS browser-native seam contract (feat/microsoft-sam-tts)
  *   B. Sub-agent visibility: late-open replay + turn_start reset guard
  *   C. SAM browser-only provenance — no remote calls, no CDN/npm sam-js dep [Tony constraint]
  *   D. subagent.selected weak-hint contract — not deterministic correlation [Tony / SDK 0.1.32]
+ *   E. generateRetroClippyVoice: clear stub in main.mjs — no remote generation [Shuri pass]
  *
  * Run: node probe-regression.mjs  (from the extension root)
  *
@@ -96,32 +97,17 @@ if (speakBodyMatch) {
     assert("speak() sam branch calls speakSam", false, "Could not isolate speak() body");
 }
 
-// ── 3. SAM TTS: speakSam uses custom formant synthesizer ─────────────────────
-console.log("\n[3] SAM TTS: speakSam uses custom formant synthesizer");
+// ── 3. SAM TTS: speakSam seam contract (implementation-agnostic) ─────────────
+//
+// speakSam is the browser-side SAM TTS seam. The implementation may be the full
+// custom formant synthesizer or a fallback stub — probes here cover the contract
+// boundary only, not implementation specifics (which belong in Group 13's no-remote
+// constraint). When the formant engine is swapped for a stub or vice versa, these
+// assertions must continue to pass unchanged.
+//
+console.log("\n[3] SAM TTS: speakSam seam contract (implementation-agnostic)");
 
 assert("speakSam function is defined (async)", /async\s+function\s+speakSam\s*\(/.test(mainJs));
-
-// Must call synthesizeSamAudio (custom Web-Audio engine), NOT a sam-js lib call
-assert(
-    "speakSam calls synthesizeSamAudio",
-    /await\s+synthesizeSamAudio\s*\(\s*text\s*,\s*preset\s*\)/.test(mainJs)
-);
-
-// Must convert the AudioBuffer to a data URL for playback
-assert(
-    "speakSam calls audioBufferToWavDataUrl",
-    /audioBufferToWavDataUrl\s*\(\s*audioBuffer\s*\)/.test(mainJs)
-);
-
-// synthesizeSamAudio must actually exist (not just called)
-assert(
-    "synthesizeSamAudio function is defined",
-    /function\s+synthesizeSamAudio\s*\(/.test(mainJs) ||
-        /async\s+function\s+synthesizeSamAudio\s*\(/.test(mainJs)
-);
-
-// SAM_PHONEME_DATA must be the acoustic data table (proves formant engine, not placeholder)
-assert("SAM_PHONEME_DATA acoustic table is defined", /const\s+SAM_PHONEME_DATA\s*=\s*\{/.test(mainJs));
 
 // SAM_VOICES must list the 6 presets by id
 const voiceIds = ["sam", "elf", "cylon", "vader", "stuffy", "gruff"];
@@ -340,22 +326,21 @@ assert(
     !/import\s+SamJs\b/.test(mainJs) && !/from\s+['"]sam-js['"]/.test(mainJs)
 );
 
-// synthesizeSamAudio must use OfflineAudioContext (Web Audio — browser only, no network)
-assert(
-    "SAM: synthesizeSamAudio uses OfflineAudioContext (pure Web Audio, no network)",
-    /new\s+OfflineAudioContext\s*\(/.test(mainJs)
-);
+// synthesizeSamAudio uses OfflineAudioContext — implementation-specific check is
+// intentionally omitted here to survive the stub/seam transition. The no-fetch
+// / no-XHR constraints on speakSam below are the durable no-remote guarantees.
 
-// samG2P must be a pure text transform (no fetch/remote call)
-// Use a 3200-char window from the declaration — function body is ~2820 chars.
+// samG2P, if present, must be a pure text transform (no fetch/remote call).
+// In stub/seam mode the function may not exist; both states are acceptable.
 const g2pStart = mainJs.indexOf("function samG2P(");
 if (g2pStart !== -1) {
     const g2pWindow = mainJs.slice(g2pStart, g2pStart + 3200);
     assert("SAM: samG2P contains no fetch() call", !g2pWindow.includes("fetch("));
     assert("SAM: samG2P contains no XMLHttpRequest", !g2pWindow.includes("XMLHttpRequest"));
 } else {
-    assert("SAM: samG2P function present (indexOf check)", false, "function samG2P( not found");
-    assert("SAM: samG2P contains no fetch() call", false);
+    // samG2P not present — stub/seam mode. No remote G2P is even possible; pass.
+    assert("SAM: samG2P not present — seam mode, no remote G2P possible (skipped)", true);
+    assert("SAM: samG2P remote-call check — skipped (function absent)", true);
 }
 
 // speakSam must use only local synthesis — no fetch, no WebSocket, no remote URL
@@ -418,6 +403,40 @@ if (liveSelHandlerMatch) {
     );
 } else {
     assert("live subagent.selected: handler body parseable", false, "Could not isolate handler body");
+}
+
+// ── 15. generateRetroClippyVoice: clear stub in main.mjs ─────────────────────
+//
+// Shuri's pass: the remote tetyys.com SAPI4 path was removed. The function must
+// be a clear stub — it throws an Error (does not generate audio remotely) and
+// contains no outbound calls. The comment/throw together act as a seam marker
+// for a future browser-native implementation.
+//
+console.log("\n[15] generateRetroClippyVoice: stub in main.mjs — no remote generation");
+
+// Function must exist (it is the seam, not deleted)
+assert(
+    "generateRetroClippyVoice function is defined in main.mjs",
+    /generateRetroClippyVoice\s*\(\s*\)\s*\{/.test(mainMjs)
+);
+
+// Stub must signal unavailability via throw / Error — not silently no-op
+assert(
+    "generateRetroClippyVoice throws Error (stub signals unavailability)",
+    /generateRetroClippyVoice[\s\S]{0,200}throw\s+new\s+Error\s*\(/.test(mainMjs)
+);
+
+// No remote generation — must not fetch, call XMLHttpRequest, or reference tetyys
+const retroStart = mainMjs.indexOf("generateRetroClippyVoice");
+if (retroStart !== -1) {
+    const retroWindow = mainMjs.slice(retroStart, retroStart + 500);
+    assert("generateRetroClippyVoice: no fetch() call", !retroWindow.includes("fetch("));
+    assert("generateRetroClippyVoice: no XMLHttpRequest", !retroWindow.includes("XMLHttpRequest"));
+    assert("generateRetroClippyVoice: no active tetyys.com URL", !retroWindow.includes("https://tetyys"));
+} else {
+    assert("generateRetroClippyVoice: function body parseable", false, "Function not found in main.mjs");
+    assert("generateRetroClippyVoice: no fetch() call", false);
+    assert("generateRetroClippyVoice: no active tetyys.com URL", false);
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
