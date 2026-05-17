@@ -40,6 +40,7 @@ Avatar 3D rendering and Squad-specific visual flair.
 - 2026-05-17T19:45:16.556+02:00 — Mic boom regression: visibility controlled by `squadRootMicActive` flag, set only via `window.setSquadContext()` from extension. Root avatar created at webview init (line 5334) before Squad context sync arrives, leaving boom hidden. Extension calls `syncSquadContext()` during session startup but webview not yet open (checked at evalWebview line 161), so call returns early. Fix: ensure `syncSquadContext()` runs after webview is ready and avatar initialized, or add sync to `assistant.turn_start` handler to refresh context each turn.
 - Mic boom 3D geometry and lifecycle pattern: created in `createSquadMicBoom()` (lines 731-778), added to root avatar only (line 2381), visibility set by `squadRootMicActive` boolean via `updateRootSquadMicBoom()` (line 2310). Squad-gating means boom is hidden until `window.setSquadContext({active: true})` is called from extension.
 - 2026-05-17T19:54:11.015+02:00 — Root-only webview chrome needs a latched-state replay path. For the mic fix, `.github/extensions/copilot-avatar/content/main.js` now reapplies `updateRootSquadMicBoom()` inside `initializeRootAvatar()`, and `.github/extensions/copilot-avatar/main.mjs` refreshes `syncSquadContext()` on root `assistant.turn_start` so a pre-open or pre-avatar Squad signal still lands once the webview is live.
+- 2026-05-17T20:00:51.651+02:00 — Final mic failure path: `.github/extensions/copilot-avatar/main.mjs` was already polling `window.__copilotAvatarReady`, but `.github/extensions/copilot-avatar/content/main.js` never set that flag, so `syncSquadContext()` skipped the first show/reopen replay and the root mic stayed hidden despite an active Squad context. Safe fix: set the ready flag after page boot, keep mic visibility on the existing `setSquadContext()` → `updateRootSquadMicBoom()` seam, and expose `window.__copilotAvatarState.rootMicVisible` for live regression probes.
 
 
 ## 2026-05-17 — Scribe Session Wrap-up
@@ -64,3 +65,21 @@ Avatar 3D rendering and Squad-specific visual flair.
   2. Mic disappears on window reopen
 
 **For You:** Your scope (replay during root-avatar init + sync on turn_start) must handle both modes. Howard flagged Squad identity regression risk — if your sync breaks metadata lookup, escalate to Vision.
+
+---
+
+## 2026-05-17T20:00:51Z — Scribe Completion: Mic State Handoff Fix Orchestration
+
+**From:** Scribe (Session Logger)
+
+**Context:** Vision and Shuri's parallel work on mic state handoff bug converged on the same solution. Scribe has consolidated findings and recorded outcomes.
+
+**What Scribe Did:**
+1. Merged inbox decisions from both agents into .squad/decisions.md
+2. Recorded orchestration logs for Vision and Shuri (standard form)
+3. Consolidated web-ready-gate decision (2026-05-17T20:00:51.651+02:00)
+4. Created session log documenting the full resolution path
+
+**Outcome:** Your webview-ready handshake (page sets `__copilotAvatarReady` flag) gates Squad context replay. Extension waits for that signal before calling `setSquadContext()`. Combined with mic boom replay in root-avatar init, this ensures first-paint visibility. Full coordination trail now in `.squad/orchestration-log/2026-05-17T18-00-51Z-{vision,shuri}.md`.
+
+**Team Visibility:** Session log in `.squad/log/2026-05-17T18-00-51Z-mic-state-handoff.md` summarizes both agents' findings for the broader team.

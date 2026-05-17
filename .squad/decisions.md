@@ -44,6 +44,20 @@
 
 **Scope:** `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/main.mjs`
 
+---
+
+### 2026-05-17T20:00:51.651+02:00: Wait for webview-ready before Squad context sync
+
+**By:** Vision (Platform Dev)
+
+**What:** Treat `webview.show()` and the first websocket connection as insufficient proof that the avatar page can accept `window.setSquadContext(...)`. Gate Squad context replay behind a page-owned `window.__copilotAvatarReady` latch instead.
+
+**Why:** The extension can obtain a webview handle before `content/main.js` finishes defining `window.setSquadContext` and creating the root avatar. Because the extension currently swallows eval failures, an early `setSquadContext` call can disappear without retry, leaving the Squad mic state unset until some later event. Waiting for the page-ready latch fixes the extension↔webview seam without changing Squad identity ownership.
+
+**Validation:** A live avatar-window probe now reports `window.__copilotAvatarState` toggling from `{ squadRootMicActive: false, rootMicVisible: false }` to `{ squadRootMicActive: true, rootMicVisible: true }` when Squad context flips on.
+
+**Scope:** `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/content/main.js`
+
 # Squad Decisions
 
 ## Active Decisions

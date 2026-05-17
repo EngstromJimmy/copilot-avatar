@@ -22,6 +22,7 @@ Implementing and refining sub-agent visibility, identity resolution, and metadat
 - README is the contract with users: document that Copilot SDK owns all visibility/lifecycle, Squad is enrichment-only, and ghost cards were eliminated so rendered agents match the real active set.
 - Low-confidence label filtering in the webview is not enough if the extension layer passes generic Copilot labels before consulting Squad metadata; the filtering seam must be at the source (extension).
 - Webview improvements must be paired with extension-layer changes to avoid payload seams; generic labels like "General Purpose Agent" from Copilot SDK should be filtered in main.mjs before reaching `displayName` and `role` in the webview payload.
+- In CopilotWebview flows, `webview.show()` is not proof that page APIs exist yet; latch `window.__copilotAvatarReady` in `content/main.js` and wait for it in `main.mjs` before emitting `setSquadContext`, or root-only Squad chrome can miss first paint.
 
 ## Recent Work
 
@@ -177,3 +178,22 @@ Older work documented in `history-archive.md`:
 **Decision Created:** "Mic boom visibility blocked by timing gap in Squad context sync" — covers exact mechanism, suspect commits, and fix directions (sync in assistant.turn_start or after avatar init).
 
 **Orchestration Log:** Scribe recorded both investigations in .squad/orchestration-log/ for audit trail.
+
+---
+
+## 2026-05-17T20:00:51Z — Scribe Completion: Mic State Handoff Fix Orchestration
+
+**From:** Scribe (Session Logger)
+
+**Context:** Vision and Shuri's parallel work on mic state handoff bug converged on the same solution. Scribe has consolidated findings and recorded outcomes.
+
+**What Scribe Did:**
+1. Merged inbox decisions from both agents into .squad/decisions.md
+2. Recorded orchestration logs for Vision and Shuri (standard form)
+3. Consolidated web-ready-gate decision (2026-05-17T20:00:51.651+02:00)
+4. Created session log documenting the full resolution path
+
+**Outcome:** Your webview-ready handshake (page sets `__copilotAvatarReady` flag) gates Squad context replay. Extension waits for that signal before calling `setSquadContext()`. Combined with mic boom replay in root-avatar init, this ensures first-paint visibility. Full coordination trail now in `.squad/orchestration-log/2026-05-17T18-00-51Z-{vision,shuri}.md`.
+
+**Team Visibility:** Session log in `.squad/log/2026-05-17T18-00-51Z-mic-state-handoff.md` summarizes both agents' findings for the broader team.
+
