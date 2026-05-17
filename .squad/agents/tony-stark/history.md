@@ -105,6 +105,13 @@ Older work documented in `history-archive.md`:
 
 ## Learnings
 
+### 2026-05-18T00:04:39.350+02:00 — SDK seam review for live sub-agents and SAM
+
+- Copilot SDK 0.1.32 gives authoritative sub-agent lifecycle on `subagent.started` and correlated follow-up traffic through `toolCallId` / `parentToolCallId`, but `subagent.selected` has no correlation id; treat it as a weak naming hint only.
+- The current avatar runtime seam is structurally sound: `main.mjs` owns visibility/replay/correlation, `lib/squad-context.mjs` owns Squad roster+casing lookup, and `content/main.js` owns rendering plus pending-update queues for late `addSubagent`.
+- The fragile Squad seam is casting lookup: `lib/squad-context.mjs` manually reads `.squad/casting/registry.json` / `history.json` instead of using a Squad SDK casting abstraction, so JSON shape drift is the thing to watch.
+- Browser-only SAM must live in `.github/extensions/copilot-avatar/content/main.js`; the existing remote retro Clippy generator in `.github/extensions/copilot-avatar/main.mjs` is not an acceptable seam for the requested SAM engine.
+
 ### 2026-05-17T21:17:25.313+02:00 — Avatar regression commit scope
 
 - Commit scope matters when the worktree is noisy: stage only `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/lib/squad-context.mjs`, `.github/extensions/copilot-avatar/content/main.js`, and `.github/extensions/copilot-avatar/content/style.css` for this regression bundle.
@@ -157,3 +164,26 @@ Older work documented in `history-archive.md`:
 - Multiple untracked files at risk
 
 **Decision:** Documented findings and blocked status in decisions.md
+
+## 2026-05-17T22:04:39Z — Scribe: SAM TTS & Sub-Agent Selection Decisions Finalized
+
+**From:** Scribe (Session Logger)
+
+**Context:** Tony's architecture review and sub-agent selection hint contract work merged with Shuri's and Peter Parker's SAM TTS implementation outcomes.
+
+**Decisions Recorded:**
+
+1. **Microsoft SAM Text-to-Speech Engine Implementation** — Consolidated 3 agents' SAM work into one canonical decision:
+   - Browser-only generation using sam-js@0.3.1 (MIT) via jsdelivr CDN
+   - Audio pipeline matches Voxtral/ElevenLabs pattern: wav() → blob URL → Audio
+   - Voice presets static (no server fetch); persistence follows existing settings pattern
+   - Files: content/index.html (importmap + UI), content/main.js (engine wiring), main.mjs (DEFAULT_SETTINGS)
+
+2. **Sub-Agent Selection Hint Contract** — Your architectural decision recorded:
+   - Treat `subagent.selected` as weak naming hint only, never sole authority for identity/card creation
+   - Visibility ownership stays on `subagent.started` (authoritative lifecycle event)
+   - Correlation order: spawn metadata → `subagent.started` → Squad roster/casting → `subagent.selected` → runtime fallback
+
+**Team Impact:** Shuri's frontend implementation and Peter Parker's engine details now grounded in your architectural guardrails. Decisions consolidated and deduplicated in .squad/decisions.md (5 inbox entries merged into 2 canonical entries).
+
+**Orchestration:** Full logs recorded in `.squad/orchestration-log/2026-05-17T22-04-39Z-tony-stark.md`

@@ -48,6 +48,26 @@ Avatar 3D rendering and Squad-specific visual flair.
 - 2026-05-17T22:14:30.766+02:00 — ElevenLabs voice persistence lives entirely in the webview-side async option loader. `.github/extensions/copilot-avatar/main.mjs` already persists `elevenlabsVoice` in `.tts-settings.json`; the actual regression was `.github/extensions/copilot-avatar/content/main.js` clearing the in-memory selection while rendering `Loading ElevenLabs voices...`, which forced reopen/engine-switch flows to fall back to the first returned voice unless the loader preserved the previous selection through the placeholder state.
 - 2026-05-17T22:23:53.926+02:00 — Sub-agent detail cards should treat upstream `taskSummary` as a persistent `workDescription`, separate from Copilot intent chatter. `.github/extensions/copilot-avatar/main.mjs` now forwards `workDescription` explicitly, and `.github/extensions/copilot-avatar/content/main.js` keeps the lower detail line pinned to that work text for non-root avatars while filtering Clippy-style summary phrases like `It looks like you're all set`.
 - 2026-05-17T22:23:53.926+02:00 — Late-open sub-agent cards should not materialize from update-only signals unless the payload already carries a strong identity. `.github/extensions/copilot-avatar/content/main.js` now queues non-root activity/intent/thinking updates until `addSubagent` or another identity-bearing payload arrives, then replays the queued state; it also tracks `displayNameSource` so a later resolved name can outrank an earlier fallback label.
+- 2026-05-18T00:04:39.350+02:00 — SAM TTS engine added as a fully browser-side option. `sam-js@0.3.1` loaded via importmap CDN (`cdn.jsdelivr.net`); `SamJs` imported in `content/main.js`. Voices are static parameter presets (speed/pitch/throat/mouth), not server-fetched. `speakSam()` uses `.wav()` to get a Uint8Array WAV, wraps in a Blob URL, and plays via `Audio` — same ttsAudioPlayer + activeGeneratedAudioUrl pattern as ElevenLabs/Voxtral. `samVoice` persisted through `saveTtsSettings()` / `copilot.loadSettings()` seam; `main.mjs` DEFAULT_SETTINGS includes `samVoice: 'sam'`. `updateEngineUI()` hides webspeech and AI-voice sections when SAM is active and shows `#tts-sam-section` instead.
+
+
+## 2026-05-17T22:04:39Z — Scribe: SAM TTS Engine Decision Consolidation
+
+**From:** Scribe (Session Logger)
+
+**Context:** Your SAM TTS engine work (browser-side parameter preset pattern) has been consolidated with Tony's architectural review and Peter Parker's implementation details into a single canonical decision.
+
+**Decision Recorded:** Microsoft SAM Text-to-Speech Engine Implementation (2026-05-17T22:04:39Z)
+
+**What You Delivered:**
+- Browser-side SAM using sam-js@0.3.1 (MIT) via importmap CDN
+- Static voice presets (SAM Default, Elf, Cylon, Darth Vader, Stuffy, Gruff) with speed/pitch/throat/mouth parameters
+- Audio pipeline: SamJs.wav() → Blob URL → Audio (same as ElevenLabs/Voxtral, no new AudioContext plumbing)
+- Voice persistence via saveTtsSettings() / copilot.loadSettings() seam with samVoice in DEFAULT_SETTINGS
+
+**Architecture Gate:** Tony's licensing review approved sam-js@0.3.1 as a legitimate MIT-licensed dependency; rejected remote/questionable-license SAM paths.
+
+**Team Impact:** Decision now consolidated in .squad/decisions.md with full architectural context and implementation pattern for future browser-native TTS engines. Orchestration logged in `.squad/orchestration-log/2026-05-17T22-04-39Z-shuri.md`.
 
 
 ## 2026-05-17 — Scribe Session Wrap-up

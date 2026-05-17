@@ -50,6 +50,26 @@ Solution: Load the latest casting snapshot into the roster lookup to keep avatar
 - 2026-05-16T22:45:02.806+02:00 — If visibility heuristics regress into an empty avatar, bias back toward rendering on `subagent.started` and any tracked tool activity first, then let duplicate collapse and metadata cleanup keep the UI sane. In this extension, undercounting active agents is a worse UX failure than briefly showing extra cards.
 - 2026-05-16T22:45:02.806+02:00 — Fallback retirement is safer at root `assistant.turn_end` than per-tool completion. A sub-agent can finish one tool and still be actively running the broader task, so clearing its card on `tool.execution_complete` makes live work disappear mid-turn.
 - 2026-05-16T22:45:02.806+02:00 — For this avatar, stale-active cards are less harmful than disappearing live work. If the runtime has not sent `subagent.completed` / `subagent.failed` yet, keep the card visible and let the next directive-boundary reset clean up leftovers instead of guessing from quiet gaps.
+- 2026-05-18T00:04:39.350+02:00 — SAM TTS runs entirely in the browser via `sam-js@0.3.1` (MIT, jsdelivr CDN) using the `wav()` method. The output is a `Uint8Array` WAV blob, played via an `HTMLAudioElement` exactly like the Voxtral/ElevenLabs path — this keeps `stopGeneratedSpeechPlayback()` and `ttsAudioPlayer` working without extra plumbing. Voice presets (SAM, Elf, Cylon, Vader, Stuffy, Gruff) are static constants so no async fetch is needed; `populateSamVoices()` fires once at init. Persistence follows the same `saveTtsSettings` / `savedTts.samVoice` pattern as all other per-engine voice fields.
+
+## 2026-05-17T22:04:39Z — Scribe: SAM TTS Engine Decision Consolidation
+
+**From:** Scribe (Session Logger)
+
+**Context:** Your SAM TTS engine implementation work has been consolidated with Shuri's frontend implementation and Tony's architectural review into a single canonical decision in .squad/decisions.md.
+
+**Decision Recorded:** Microsoft SAM Text-to-Speech Engine Implementation (2026-05-17T22:04:39Z)
+
+**What You Delivered:**
+- sam-js@0.3.1 (MIT-licensed) loaded via jsdelivr ESM CDN importmap
+- Voice presets: SAM Default, Elf, Cylon, Darth Vader, Stuffy, Gruff defined as {id, name, speed, pitch, throat, mouth}
+- Audio pipeline: SamJs.wav() returns Uint8Array WAV wrapped in blob URL, played through Audio element (matches Voxtral/ElevenLabs pattern)
+- No new AudioContext plumbing required; existing ttsAudioPlayer and activeGeneratedAudioUrl seams work unchanged
+- No async fetch for voices; static presets eliminate race conditions
+
+**Architecture Gate:** Approved by Tony Stark as legitimate MIT-licensed browser-native SAM engine with no remote/questionable-license dependencies.
+
+**Team Impact:** Implementation pattern now codified for future browser-native TTS engines with static voice options: constant list → populate*Voices() at init → section div in HTML → speak*() function with blob URL output. Full decision documented in .squad/decisions.md; orchestration logged in `.squad/orchestration-log/2026-05-17T22-04-39Z-{tony-stark,shuri}.md`.
 
 ## 2026-05-16T19:23:20Z — Sub-Agent Visibility + Duplicate Identity Fix Cycle
 

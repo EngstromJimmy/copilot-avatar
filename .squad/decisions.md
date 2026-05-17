@@ -93,3 +93,65 @@ After resolving, retry: `git checkout feat/microsoft-sam-tts`
 
 *Decision made to preserve all user changes per project policy.*
 
+## 2026-05-18
+
+# Microsoft SAM Text-to-Speech Engine Implementation
+
+**Decided by:** Tony Stark (Lead) / Peter Parker (Implementation) / Shuri (Frontend)  
+**Date:** 2026-05-18T00:04:39.350+02:00  
+**Requested by:** Jimmy Engstrom  
+**Branch:** feat/microsoft-sam-tts
+
+## Summary
+
+Microsoft SAM text-to-speech implemented as a fourth engine option, browser-native using `sam-js@0.3.1` (MIT license) via importmap CDN. Follows existing Voxtral/ElevenLabs audio pipeline: `wav()` → blob URL → HTMLAudioElement. Voice presets static (no server fetch). Persistence follows existing settings pattern.
+
+## Architectural Decision
+
+SAM support is browser-only generation in `content/main.js` using legitimately licensed packages only. No proxy through extension-side fetches. All synthesis, voice enumeration, preview, and playback entirely in webview layer. Treated as first-class engine with persisted fields like Web Speech / Voxtral / ElevenLabs.
+
+## Engine Details
+
+- **Library:** sam-js@0.3.1, MIT licensed
+- **Loading:** jsdelivr ESM CDN via importmap
+- **Generation:** `SamJs.wav()` returns Uint8Array WAV wrapped in blob URL
+- **Audio pipeline:** Uses same `ttsAudioPlayer` / `activeGeneratedAudioUrl` seam as other engines
+- **Voice presets:** Static SAM_VOICES constant (SAM Default, Elf, Cylon, Darth Vader, Stuffy, Gruff) defined as `{id, name, speed, pitch, throat, mouth}`
+- **Persistence:** `samVoice` follows exact pattern of `voxtralVoice` / `elevenlabsVoice`; included in `saveTtsSettings()`, restored from `savedTts.samVoice`, present in DEFAULT_SETTINGS in main.mjs
+- **No loading race:** Voices are static presets, so `populateSamVoices()` fires once at init without placeholder
+
+## Files Changed
+
+- `.github/extensions/copilot-avatar/content/index.html` — sam-js importmap, SAM option in engine select, #tts-sam-section div
+- `.github/extensions/copilot-avatar/content/main.js` — full SAM engine wiring (SamJs import, SAM_VOICES, speakSam(), populateSamVoices(), samVoice state)
+- `.github/extensions/copilot-avatar/main.mjs` — samVoice: 'sam' in DEFAULT_SETTINGS
+
+## Pattern for Future Engines
+
+Any pure-browser TTS engine with static voice options should follow: static constant list → populate*Voices() at init → section div in HTML → speak*() function with blob URL output.
+
+---
+
+# Sub-Agent Selection Hint Contract
+
+**Decided by:** Tony Stark (Lead)  
+**Date:** 2026-05-18T00:04:39.350+02:00  
+**Requested by:** Jimmy Engstrom
+
+## Decision
+
+Treat Copilot SDK `subagent.selected` as weak, best-effort naming hint only. Never sole authority for visible sub-agent identity or card creation.
+
+## Why
+
+- SDK 0.1.32 `subagent.selected` provides only `agentName`, `agentDisplayName`, `tools` — no `toolCallId`, `parentToolCallId`, or runtime `agentId`
+- Concurrent selections cannot be correlated deterministically
+- `subagent.started` is first authoritative lifecycle event for visibility ownership
+
+## Team Guidance
+
+- Keep visibility ownership on `subagent.started`
+- Keep `subagent.selected` as temporary hint for weak label improvement
+- Prefer correlation order: spawn tool metadata → `subagent.started` names → Squad roster/casting → `subagent.selected` hint → raw runtime fallback
+- If product needs guaranteed naming for concurrent starts, add correlation seam around parent spawn tool metadata; do not let `subagent.selected` mint cards
+
