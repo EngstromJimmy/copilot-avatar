@@ -4463,13 +4463,15 @@ const VOXTRAL_VOICES_FALLBACK = [
     { slug: 'gb_jane_sarcasm',    name: 'Jane - Sarcasm'    },
 ];
 
+// Voice presets: pitch = fundamental frequency (Hz), formantShift = F1/F2 multiplier,
+// rate = duration compression factor (>1 = faster).
 const SAM_VOICES = [
-    { id: 'sam',     name: 'SAM (Default)' },
-    { id: 'elf',     name: 'Elf'           },
-    { id: 'cylon',   name: 'Cylon'         },
-    { id: 'vader',   name: 'Darth Vader'   },
-    { id: 'stuffy',  name: 'Stuffy'        },
-    { id: 'gruff',   name: 'Gruff'         },
+    { id: 'sam',     name: 'SAM (Default)', pitch: 120, formantShift: 1.00, rate: 1.00 },
+    { id: 'elf',     name: 'Elf',           pitch: 240, formantShift: 1.45, rate: 1.20 },
+    { id: 'cylon',   name: 'Cylon',         pitch:  78, formantShift: 0.68, rate: 0.82 },
+    { id: 'vader',   name: 'Darth Vader',   pitch:  58, formantShift: 0.60, rate: 0.72 },
+    { id: 'stuffy',  name: 'Stuffy',        pitch: 102, formantShift: 0.90, rate: 0.86 },
+    { id: 'gruff',   name: 'Gruff',         pitch:  68, formantShift: 0.62, rate: 0.78 },
 ];
 
 let ttsEnabled = false;
@@ -5398,11 +5400,231 @@ function stopAllSpeech() {
     setClippySpeaking(false);
 }
 
+// ── SAM retro formant synthesizer ─────────────────────────────────────────────
+// Original implementation using the Web Audio API OfflineAudioContext.
+// Phoneme formant frequencies (F1, F2 in Hz) are empirically measured acoustic
+// data from Peterson & Barney (1952) and Hillenbrand et al. (1995) — published
+// scientific measurements, not derived from any proprietary codebase.
+//
+// Each entry: [F1_Hz, F2_Hz, base_duration_ms, voiced]
+
+const SAM_PHONEME_DATA = {
+    // Vowels
+    AA: [730, 1090, 110, true],   // 'hot'
+    AE: [660, 1720, 110, true],   // 'hat'
+    AH: [640, 1190,  90, true],   // 'hut'
+    AO: [570,  840, 110, true],   // 'hall'
+    AW: [650,  800, 180, true],   // 'how'  (diphthong simplified)
+    AY: [700, 2200, 180, true],   // 'high' (diphthong simplified)
+    EH: [530, 1840,  95, true],   // 'head'
+    ER: [490, 1350, 110, true],   // 'bird'
+    EY: [420, 2280, 140, true],   // 'hey'  (diphthong simplified)
+    IH: [390, 1990,  85, true],   // 'hit'
+    IY: [270, 2290,  95, true],   // 'heat'
+    OW: [450,  760, 140, true],   // 'hoe'  (diphthong simplified)
+    OY: [450, 1840, 180, true],   // 'boy'  (diphthong simplified)
+    UH: [440, 1020,  90, true],   // 'hook'
+    UW: [300,  870, 100, true],   // 'who'
+    // Sonorant consonants (voiced)
+    L:  [360, 1000,  55, true],
+    M:  [280,  900,  70, true],
+    N:  [280, 1700,  65, true],
+    NG: [280,  800,  75, true],
+    R:  [490, 1350,  55, true],
+    W:  [300,  610,  50, true],
+    Y:  [270, 2290,  45, true],
+    // Voiced stops / fricatives
+    B:  [200,  800,  55, true],
+    D:  [200, 1700,  50, true],
+    DH: [200, 1200,  55, true],
+    G:  [200,  800,  65, true],
+    JH: [200, 2500,  85, true],
+    V:  [200,  900,  65, true],
+    Z:  [ 80, 3800,  70, true],
+    ZH: [ 80, 2000,  65, true],
+    // Unvoiced fricatives / stops (noise-based)
+    CH: [  0, 2500,  75, false],
+    F:  [  0,  800,  70, false],
+    HH: [  0, 1500,  45, false],
+    K:  [  0, 1500,  65, false],
+    P:  [  0, 1000,  55, false],
+    S:  [  0, 4000,  75, false],
+    SH: [  0, 2000,  70, false],
+    T:  [  0, 1700,  50, false],
+    TH: [  0, 1500,  55, false],
+};
+
+// Simplified English grapheme-to-phoneme conversion (rule-based, original code).
+// Returns an array of ARPAbet-style phoneme tokens plus '_' word-boundary pauses.
+function samG2P(text) {
+    const phonemes = [];
+    const words = text.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
+    for (let wi = 0; wi < words.length; wi++) {
+        const w = words[wi];
+        let i = 0;
+        while (i < w.length) {
+            const c3 = w.slice(i, i + 3);
+            const c2 = w.slice(i, i + 2);
+            const c  = w[i];
+            // Trigraphs
+            if (c3 === 'tch') { phonemes.push('CH'); i += 3; continue; }
+            if (c3 === 'igh') { phonemes.push('AY'); i += 3; continue; }
+            // Digraphs
+            if (c2 === 'th') { phonemes.push('TH'); i += 2; continue; }
+            if (c2 === 'sh') { phonemes.push('SH'); i += 2; continue; }
+            if (c2 === 'ch') { phonemes.push('CH'); i += 2; continue; }
+            if (c2 === 'wh') { phonemes.push('W');  i += 2; continue; }
+            if (c2 === 'ph') { phonemes.push('F');  i += 2; continue; }
+            if (c2 === 'ng') { phonemes.push('NG'); i += 2; continue; }
+            if (c2 === 'ck') { phonemes.push('K');  i += 2; continue; }
+            if (c2 === 'qu') { phonemes.push('K'); phonemes.push('W'); i += 2; continue; }
+            if (c2 === 'ai' || c2 === 'ay') { phonemes.push('EY'); i += 2; continue; }
+            if (c2 === 'au' || c2 === 'aw') { phonemes.push('AO'); i += 2; continue; }
+            if (c2 === 'ee' || c2 === 'ea') { phonemes.push('IY'); i += 2; continue; }
+            if (c2 === 'er') { phonemes.push('ER'); i += 2; continue; }
+            if (c2 === 'ew') { phonemes.push('UW'); i += 2; continue; }
+            if (c2 === 'ie') { phonemes.push('IY'); i += 2; continue; }
+            if (c2 === 'oo') { phonemes.push('UW'); i += 2; continue; }
+            if (c2 === 'ou' || c2 === 'ow') { phonemes.push('AW'); i += 2; continue; }
+            if (c2 === 'oi' || c2 === 'oy') { phonemes.push('OY'); i += 2; continue; }
+            if (c2 === 'or') { phonemes.push('AO'); phonemes.push('R'); i += 2; continue; }
+            if (c2 === 'ar') { phonemes.push('AA'); phonemes.push('R'); i += 2; continue; }
+            if (c2 === 'ir' || c2 === 'ur') { phonemes.push('ER'); i += 2; continue; }
+            // Single characters
+            const map = {
+                a:'AE', e:'EH', i:'IH', o:'AO', u:'AH',
+                b:'B',  c:'K',  d:'D',  f:'F',  g:'G',
+                h:'HH', j:'JH', k:'K',  l:'L',  m:'M',
+                n:'N',  p:'P',  q:'K',  r:'R',  s:'S',
+                t:'T',  v:'V',  w:'W',  x:'K',  y:'IH', z:'Z',
+            };
+            if (map[c]) phonemes.push(map[c]);
+            i++;
+        }
+        if (wi < words.length - 1) phonemes.push('_');
+    }
+    return phonemes;
+}
+
+// Render phoneme sequence to an AudioBuffer using Web Audio API OfflineAudioContext.
+async function synthesizeSamAudio(text, { pitch = 120, formantShift = 1.0, rate = 1.0 } = {}) {
+    const sampleRate = 22050;
+    const phonemes = samG2P(text);
+
+    // Pre-calculate total duration so we can size the offline context upfront.
+    let totalMs = 100;
+    for (const ph of phonemes) {
+        if (ph === '_') { totalMs += 80; continue; }
+        const d = SAM_PHONEME_DATA[ph];
+        if (d) totalMs += d[2] / rate;
+    }
+    totalMs += 200;
+
+    const totalSamples = Math.ceil((totalMs / 1000) * sampleRate);
+    const ctx = new OfflineAudioContext(1, totalSamples, sampleRate);
+
+    // Light compression prevents clipping when many phonemes overlap in gain ramps.
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -10;
+    comp.knee.value = 6;
+    comp.ratio.value = 4;
+    comp.attack.value = 0.002;
+    comp.release.value = 0.1;
+    comp.connect(ctx.destination);
+
+    let t = 0.1;
+
+    for (const ph of phonemes) {
+        if (ph === '_') { t += 0.08; continue; }
+        const phData = SAM_PHONEME_DATA[ph];
+        if (!phData) continue;
+
+        const [f1Base, f2Base, durMs, voiced] = phData;
+        const dur = (durMs / 1000) / rate;
+        const f1 = f1Base * formantShift;
+        const f2 = f2Base * formantShift;
+
+        const env = ctx.createGain();
+        const rampUp = Math.min(0.008, dur * 0.15);
+        env.gain.setValueAtTime(0, t);
+        env.gain.linearRampToValueAtTime(0.35, t + rampUp);
+        env.gain.setValueAtTime(0.35, t + dur * 0.75);
+        env.gain.linearRampToValueAtTime(0, t + dur);
+        env.connect(comp);
+
+        if (voiced && f1Base > 0) {
+            // Sawtooth oscillator through two resonant bandpass formant filters.
+            const osc = ctx.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.value = pitch;
+
+            const bpf1 = ctx.createBiquadFilter();
+            bpf1.type = 'bandpass';
+            bpf1.frequency.value = f1;
+            bpf1.Q.value = 3.5;
+
+            const bpf2 = ctx.createBiquadFilter();
+            bpf2.type = 'bandpass';
+            bpf2.frequency.value = f2;
+            bpf2.Q.value = 5.0;
+
+            osc.connect(bpf1); bpf1.connect(env);
+            osc.connect(bpf2); bpf2.connect(env);
+            osc.start(t);
+            osc.stop(t + dur);
+        } else {
+            // White noise through a bandpass filter for fricatives and stops.
+            const bufLen = Math.ceil(dur * sampleRate) + 64;
+            const noiseBuf = ctx.createBuffer(1, bufLen, sampleRate);
+            const nd = noiseBuf.getChannelData(0);
+            for (let j = 0; j < bufLen; j++) nd[j] = Math.random() * 2 - 1;
+
+            const noiseNode = ctx.createBufferSource();
+            noiseNode.buffer = noiseBuf;
+
+            const noiseFreq = f2Base > 0 ? f2Base * formantShift : 2000 * formantShift;
+            const bpf = ctx.createBiquadFilter();
+            bpf.type = 'bandpass';
+            bpf.frequency.value = noiseFreq;
+            bpf.Q.value = 2.5;
+
+            noiseNode.connect(bpf); bpf.connect(env);
+            noiseNode.start(t);
+            noiseNode.stop(t + dur + 0.01);
+        }
+
+        t += dur;
+    }
+
+    return ctx.startRendering();
+}
+
 async function speakSam(text, { clippy = false } = {}) {
-    // Browser-native SAM engine not yet wired — placeholder seam for Peter's implementation.
-    // Voice picker and persistence are live; swap this body out when a legitimate engine lands.
-    console.info('SAM TTS: browser-native engine not yet available. Falling back to Web Speech.');
-    speakWebSpeech(text, { clippy });
+    const requestId = beginSpeechRequest();
+    try {
+        speechSynthesis.cancel();
+        stopGeneratedSpeechPlayback();
+        const preset = SAM_VOICES.find(v => v.id === samVoice) || SAM_VOICES[0];
+        const audioBuffer = await synthesizeSamAudio(text, preset);
+        if (!isCurrentSpeechRequest(requestId)) return;
+        const audioSrc = audioBufferToWavDataUrl(audioBuffer);
+        const audio = new Audio(audioSrc);
+        ttsAudioPlayer = audio;
+        if (clippy) {
+            setClippySpeaking(true);
+            audio.addEventListener('ended', () => {
+                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+            }, { once: true });
+            audio.addEventListener('error', () => {
+                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+            }, { once: true });
+        }
+        await audio.play();
+    } catch (err) {
+        if (clippy && isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+        console.error('SAM TTS failed:', err);
+        if (clippy) fallbackClippySpeech(text);
+    }
 }
 
 // ── Event handlers ────────────────────────────────────────────────────────────
