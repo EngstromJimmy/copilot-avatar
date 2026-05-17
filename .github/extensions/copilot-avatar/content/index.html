@@ -17,6 +17,14 @@
 <body>
   <div id="avatar-container"></div>
   <div id="subagent-overlays" aria-hidden="true"></div>
+  <div id="root-model" class="subagent-label" aria-hidden="true">
+    <span id="root-model-name" class="agent-name"></span>
+    <span id="root-model-model" class="agent-model"></span>
+    <span id="root-model-badge" class="agent-badge idle">
+      <span id="root-model-badge-icon" class="agent-badge-icon">•</span>
+      <span id="root-model-badge-text" class="agent-badge-text"></span>
+    </span>
+  </div>
   <div id="status-container">
     <div id="status-indicator"></div>
     <div id="subtasks"></div>
@@ -40,6 +48,14 @@
           <option value="copilot">Copilot</option>
           <option value="clippy">Clippy</option>
         </select>
+      </label>
+      <label class="tts-checkbox-row" for="badge-visibility-toggle">
+        <span>Show avatar badges</span>
+        <input id="badge-visibility-toggle" type="checkbox" checked />
+      </label>
+      <label class="tts-checkbox-row" for="model-visibility-toggle">
+        <span>Show model badges</span>
+        <input id="model-visibility-toggle" type="checkbox" />
       </label>
 
       <label>Engine

@@ -2,13 +2,13 @@
 
 ![Copilot Avatar Demo](assets/copilot-avatar-squad-demo.gif)
 
-A 3D animated Copilot avatar that lives in a native window alongside your terminal session. It shows the main Copilot avatar, visualizes sub-agents beneath it, displays floating messages, and can read final responses aloud with text-to-speech.
+A cheerful 3D Copilot sidekick that lives in a native window beside your terminal. It shows the main avatar, brings sub-agents on stage underneath it, tosses out floating messages, and can read final responses aloud with text-to-speech.
 
-## Why?
+## Why this exists
 
-I love using Copilot CLI, but sometimes the only feedback you get is a bleep. The agent is off doing its thing, and you're just sitting there waiting. I wanted something a bit more human.
+I love using Copilot CLI, but sometimes the only sign of life is a bleep and a lot of faith. The agent is off doing clever things, and you're left staring at the terminal like it's supposed to wink back.
 
-So I built this. A little friend that lives on your screen and actually talks to you. When Copilot finishes a task, the avatar reads the response back using text-to-speech. Not every intermediate step, just the final message. The meaningful stuff.
+So I built this: a little screen buddy with some personality. It makes Copilot feel more alive, more visible, and a lot more fun to keep around. When Copilot finishes something meaningful, the avatar can read the final response out loud. Not every little intermediate thought. Just the good part.
 
 ## Features
 
@@ -16,6 +16,9 @@ So I built this. A little friend that lives on your screen and actually talks to
 - **Optional Clippy mode**: swap the root avatar for an animated paperclip-style assistant on a transparent background
 - **Per-agent activity states**: writing, reading, running, thinking, and idle states route independently to the correct avatar
 - **Responsive squad layout**: sub-agents reflow into centered rows for smaller windows instead of disappearing off-screen
+- **Optional avatar badges**: show or hide the full name/status card under each avatar
+- **Optional model badges**: show the current model for the main agent and sub-agents when you want the extra context
+- **RoboDuck variant**: some agents can show up in full RoboDuck mode with the classic avatar head and a snap-on GLB duckbill
 - **Activity FX**
   - Writing: green eyes, typing motion, floating binary glyphs
   - Reading: blue eyes, scanning motion, soft scan beam
@@ -39,15 +42,15 @@ So I built this. A little friend that lives on your screen and actually talks to
 
 ## Squad Integration
 
-With optional [Squad](https://github.com/bradygaster/squad) integration, the avatar keeps the normal Copilot flow and enriches the same sub-agents with Squad metadata.
+If [Squad](https://github.com/bradygaster/squad) is available in the workspace, the avatar gets even more personality without changing the normal Copilot flow.
 
-- **Names from Squad**: sub-agents use Squad member names when available
+- **Names from Squad**: sub-agents can use Squad member names when available
 - **Role-based color coding**: labels, accents, glows, and head tints follow Squad roles
-- **Extra context**: roster and charter metadata help each sub-agent feel distinct
+- **Extra flavor**: roster and charter metadata help each sub-agent feel like its own little specialist
 
 ## Releases
 
-GitHub Releases are the distribution channel. Each release includes a `copilot-avatar-vX.Y.Z.zip` asset with the `copilot-avatar/` folder at the ZIP root.
+GitHub Releases are the easiest way to grab it. Each release includes a `copilot-avatar-vX.Y.Z.zip` asset with the `copilot-avatar/` folder at the ZIP root, ready to drop into your extensions folder.
 
 ## Installation
 
@@ -60,7 +63,7 @@ You need [Node.js](https://nodejs.org) installed.
 3. Copy that folder to one of the extension locations below.
 4. Run `npm install` inside the copied `copilot-avatar` folder.
 
-Clone or download this repo and copy the `copilot-avatar` folder from `.github/extensions/` to one of the locations below.
+If you'd rather use the repo directly, clone or download it and copy the `copilot-avatar` folder from `.github/extensions/` to one of the locations below.
 
 **Per-project** (only active when you're inside that repo):
 
@@ -85,24 +88,30 @@ cd <path-to-copilot-avatar>
 npm install
 ```
 
-Then restart Copilot CLI so the extension loads.
+Then restart Copilot CLI and your new desk buddy should be ready to show up.
 
 > **Important:** do not keep both a **global** and **per-project** copy enabled at the same time. If both exist, disable one so only the copy you want is active.
 
 ## Usage
 
-Open the avatar window when you want it, then let it react to the current session:
+Open the avatar window, keep coding, and let it react to the session in real time:
 
 - Use the `/avatar` command to open it manually
 - Use the `copilot_avatar_show` tool (with optional `reload: true`)
 - Use the `copilot_avatar_eval` tool to run JavaScript in the webview
 - Use the `copilot_avatar_close` tool to close the window
 
-Sub-agents appear automatically when the current session emits sub-agent lifecycle events.
+Sub-agents appear automatically when the current session emits sub-agent lifecycle events, so the whole scene fills out as work gets delegated.
 
 Select **Avatar → Clippy** in settings to show the animated grey `clippy.glb` paperclip on a transparent background. Clippy mode prefers Voxtral speech with the more animated `Paul - Excited` preset, hides response/status overlays, and speaks a short Clippy-style summary of the final Copilot response instead of reading the message verbatim. Import or record a Voxtral reference clip while Clippy is selected to save it as the default Clippy voice. You can also use **Generate retro Clippy sample** to fetch a short pitched-up Microsoft Sam-style SAPI4 reference WAV at setup time instead of bundling an audio file.
 
-If Squad is available for the workspace, the avatar uses that metadata automatically. Without Squad, it works as a normal Copilot avatar.
+If Squad is available for the workspace, the avatar picks up that metadata automatically. Without Squad, it still works great as a plain Copilot companion.
+
+## RoboDuck Asset Notes
+
+- The duckbill is loaded from `content/duck-bill.glb`.
+- The current setup keeps the normal avatar head and snaps on a separate duckbill mesh when it is time for RoboDuck to make an entrance.
+- If you replace `duck-bill.glb`, aim for a clean beak-shaped mesh centered for face attachment. Large mask-like or heavily quantized exports may need placement or import adjustments in `content/main.js`.
 
 ## Activity States
 
@@ -114,7 +123,7 @@ If Squad is available for the workspace, the avatar uses that metadata automatic
 | **Running** | `powershell`, `task` | Amber eyes, more energetic motion |
 | **Thinking** | `assistant.reasoning` | Purple eyes, calmer motion, orbiting dots |
 
-The root avatar uses the same activity-state system even when there are no sub-agents active.
+The root avatar uses the same activity-state system even when there are no sub-agents active, so it never feels like a static prop.
 
 ## TTS Controls
 
@@ -124,6 +133,8 @@ The root avatar uses the same activity-state system even when there are no sub-a
 | ⚙️ button | Open settings dropdown |
 | Avatar dropdown | Choose Copilot or Clippy |
 | Engine dropdown | Choose Web Speech or Voxtral |
+| Show avatar badges | Show or hide the full badge card under each avatar |
+| Show model badges | Show or hide the model line inside each badge card |
 | Voice dropdown | Select a system voice |
 | Voxtral backend | Choose Mistral Cloud or local vLLM |
 | Generate retro Clippy sample | Fetch and save a pitched-up Microsoft Sam-style Voxtral reference clip for Clippy |
@@ -148,7 +159,8 @@ copilot-avatar/
     ├── style.css       # Styling for the window and overlays
     ├── main.js         # 3D scene, squad logic, activity effects, TTS
     ├── model.glb       # 3D Copilot head model
-    └── clippy.glb      # 3D animated Clippy model
+    ├── clippy.glb      # 3D animated Clippy model
+    └── duck-bill.glb   # Optional RoboDuck beak asset
 ```
 
 ## Dependencies

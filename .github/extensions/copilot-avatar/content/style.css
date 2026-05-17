@@ -152,6 +152,14 @@ body.tiny-layout .agent-badge {
   gap: 4px;
 }
 
+body.compact-layout .agent-model {
+  font-size: 9px;
+}
+
+body.tiny-layout .agent-model {
+  font-size: 8px;
+}
+
 .agent-name {
   font-size: 12px;
   font-weight: 600;
@@ -167,6 +175,21 @@ body.tiny-layout .agent-badge {
   display: inline-block;
   margin-right: 6px;
   color: var(--role-accent);
+}
+
+.agent-model {
+  display: none;
+  max-width: 100%;
+  color: #8b949e;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-model.visible {
+  display: block;
 }
 
 .agent-badge {
@@ -321,6 +344,12 @@ body.tiny-layout .agent-badge {
   animation: pulse 1.5s ease-in-out infinite;
 }
 
+#root-model {
+  max-width: min(100%, 220px);
+  pointer-events: none;
+  z-index: 14;
+}
+
 @media (max-width: 560px), (max-height: 640px) {
   #message-container {
     bottom: 39%;
@@ -339,6 +368,10 @@ body.tiny-layout .agent-badge {
 
   #status-indicator {
     font-size: 14px;
+  }
+
+  #root-model {
+    font-size: 11px;
   }
 
   #subtasks {

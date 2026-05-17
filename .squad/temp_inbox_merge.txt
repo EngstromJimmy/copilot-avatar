@@ -1,0 +1,209 @@
+---
+date: 2026-05-16T21:23:20.636+02:00
+agent: Howard the Duck
+artifact: .github/extensions/copilot-avatar/main.mjs, .github/extensions/copilot-avatar/content/main.js
+decision: reject
+revision_owner: Peter Parker
+---
+
+Current stale-agent suppression is still leaking in the place users can actually see: inside one long directive.
+
+The cross-directive reset path is fine now. The real hole is that some spawned agents never get `subagent.completed` or `subagent.failed`, and `tool.execution_complete` only clears their active tool badge. That leaves the runtime state `active`, the webview avatar still on screen, and the card keyed only by runtime `agentId`.
+
+That combination is exactly how you get "a lot of agents" plus dual cast identities:
+
+1. Tony instance A starts, runs a tool, becomes visible.
+2. SDK never sends a terminal sub-agent event for Tony instance A.
+3. `tool.execution_complete` clears activity but does not retire the card.
+4. Tony instance B starts later with a different runtime `agentId`.
+5. Both instances resolve to `Tony Stark`, and both stay visible because there is no stable-identity collapse.
+
+The "role text is showing in the box beneath the name again" clue is related but not identical:
+
+- In `content/main.js`, the badge falls back to `liveIntent || taskSummary || badge.text`.
+- `taskSummary` comes from `avatar.description`.
+- In `lib/squad-context.mjs`, charter summaries are built role-first (`role` is pushed first in `summarizeCharter()`), so an idle/stale card naturally falls back to role-flavored copy once tool activity is cleared.
+
+Verdict: both symptoms share the same stale-card survival path, but only the duplicate-Tony problem requires identity dedupe. The role text relapse also needs badge-source cleanup or precedence tuning, otherwise legitimate long-lived cards can still drift back to role-heavy copy even after the stale-instance bug is fixed.
+
+Required revision:
+
+- Add a fallback retire/hide path for visible sub-agents whose last active tool finished but never received a terminal sub-agent event.
+- Prevent two visible cards with the same resolved cast identity from coexisting; the newer runtime instance should replace or suppress the older stale one.
+- Re-check badge fallback for visible idle agents so role-first charter summaries do not reappear in the lower badge line unless that is explicitly desired.
+
+Evidence checked:
+
+- `node --check .github/extensions/copilot-avatar/main.mjs`
+- `node --check .github/extensions/copilot-avatar/content/main.js`
+- Targeted static probe confirming `tool.execution_complete` does not mark sub-agents terminal, `clearAgentActivity` does not schedule removal, and the webview avatar map is keyed by runtime `agentId`.
+
+---
+date: 2026-05-16T21:04:02.794+02:00
+agent: Howard the Duck
+artifact: .github/extensions/copilot-avatar/main.mjs
+decision: reject
+revision_owner: Peter Parker
+---
+
+Tony's fix correctly blocks hidden sub-agents from becoming visible through bare `assistant.reasoning`, and replay/sync now limits rehydration to active agents that already earned visibility.
+
+Rejected because hidden agents still promote from intent-only traffic. `assistant.intent` currently sets `hasCurrentTurnWork` for any non-generic intent, and this system routinely emits launch-time gerund intents like `Exploring codebase` or `Creating parser tests` before a tool starts. That means a freshly spawned or reactivated stale agent can still appear in the avatar list immediately, which does not satisfy Jimmy's complaint about agent floods during spin-up.
+
+Required revision: keep intent as badge text for agents that are already visible, but require tool activity or another stronger current-turn work signal before first-time visibility.
+
+# 2026-05-16T21:04:02.794+02:00 — Intent-only sub-agent visibility stays gated
+
+- **By:** Peter Parker
+- **What:** Hidden sub-agents in `.github/extensions/copilot-avatar/main.mjs` no longer become visible from `assistant.intent` alone. Intent still updates cached badge text for already-visible agents, but first visibility stays gated on stronger current-turn evidence already tracked through tool execution.
+- **Why:** Launch-time `report_intent` summaries like `Exploring codebase` or `Creating parser tests` can replay on stale or freshly started agents before they do any real work. Letting those generic summaries count as `hasCurrentTurnWork` reopens the stale flood even after replay and reasoning fixes.
+- **Tradeoff:** Quiet sub-agents that never emit tool activity will remain hidden until they produce a stronger signal. That is intentional for now because false-positive floods were the sharper regression.
+
+# 2026-05-16T21:23:20.636+02:00 — Fallback-retire stale sub-agent cards and dedupe by stable identity
+
+**By:** Peter Parker
+
+**What:** The avatar extension now treats task summaries as separate badge content from roster descriptions, forwards stable identity keys into the webview, and adds a last-tool fallback retire path for visible sub-agents that never receive `subagent.completed` / `subagent.failed`.
+
+**Why:** This keeps same-turn zombie cards from lingering as idle ghosts, gives the webview its own duplicate-collapse safety net when two runtime instances resolve to the same cast identity, and prevents the lower badge from regressing into role text once live activity clears.
+
+2026-05-16T21:04:02.794+02:00 — On sub-agent cards, keep role metadata inline with the agent name and reserve the badge for live work text (tool activity, intent, task summary, or idle state). This keeps compact overlays answering “what is this agent doing now?” instead of repeating identity metadata in two places.
+
+# 2026-05-16T21:23:20.636+02:00 — Separate badge task summary from roster metadata
+
+## What
+
+Do not let sub-agent badge fallback read from the same `description` field that also carries Squad charter / roster metadata.
+
+Keep a dedicated task-summary value for badge fallback, seeded from task spawn hints or other explicit work assignment text, while leaving roster description available only for metadata enrichment.
+
+## Why
+
+The duplicate-Tony bug and the “role text in the badge again” clue point at the same contract failure: the UI surface can drift onto a runtime instance that has identity metadata but not the current work payload. When that happens, a badge fallback that reads roster description will look like a role regression even if the live work path itself is intact.
+
+## Affected files
+
+- `.github/extensions/copilot-avatar/main.mjs`
+- `.github/extensions/copilot-avatar/content/main.js`
+
+# Decision: Defensive Sub-Agent Activation Gate
+
+**Date:** 2026-05-16T20:46:28.793+02:00  
+**By:** Tony Stark (Lead)  
+**Status:** Implemented
+
+---
+
+## What
+
+The avatar extension now treats `subagent.started` as a provisional runtime event, not as enough evidence to show a sub-agent card.
+
+## Decision
+
+- Keep tracking the sub-agent immediately in extension state so later events still resolve identity, model, and tool-call joins correctly.
+- Do **not** surface the card to the webview on `subagent.started`.
+- Only surface a sub-agent after a current-turn work signal arrives:
+  - `tool.execution_start`
+  - `tool.execution_progress`
+  - `assistant.intent`
+  - `assistant.reasoning`
+- Do not let model-only updates or terminal-only events (`subagent.completed` / `subagent.failed`) create a new avatar for an agent that was never shown.
+- Harden `session.resume` with `resetSubagents: true` so stale active maps cannot replay ghosts after resume.
+
+## Why
+
+We cannot fix upstream Squad agent-pool behavior here. Old idle agents can be reactivated and emit fresh `subagent.started` events on a new directive. Gating UI activation on meaningful current-turn work is the smallest safe extension-side filter: it drops idle reactivation noise without breaking the extension's internal joins or normal live agents once they actually begin doing work.
+
+### 2026-05-16T21:04:02.794+02:00: Gate hidden subagents on substantive work
+**By:** Tony Stark
+**What:** Hidden sub-agents in the avatar extension now stay suppressed until the current turn produces real work evidence — tool execution or a substantive intent. Bare reasoning pulses no longer create cards, and replay only rehydrates active agents that already earned visibility.
+**Why:** The runtime can reactivate old idle agents and emit fresh `assistant.reasoning` noise. Letting that signal mint cards is exactly how the avatar ends up listing a crowd of stale agents when new work starts.
+
+# 2026-05-16T21:23:20.636+02:00 — Collapse visible sub-agent cards by stable identity
+
+## What
+
+Keep runtime sub-agent bookkeeping keyed by `agentId`, but collapse the visible avatar/card surface by a stable identity key derived from Squad metadata, `agentName`, or `agentDisplayName`.
+
+When a new visible runtime instance resolves to the same stable identity as an existing visible card, the extension should immediately evict the older card and let the newer runtime owner drive the shared identity.
+
+## Why
+
+The prior visibility hardening stopped weak replay signals from surfacing stale agents, but it did not close the duplicate-identity seam. Re-activated idle instances and fresh instances can both resolve to the same cast alias (`lead` → Tony Stark), and a UI keyed only by runtime `agentId` will happily show both.
+
+## Affected files
+
+- `.github/extensions/copilot-avatar/main.mjs`
+- `.github/extensions/copilot-avatar/content/main.js`
+
+---
+date: 2026-05-16T20:58:04.144+02:00
+agent: Tony Stark
+topic: subagent-badge-precedence
+---
+
+# Sub-agent badge precedence contract
+
+The badge text contract is stateful and should stay explicit across the extension/webview seam.
+
+- Extension layer (`main.mjs`) is responsible for feeding three inputs into the webview: live `activityLabel`, cached `intent`, and `description` sourced first from task spawn hints.
+- Webview layer (`content/main.js`) resolves badge text in this order:
+  - tool-active: `activityLabel` or derived tool copy → `intent` → task summary (`description`) → activity badge default
+  - thinking without tool activity: `intent` → task summary → thinking default
+  - idle: `intent` → task summary → `role` (if present) → idle default
+  - success/failed: terminal `intent`/error copy → terminal badge default
+
+If anyone changes this, they need to update both layers together or the cards will stop answering the only question that matters: what is this agent doing right now?
+
+2026-05-16T20:46:28.793+02:00 — Sub-agent badges should resolve fallback text in this order: live tool/activity or intent first, cached task spawn summary/description second, and role/default labels last. Keep Squad charter metadata available for identity and styling, but do not let it outrank the task summary the runtime already captured.
+
+# Decision: Root Cause of "8-10 Sub-Agents on Every Command"
+
+**Date:** 2026-05-16T20:38:31.869+02:00  
+**By:** Tony Stark (Lead)  
+**Status:** Finding + Recommendation (no code change yet)
+
+---
+
+## What was investigated
+
+User reported seeing 8–10 sub-agent cards in the avatar window whenever they issue a command. `list_agents` in the coordinator session shows many old idle background agents from prior work (tony-stark-*, shuri-*, scribe-*, etc.).
+
+## Finding: The extension is NOT the source
+
+The `assistant.turn_start` reset chain is correctly implemented:
+
+1. `clearSubagentStateMaps()` — synchronous, empties all runtime maps immediately
+2. `await callWindowFunction("clearSubagents", { preserveRoot: true }, 3000)` — clears the webview avatars (non-root)
+3. `await refreshVisibleSquadContext()` → `syncKnownSubagents()` — replays only agents with `status === "active"` in the now-fresh maps
+
+Any agent appearing after `assistant.turn_start` is legitimately added during the current directive. The stale-state defense layers (directive boundary reset, active-only filter, prune timers) are all in place and working.
+
+## Most probable root cause: platform-level idle agent reactivation
+
+The coordinator keeps idle background agents alive between commands (visible in `list_agents` as idle). When a new command arrives, the coordinator sends messages to these idle agents, re-activating them. The SDK fires `subagent.started` for each reactivated agent. The avatar correctly displays all of them — it's not at fault.
+
+**The fix belongs upstream:** Squad agents should exit cleanly after completing a task so they don't accumulate as idle in `list_agents`. Clean exits prevent `subagent.started` reactivation events from firing on the next command.
+
+## Secondary latent bug found (separate from reported symptom)
+
+`session.resume` does NOT reset subagents:
+
+```javascript
+session.on("session.resume", (event) => {
+    if (event.data?.context?.cwd) {
+        void refreshSessionContext(event.data.context.cwd);  // no resetSubagents: true
+    }
+});
+```
+
+If agents were active mid-work when the session suspended (no `subagent.completed` delivered), they remain in `subagentStateById` with `status: "active"`. On resume, `syncKnownSubagents` replays them as ghosts. **This is a real bug but is not the reported symptom.**
+
+Fix: add `{ resetSubagents: true }` to the `session.resume` call, OR clear `active` entries in `subagentStateById` before the sync if the elapsed time since their `startedAt` exceeds a reasonable deadline (e.g., >10 minutes without a completion event).
+
+## Decision
+
+- **Do not change the extension's `assistant.turn_start` reset path** — it is correct.
+- **Route the "too many agents" fix to whoever owns coordinator/Squad agent lifecycle** — agents should call `process.exit()` (or equivalent) when their task completes.
+- **Track `session.resume` ghost replay as a separate issue** — assign to whoever does the next extension maintenance pass.
+
