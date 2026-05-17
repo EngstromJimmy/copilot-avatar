@@ -43,3 +43,53 @@ The v0.2.1 release addresses:
 
 ## Rationale
 This release represents a complete feature set of avatar fixes that have been validated through Squad testing. Separating the product commit from internal state files keeps the repository history clean and makes release tracking clear.
+
+
+# Branch Switch Decision - Tony Stark
+
+**Date:** 2026-05-17T23:47:19.558+02:00  
+**Task:** Switch repository to SAM implementation branch  
+**Requested By:** Jimmy Engstrom  
+
+## Finding
+
+**SAM Implementation Branch Identified:** `feat/microsoft-sam-tts`
+
+A single, clear match was found among all local and remote branches. This is the Microsoft SAM (Semantic Audio Model) implementation branch.
+
+## Issue Encountered
+
+**Cannot proceed with checkout due to conflicting changes:**
+
+### Modified Files (2):
+- `.squad/agents/howard-the-duck/history.md`
+- `.squad/skills/avatar-regression-probes/SKILL.md`
+
+### Untracked Files at Risk:
+- `.copilot/skills/*` (multiple SKILL.md files)
+- `.github/agents/` and `.github/workflows/` (CI/CD configuration)
+- `.squad/` (squad infrastructure files including registry, charter, health reports)
+- Root files: `.gitattributes`, `.gitignore`
+
+These files exist on the SAM branch and would be overwritten by the checkout operation.
+
+## Status
+
+**Current Branch:** `main`  
+**Target Branch:** `feat/microsoft-sam-tts`  
+**Checkout Status:** ❌ Blocked
+
+## Next Steps Required
+
+To proceed, user must resolve conflicts by one of:
+
+1. **Stash changes** (temporary): `git stash`
+2. **Commit changes** (permanent): `git add . && git commit -m "message"`
+3. **Clean untracked files**: `git clean -fd` (warning: destructive)
+
+After resolving, retry: `git checkout feat/microsoft-sam-tts`
+
+---
+
+*Decision made to preserve all user changes per project policy.*
+

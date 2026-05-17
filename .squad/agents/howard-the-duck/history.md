@@ -7,6 +7,7 @@
 
 ## Learnings
 
+- 2026-05-17T22:55:21.159+02:00 — Stale-idle subagent review: sign-off needs both source and live proof. In `.github/extensions/copilot-avatar/main.mjs`, late-open replay is only safe if it clears non-root UI plus backend subagent caches before `session.getMessages()` hydration and prunes agents whose last real tool already finished. In `.github/extensions/copilot-avatar/content/main.js`, `clearSubagents({ preserveRoot: true })` must remove visible generic cards and wipe queued intent/activity/thinking so re-adding the same `agentId` comes back idle with blank detail instead of reviving stale state.
 - 2026-05-17T22:31:24.735+02:00 — Late-open avatar review: the reliable regression proof is a two-part check. First source-probe `.github/extensions/copilot-avatar/main.mjs` for `session.getMessages()` hydration plus restored `toolCallId`/spawn-metadata maps; then live-probe `.github/extensions/copilot-avatar/content/main.js` by queueing `setAgentThinking` / `setAgentIntent` / `setAgentActivity` before `addSubagent` and confirming no placeholder card appears until a strong identity payload lands, at which point the card upgrades to the Squad name and keeps `workDescription` in the lower detail line while Copilot root-summary chatter stays suppressed.
 - 2026-05-16T23:33:39.835+02:00 — Scribe UI name-loss repro analysis: Read-only probe of main.mjs, content/main.js, and content/style.css identified metadata loss seam in `syncKnownSubagents()`. When the function refreshes known sub-agents during context change or window rehydration, it calls `upsertSubagentState(state.agentId)` with only the agentId and no cached metadata, forcing `resolveSubagentState()` to recompute from scratch. The fallback chain in `buildSubagentPayload()` then collapses to raw agentId when display names aren't recovered: `displayName: cleanText(overrides.displayName ?? state.displayName) || cleanText(state.agentId)`. Result: agent "Scribe" loses its name and renders as "agent-xyz" in the UI. The seam is at `.github/extensions/copilot-avatar/main.mjs` lines ~440-450, where `freshState = upsertSubagentState(state.agentId)` should preserve or pass the original agent metadata from the cached state.
 - Day-1 context: CopilotAvatar is a Copilot CLI extension for a 3D avatar experience with Squad integration.
@@ -192,3 +193,6 @@ All three agents' names resolve through casting aliases and Squad context:
 - shuri → Shuri
 - ision → Vision
 - 	ester → Howard the Duck
+## 2026-05-17T21:49:01.4252943Z - Branch Switch Session (Cross-Team Update)
+
+Tony Stark attempted to switch to SAM implementation branch (eat/microsoft-sam-tts). Local modifications in your tracked files prevented the switch. No action required - Tony handled the analysis.

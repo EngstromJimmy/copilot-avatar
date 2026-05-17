@@ -145,3 +145,15 @@ Older work documented in `history-archive.md`:
 - Window behavior: always-on-top now respects transparent window mode
 
 **Validation:** Product commit clean; squad state separated as designed.
+## 2026-05-17T21:49:01.4252943Z - Branch Analysis Session
+
+**Task:** Switch repository to SAM implementation branch  
+**Branch Found:** eat/microsoft-sam-tts  
+**Status:** Blocked - local modifications prevent checkout
+
+**Conflicts Identified:**
+- .squad/agents/howard-the-duck/history.md (modified)
+- .squad/skills/avatar-regression-probes/SKILL.md (modified)
+- Multiple untracked files at risk
+
+**Decision:** Documented findings and blocked status in decisions.md
