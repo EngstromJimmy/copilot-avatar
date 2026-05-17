@@ -2127,3 +2127,54 @@ The broken seam was correlation, not rendering polish. Copilot can emit follow-u
 
 - Derive `alwaysOnTop` from `transparentWindow` in `.github/extensions/copilot-avatar/main.mjs` for initial window creation and settings updates.
 - Reopen the window when that derived window-style contract changes so the recreated native window picks up both the correct decorations and the correct topmost state.
+
+---
+
+## 2026-05-17T22:55:21.159+02:00: Clear late-open stale subagent replay and retire idle ghosts
+
+**By:** Vision (Platform Dev)
+
+**What:** Treat Copilot sub-agent visibility as current-turn live state, not raw session residue. Clear non-root avatars and reset sub-agent runtime caches before replaying `session.getMessages()` into a late-open window, and remove any non-terminal sub-agent after its last non-spawn tool clears.
+
+**Why:** The runtime can keep idle/background agents around without marking them `completed` or `failed`. Replaying those old `subagent.started` events into the webview made the avatar show stale general-purpose cards even when the current session had no live sub-agents.
+
+**Scope:** `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/content/main.js`
+
+---
+
+### 2026-05-17T22:55:21.159+02:00: Howard approves stale subagent cleanup
+
+**By:** Howard the Duck (Tester)
+
+**Decision:** APPROVE the stale-idle subagent cleanup for this artifact.
+
+**Why:** The source now clears non-root avatars and backend subagent caches before late-open replay, resets subagent runtime state at root `assistant.turn_start` before Squad sync, and retires/prunes agents whose last real tool finished even if no terminal subagent event arrives. Live avatar probing also showed `clearSubagents({ preserveRoot: true })` removes a visible generic stale card and wipes queued intent/activity/thinking so the same `agentId` re-added later comes back idle with blank detail instead of reviving old state.
+
+**Scope:** `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/content/main.js`
+
+---
+
+## 2026-05-17: README Update for v0.2.1
+
+**Author:** Tony Stark  
+**Date:** 2026-05-17  
+**Decision:** Document v0.2.1 release highlights in README.md
+
+### Context
+The 0.2.1 release focused on bug fixes and quality improvements across sub-agent rendering, activity reporting, and settings persistence.
+
+### Change
+Added a new 0.2.1 section to the Releases section of README.md, positioned above 0.2.0 for chronological clarity (newest first).
+
+### Highlights Documented
+1. **Squad sub-agent names** — name resolution fix for late-open/reload scenarios
+2. **Sub-agent activity detail** — thinking/activity text now accurately reflects work being done
+3. **Cleaner sub-agent scene** — removed stale general-purpose cards from idle agents
+4. **Voice persistence** — voice selection now correctly persists across TTS engines (especially ElevenLabs)
+5. **Window behavior** — always-on-top now respects transparent window mode preferences
+
+### Rationale
+- Kept language aligned with 0.2.0 style (feature-focused, benefit-driven)
+- Each bullet emphasizes **what was fixed** and **why it matters** to the user
+- Positioned newest release at the top (standard practice)
+- No unrelated changes to existing sections

@@ -19,9 +19,23 @@ Implementing and refining sub-agent visibility, identity resolution, and metadat
 - Non-root badge detail should pin to explicit workDescription/	askSummary, and idle/meta tools must not outrank 	hinking.
 - Opening the avatar after agents are already running needs runtime-side replay from session.getMessages() in .github/extensions/copilot-avatar/main.mjs.
 - subagent.selected is useful as a short-lived identity hint only if bound to concrete gentId once weak event arrives.
+- Late-open replay must clear non-root avatars and reset sub-agent runtime caches before hydrating from session history, or idle background agents can resurrect as fake live cards in .github/extensions/copilot-avatar/main.mjs and .github/extensions/copilot-avatar/content/main.js.
+- If a sub-agent never emits `subagent.completed` / `subagent.failed`, retire it after its last non-spawn tool clears; otherwise idle general-purpose ghosts linger even when the runtime only reports idle agents.
 
 - Avatar window topmost behavior is an explicit extension contract, not an automatic side effect of transparency. .github/extensions/copilot-avatar/main.mjs should derive alwaysOnTop from transparentWindow, and .github/extensions/copilot-avatar/lib/webview-child.mjs should only mirror the explicit flag it receives.
 - Framed/non-transparent avatar mode should behave like a normal desktop window. When transparentWindow flips, reopen the native window so decorations and topmost state stay aligned across .github/extensions/copilot-avatar/main.mjs and .github/extensions/copilot-avatar/lib/webview-child.mjs.
+
+## 2026-05-17 — README 0.2.1 Release Documentation
+
+Tony Stark documented the v0.2.1 release in README.md, highlighting the key platform fixes implemented across the sub-agent identity/visibility/detail refactors:
+
+- Sub-agent names: Late-open/reload naming restoration
+- Sub-agent activity detail: Thinking/activity text accuracy
+- Stale card cleanup: Late-open replay + idle agent retirement
+- Voice persistence: ElevenLabs dropdown placeholder preservation
+- Window behavior: always-on-top gating to transparentWindow contract
+
+**Result:** Product-facing documentation now clearly connects v0.2.1 implementation to user-visible improvements in sub-agent rendering quality and stability.
 
 ## 2026-05-17T22:35:00+02:00 — Avatar window always-on-top behavior fix
 
@@ -58,4 +72,3 @@ Full Squadron integration restored for late-open avatar naming. All three agents
 - Mic State Handoff Bug & Web-Ready Gating
 - Sub-agent Fallback Collapse Fix (May 16)
 - Initial identity/badge system design
-

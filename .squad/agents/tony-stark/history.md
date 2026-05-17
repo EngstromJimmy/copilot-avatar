@@ -103,3 +103,25 @@ Older work documented in `history-archive.md`:
 
 **Outcome:** Spawn manifest verified; both agents checked in with correct cast names and roles. All shared memory consolidated.
 
+## Learnings
+
+### 2026-05-17T21:17:25.313+02:00 — Avatar regression commit scope
+
+- Commit scope matters when the worktree is noisy: stage only `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/lib/squad-context.mjs`, `.github/extensions/copilot-avatar/content/main.js`, and `.github/extensions/copilot-avatar/content/style.css` for this regression bundle.
+- Lightweight validation that actually buys confidence here: `node --check` on the three JS/MJS entry points, `git diff --check` on the scoped files, and a direct `loadSquadContext()` / `resolveSquadAgentMetadata()` probe for `lead`, `backend-dev`, and `tester`.
+- Key product seams for this fix live in the extension bridge and webview pair: `main.mjs` carries spawn-label/detail payloads and the ready handshake, `lib/squad-context.mjs` resolves cast aliases, and `content/main.js` + `content/style.css` render role/detail state cleanly.
+
+## 2026-05-17 — README 0.2.1 Release Documentation
+
+**Work:** Updated README.md to document v0.2.1 release highlights.
+
+**Highlights Documented:**
+1. **Squad sub-agent names** — name resolution fix for late-open/reload scenarios
+2. **Sub-agent activity detail** — thinking/activity text now accurately reflects work being done
+3. **Cleaner sub-agent scene** — removed stale general-purpose cards from idle agents
+4. **Voice persistence** — voice selection now correctly persists across TTS engines (especially ElevenLabs)
+5. **Window behavior** — always-on-top now respects transparent window mode preferences
+
+**Approach:** Kept language aligned with 0.2.0 style (feature-focused, benefit-driven). Each bullet emphasizes what was fixed and why it matters to the user. Positioned newest release at the top for chronological clarity.
+
+**Outcome:** v0.2.1 release section added to README, positioned above 0.2.0. No unrelated changes to existing sections.
