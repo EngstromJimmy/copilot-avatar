@@ -125,3 +125,23 @@ Older work documented in `history-archive.md`:
 **Approach:** Kept language aligned with 0.2.0 style (feature-focused, benefit-driven). Each bullet emphasizes what was fixed and why it matters to the user. Positioned newest release at the top for chronological clarity.
 
 **Outcome:** v0.2.1 release section added to README, positioned above 0.2.0. No unrelated changes to existing sections.
+
+## 2026-05-17 23:21:43Z — Release v0.2.1 Commit
+
+**Status:** Complete
+
+**Commit:** c152904dd97e337608df0b7a50fc8819dab8eb59 (pushed to origin/main)
+
+**Release Scope:**
+- 4 files changed: README.md, main.js, squad-context.mjs, main.mjs
+- 1057 insertions, 109 deletions
+- Excluded: .squad/ internal state files
+
+**Release Highlights:**
+- Squad sub-agent names: fixed name resolution and late-open/reload behavior
+- Sub-agent activity detail: fixed thinking/activity text display
+- Cleaner sub-agent scene: removed stale lingering general-purpose cards
+- Voice persistence: fixed voice selection across TTS engines (ElevenLabs)
+- Window behavior: always-on-top now respects transparent window mode
+
+**Validation:** Product commit clean; squad state separated as designed.
