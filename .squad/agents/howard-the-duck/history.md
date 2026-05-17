@@ -26,9 +26,16 @@ Howard the Duck — QA & Validation specialist for the CopilotAvatar extension.
 
 ## Current Focus
 
-SAM TTS regression probe complete (49/49 assertions passing). Probe at `.github/extensions/copilot-avatar/probe-regression.mjs`. Awaiting next test campaign.
+Probe suite hardened to 74/74 for Peter's confirmed full SAM formant implementation. All groups complete. Awaiting next test campaign.
 
 ## Recent Sessions
+
+### 2026-05-18 — Peter's SAM Formant Implementation Pass — Probe Hardening (COMPLETED)
+- **Task:** Harden Groups 3 and 13 for Peter's confirmed full formant synthesizer (removed seam-agnostic relaxations from Shuri's pass)
+- **Group 3:** Added `synthesizeSamAudio`, `audioBufferToWavDataUrl`, `SAM_PHONEME_DATA` assertions; added SAM_VOICES schema check (pitch/formantShift/rate per entry)
+- **Group 13:** Restored `OfflineAudioContext` assertion; made `samG2P` absence a hard failure (function confirmed present at 2820 chars, pure text transform)
+- **Outcome:** 74/74 passing. Committed `0f30416`.
+- **Key fact:** `samG2P` is 2820 chars, no fetch/XHR/WebSocket — pure deterministic G2P. `SAM_VOICES` schema: `{ id, name, pitch, formantShift, rate }` × 6.
 
 ### 2026-05-18 — SAM TTS + Sub-Agent Visibility Regression Probe (COMPLETED)
 - **Task:** Write regression coverage for SAM TTS (feat/microsoft-sam-tts) and sub-agent visibility miss
