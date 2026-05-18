@@ -602,3 +602,212 @@ Jimmy's repro showed the runtime task list on `Vision` while the UI stayed on `T
 
 Late-open reloads and background-task carries should now converge on the same agent names/detail text the runtime exposes, instead of leaving old cast aliases stuck on screen.
 
+
+### 2026-05-18T16:11:43.269+02:00: User directive
+**By:** Jimmy Engstrom (via Copilot)
+**What:** Prefer the simplest approach for Avatar sub-agent listing and naming; avoid more advanced plumbing than necessary.
+**Why:** User request — captured for team memory
+
+## Howard the Duck — Background snapshot retire guard
+
+- **Date:** 2026-05-18T15:35:44.313+02:00
+- **Status:** Approved after revision
+
+### What I found
+
+The disappearing-subtask bug was not just a first-open replay seam. Live cards could still get pruned by `scheduleFallbackSubagentRetire()` after the last tool finished, even when the latest background-task snapshot still said that agent was active.
+
+### Decision
+
+Keep a live set of the most recent background-task agent ids and make fallback retire bail out while an agent is still present in that snapshot. Keep the lightweight probe watching both seams: first-open live-state merge and the background-snapshot retire guard.
+
+### Evidence
+
+- `node probe-regression.mjs` passes with the new guard.
+- Live avatar check: a running Howard card survived reload and remained visible across the post-reload wait instead of vanishing immediately.
+
+## Howard the Duck — Rejection: fake `call_*` subtask leak
+
+- **Date:** 2026-05-18T15:35:44.313+02:00
+- **Status:** Rejected
+- **Requested by:** Jimmy Engstrom
+
+### Repro
+
+Reload the avatar window while live agents are running. In the current workspace, the UI shows a fake non-root card such as `call_VB5glI2uDkZhB3dksc8UzY8D` with detail text `Using Copilot Avatar Show`, alongside the real Howard card.
+
+Actual live background agents at the same moment are only the real agents (for example `vision-3` and `howard-the-duck-9`), so the `call_*` entry is not a genuine background subtask.
+
+### Why this revision is rejected
+
+Vision's current revision still leaks raw tool-call/runtime metadata into visible subagent state:
+
+1. Root/meta tool suppression only exists on the **root** mirror path (`report_intent`, `copilot_avatar_*`), not on the **subagent** visibility path.
+2. `tool.execution_start` still promotes any truthy `agentId` into `upsertLiveSubagentPayload(...)` and `setAgentActivity(...)` without filtering raw `call_*` ids or avatar-control tools.
+3. The first-open/live snapshot merge replays `captureLiveSubagentRuntimeState()` wholesale, so once a fake `call_*` owner gets into live state it can survive reload and reappear.
+4. The lightweight probe does not yet assert that raw `call_*` ids and `copilot_avatar_*` tools are excluded from visible subtask cards.
+
+### Required next reviser
+
+Per lockout rules, do **not** send this back to Vision. Hand the revision to **Peter Parker**.
+
+### Required fix shape
+
+- Filter raw tool-call ids / opaque `call_*` owners before they can become visible subagent cards.
+- Exclude avatar-control/meta tools like `copilot_avatar_show` from non-root visible subtask state.
+- Add probe coverage so fake `call_*` / avatar-tool cards fail the lightweight regression gate.
+
+## Howard the Duck — Live `call_*` avatar leak confirmed
+
+- **Date:** 2026-05-18T15:35:44.313+02:00
+- **Status:** Rejected revision
+
+### Live evidence used for review
+
+The avatar DOM rendered a fake non-root card with:
+
+- **Header:** `call_VB5glI2uDkZhB3dksc8UzY8D`
+- **Badge:** `Idle`
+- **Detail:** `Using Copilot Avatar Show`
+
+This appeared alongside a real Howard the Duck card. The actual background task list did not contain any real agent matching that `call_*` entry, so the overlay was leaking raw tool-call metadata and avatar-control tool text into visible subtasks.
+
+### Review result
+
+Vision's revision still does **not** explicitly remove raw `call_*` ids or avatar control tool labels from visible subtask state:
+
+- root-only suppression exists for `copilot_avatar_*`, but not for non-root visible-card state
+- `tool.execution_start` still promotes truthy `agentId` values into subagent payload/state without rejecting opaque `call_*` ids
+- live snapshot capture/replay still carries any leaked fake card back into the overlay
+- the lightweight probe still lacks an assertion that fake `call_*` / avatar-control cards are forbidden
+
+### Required next reviser
+
+Per lockout rules, hand the fix to **Peter Parker**.
+
+# Howard the Duck — SDK sub-agent acceptance bias
+
+- **Date:** 2026-05-18T16:11:43.269+02:00
+- **Status:** Proposed
+
+## Decision
+
+For the avatar simplification pass, QA should accept the design only if sub-agent visibility comes from one SDK-observable inventory seam and name resolution comes from one direct Squad lookup seam. If the implementation still needs description parsing, score-based pairing, or count/order fallback to decide who a card belongs to, treat that as unresolved risk rather than “smart” resilience.
+
+## Why
+
+The current extension passes a source-only regression probe, but that probe does not prove the runtime actually exposes a trustworthy current sub-agent list. The most failure-prone code is the logic that guesses identity from partial events and background text; that is exactly where disappearing cards and wrong names hide.
+
+## Minimum QA contract
+
+1. A live sub-agent that the SDK still reports as active remains visible until completion/failure or explicit disappearance from the chosen inventory seam.
+2. In Squad mode, stable aliases resolve directly to cast names (`lead`, `backend-dev`, `tester` → Tony Stark, Peter Parker, Howard the Duck).
+3. No card name depends on parsing free-form description text when a stable runtime/Squad identity exists.
+
+# Peter Parker — Simpler subagent runtime proposal
+
+- Date: 2026-05-18T16:11:43.269+02:00
+- Decision: Prefer one canonical sub-agent state model keyed by visible owner (`agentId` when known, otherwise `pending:${toolCallId}`), plus minimal alias maps for runtime `agentId` and `toolCallId`, instead of maintaining separate live/hydrated state machines and multi-stage rebinding caches.
+- Context: The current avatar runtime in `.github/extensions/copilot-avatar/main.mjs` can show the right agents, but it pays for that with duplicated live/history reducers, fuzzy pending-to-background matching, and several caches that can race each other. The SDK appears to provide current background agents indirectly through `session.idle.data.backgroundTasks.agents`, while Squad only provides metadata lookup once a stable identity key exists.
+- Consequences:
+  - A future refactor can collapse `toolAgentIdsByToolCallId`, `subagentSpawnMetadataByAgentId`, `backgroundAgentMetadataByAgentId`, and the hydrated-state clone/merge helpers into one reducer-backed card store.
+  - `subagent.selected` can stay a weak, global hint or be removed from identity ownership entirely.
+  - The riskiest seam to delete is the fallback positional bind in `bindPendingStartedSubagentsToBackgroundAgents()`, which can reassign the wrong visible owner when multiple pending cards exist.
+
+# Sub-agent simplification baseline
+
+- **Date:** 2026-05-18T16:11:43.269+02:00
+- **Requested by:** Jimmy Engstrom
+- **Author:** Tony Stark
+
+## Decision
+
+For the next avatar fix, keep Copilot runtime as the sole authority for **which** sub-agents are currently visible, and treat Squad as optional metadata enrichment for **how** those agents are labeled.
+
+## What this means
+
+1. `subagent.started` / `subagent.completed` / `subagent.failed` remain the primary lifecycle contract.
+2. `session.idle.data.backgroundTasks.agents` stays as the only supported runtime snapshot for background agents during idle/reload seams.
+3. `subagent.selected` is not authoritative identity. At most, it may remain a weak fallback hint.
+4. Squad lookup should only upgrade display name / role / description when runtime or spawn data supplies a stable alias (`lead`, `tester`, `backend-dev`, cast name, etc.).
+
+## Simplification target
+
+Delete or collapse state that tries to invent a second ownership model above Copilot runtime. The minimum acceptable architecture is:
+
+- one visible-card state map,
+- one spawn/runtime correlation seam,
+- one late-open replay path,
+- one optional Squad enrichment lookup.
+
+## Explicit non-goal
+
+Do not chase undocumented background-agent payload fields as if they were a stable API. If a name is not available from authoritative runtime data or Squad metadata, degrade cleanly instead of adding more heuristic state.
+
+# Tony Stark - Visibility Checkpoint
+
+**Date:** 2026-05-18  
+**Requestor:** Jimmy Engstrom  
+**Context:** Verification of Tony Stark identity in avatar UI and background tasks
+
+## Decision
+
+Posted public check-in notification at 15:34 UTC+2 identifying as Tony Stark (Lead), followed by 45-second active wait to ensure simultaneous visibility of all three team agents on stage.
+
+## Rationale
+
+- **Avatar UI verification**: Notification posts to system and confirms Tony Stark identity in active session
+- **Background task visibility**: Active 45-second window allows Squad background task monitor (Ralph) and session logger (Scribe) to record presence
+- **Team sync point**: Three-agent simultaneity enables Jimmy to cross-verify identity across UI layer, notification system, and orchestration logs
+
+## Outcome
+
+✅ Check-in posted  
+✅ 45-second visibility window maintained  
+✅ No avatar window reload (per requirement)  
+✅ Ready for team verification
+
+## Next Steps
+
+Await Jimmy's verification of Tony Stark presence in avatar UI and background logs.
+
+# Vision — Catalog vs live sub-agents
+
+- Date: 2026-05-18T16:11:43.269+02:00
+- Decision: Treat Copilot custom-agent catalog APIs and live sub-agent visibility as two different contracts. Use Copilot runtime events/background snapshots for liveness; use Squad only to enrich labels once a stable alias exists.
+- Context: The installed Copilot SDK exposes `session.rpc.agent.list()` and `session.rpc.agent.getCurrent()`, but those return selectable custom agents, not currently running sub-agent instances. The avatar’s current wrong-name / disappearing-card problems come from treating partial runtime signals, background descriptions, and Squad metadata as if they were one authoritative stream.
+- Consequences:
+  - A simplification pass should not build visibility off `agent.list()`. It may be used only as a catalog/fallback metadata source.
+  - Squad should supply display names/roles/descriptions, but only after runtime or spawn metadata provides a stable key like `platform-dev`, `tester`, or `Vision`.
+  - The current `.squad/roster.md`-before-`.squad/team.md` precedence should be corrected or explicitly tolerated, because it hides the real team roster and makes cast naming depend on `.squad/casting/*`.
+
+# Vision — Live identity cache cleanup
+
+- Date: 2026-05-18T14:50:29.679+02:00
+- Decision: Late-open replay must restore live sub-agent runtime bookkeeping, and every stale/terminal sub-agent removal path must clear the full identity-correlation cache before removing the card.
+- Context: The avatar could replay an older Tony card into the live window, but only rebuild visible payload/maps. Later `session.idle` reconciliation and fallback retire logic only consulted live runtime state, so replayed cards could survive even when Howard was the only actual running agent. Separately, stale removal paths were dropping cards without clearing alias/pending/spawn caches, which let fresh background snapshots or weak runtime labels reuse the old owner identity.
+- Consequences:
+  - `mergeHydratedSubagentRuntimeState()` now repopulates `liveSubagentStatesByAgentId` from hydrated active sub-agents.
+  - `releaseSubagentIdentityState()` is the shared cleanup seam for background reconciliation, fallback retire, and terminal events.
+  - Regression probes should assert both the live-state rehydrate contract and the alias-cache cleanup contract.
+
+# Vision — Live sub-agent replay merge
+
+- Date: 2026-05-18T14:50:29.679+02:00
+- Decision: Reload/open/context resync must preserve the current live sub-agent snapshot and merge it over history before replaying avatar cards.
+- Context: The avatar could show live Shuri/Tony/Howard cards, then later clear them during a reload or cwd refresh while the background task list still showed those agents as running. The problem was extension-side teardown: `syncVisibleWindowState()` and `refreshSessionContext()` were clearing cards/runtime state before replay, and history alone was not always fresh enough to reconstruct current-turn agents.
+- Consequences:
+  - `.github/extensions/copilot-avatar/main.mjs` now captures live sub-agent payload/tool/correlation state before any clear/reset and merges it back after history hydration.
+  - Visible cwd refreshes now take the full wait-for-ready replay path instead of a clear-and-metadata-only sync.
+  - Regression probes should assert both the live-snapshot capture/merge seam and the no-clear-on-cwd-refresh contract.
+
+# Vision — Root first-open subtask sync
+
+- Date: 2026-05-18T14:50:29.679+02:00
+- Decision: First-open/reload root subtasks must replay from a merged snapshot: persisted history plus a live in-memory root runtime state captured from current-turn events.
+- Context: Direct verification showed that relying on `session.getMessages()` alone can miss in-flight root tool/intent state during the current turn, so the avatar window can open with an idle root even though work is already active. The webview consumed replayed `setWorking` / `setAgentActivity` / `setSubtask` state correctly once injected, which isolated the bug to the extension-side snapshot source and replay contract.
+- Consequences:
+  - `.github/extensions/copilot-avatar/main.mjs` now tracks root working/tool/intent/subtask/model state live and merges it with history inside `syncRootRuntimeState()`.
+  - Root replay suppresses avatar/meta tool names like `report_intent` and `copilot_avatar_*` so first-open state reflects real work, not extension plumbing.
+  - Regression probes should cover both the merged root-state replay seam and the suppression of internal root tool noise.
+

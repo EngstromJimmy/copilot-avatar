@@ -25,6 +25,40 @@ Implementing and refining sub-agent visibility, identity resolution, and metadat
 - Avatar window topmost behavior is an explicit extension contract, not an automatic side effect of transparency. .github/extensions/copilot-avatar/main.mjs should derive alwaysOnTop from transparentWindow, and .github/extensions/copilot-avatar/lib/webview-child.mjs should only mirror the explicit flag it receives.
 - Framed/non-transparent avatar mode should behave like a normal desktop window. When transparentWindow flips, reopen the native window so decorations and topmost state stay aligned across .github/extensions/copilot-avatar/main.mjs and .github/extensions/copilot-avatar/lib/webview-child.mjs.
 
+## 2026-05-18 — Team Architecture Review: Subagent Visibility Simplification
+
+**From:** Scribe (orchestration log 2026-05-18T14:11:43.269Z)  
+**Coordinated by:** Tony Stark (Lead) + Jimmy Engstrom (user)
+
+### Decisions Affecting Your Work
+
+1. **Catalog vs Live Subagents** (2026-05-18T16:11:43.269+02:00)  
+   - Distinction: `session.rpc.agent.list()` and `session.rpc.agent.getCurrent()` return selectable custom agents (catalog), not running instances.
+   - Live visibility authority: `session.idle.data.backgroundTasks.agents` + subagent runtime events only.
+   - Squad role: Metadata enrichment (display name/role/description) only after runtime/spawn supplies stable alias.
+   - Consequence: Do not build visibility off `agent.list()` — use only as catalog fallback.
+
+2. **Live Identity Cache Cleanup** (2026-05-18T14:50:29.679+02:00)  
+   - Late-open replay must restore live sub-agent runtime bookkeeping (`liveSubagentStatesByAgentId`).
+   - Every stale/terminal removal path must clear full identity-correlation cache via `releaseSubagentIdentityState()`.
+   - Regression probes must assert both live-state rehydrate contract and alias-cache cleanup contract.
+
+3. **Live Subagent Replay Merge** (2026-05-18T14:50:29.679+02:00)  
+   - Reload/open/context resync must preserve current live sub-agent snapshot and merge it over history.
+   - Capture live state in main.mjs before clear/reset; merge back after history hydration.
+   - Cwd refreshes take full wait-for-ready replay path, not clear-and-metadata-only.
+
+4. **Root First-Open Subtask Sync** (2026-05-18T14:50:29.679+02:00)  
+   - First-open replay must merge: persisted history + live in-memory root runtime state.
+   - Merge root working/tool/intent/subtask state live in `syncRootRuntimeState()`.
+   - Suppress avatar/meta tool names (`report_intent`, `copilot_avatar_*`) from first-open state.
+   - **Implication for your code:** No need to add more heuristic state; degrade cleanly if name unavailable.
+
+**Status:** ✅ Integrated into decisions.md  
+**Next:** Await implementation validation from Peter Parker.
+
+---
+
 ## 2026-05-17 — README 0.2.1 Release Documentation
 
 Tony Stark documented the v0.2.1 release in README.md, highlighting the key platform fixes implemented across the sub-agent identity/visibility/detail refactors:
@@ -119,36 +153,41 @@ Proposed gating intro/status wrapper phrases (`There is an update`, `We hit a sn
 - Sub-agent Fallback Collapse Fix (May 16)
 - Initial identity/badge system design
 
-## Learnings
+## Recent Learnings (2026-05-18)
 
-- 2026-05-18T11:57:44.088+02:00 — The avatar webview boot path in `.github/extensions/copilot-avatar/content/main.js` must not await optional GLB assets before setting `window.__copilotAvatarReady`; if `model.glb` or `clippy.glb` stalls, fall back to `createBaseAsset(null)`, set ready from the fallback scene, and continue optional model loading in the background.
-- 2026-05-18T11:57:44.088+02:00 — When `avatarStyle === 'clippy'`, keep the default avatar visible until `clippyRoot` actually exists; otherwise a slow Clippy asset load creates a blank window even though the page and bridge are already healthy.
-- 2026-05-18T13:02:05.771+02:00 — Background sub-agent visibility must reconcile from `session.idle.data.backgroundTasks.agents`, not from root `assistant.turn_start`; background agents can stay alive across root turns, so clearing avatar cards on the next top-level turn hides still-running agents from `.github/extensions/copilot-avatar/main.mjs`.
-- 2026-05-18T13:02:05.771+02:00 — Late-open replay should prune historical idle ghosts with the latest `session.idle` background-agent snapshot while keeping active-tool agents visible; the guard now lives in `.github/extensions/copilot-avatar/main.mjs`, and `.github/extensions/copilot-avatar/probe-regression.mjs` covers the contract.
-- 2026-05-18T13:03:44.655+02:00 — Clippy-only feedback wrappers must be gated in `.github/extensions/copilot-avatar/main.mjs` before `flushClippySummary()` is called, and `.github/extensions/copilot-avatar/content/main.js` must clear staged Clippy summary state whenever Copilot speaks raw text or the avatar leaves Clippy mode.
-- 2026-05-18T13:02:05.771+02:00 — `subagent.started` can be authoritative for visibility even when `event.agentId` is absent; `.github/extensions/copilot-avatar/main.mjs` must mint a provisional visible id from `toolCallId`, render immediately, and later alias concrete runtime/background agent ids back onto that visible owner.
-- 2026-05-18T13:02:05.771+02:00 — When late background/task metadata is richer than cached spawn aliases, `.github/extensions/copilot-avatar/main.mjs` should let fresh runtime labels and descriptions outrank spawn fallbacks so a bound background agent can correct stale Tony/Howard-style card text instead of freezing the first guess.
-- 2026-05-18T13:02:05.771+02:00 — Background task snapshots are not just a liveness seam; their `description` text can be the only durable human identity when `agentId` is opaque or missing from earlier events. `.github/extensions/copilot-avatar/main.mjs` must normalize that description into name/detail fields and feed it back through `resolveSubagentDisplayData()` so later intent/model updates cannot revert the card to stale spawn aliases.
+**Catalog vs Liveness:** SDK `agent.list()`/`getCurrent()` expose catalog, not live instances. Use `subagent.started/completed/failed` + `session.idle.data.backgroundTasks.agents`.
 
-## 2026-05-18T11:57:44.088+02:00 — Avatar Load Resilience Fix (Decision Merged)
+**Boot Resilience:** Optional GLB assets must not gate `window.__copilotAvatarReady`; timebox and fall back to base asset.
 
-Team orchestration recorded three related decisions in `decisions.md`:
-1. **Vision:** Optional avatar GLB loads must not gate `window.__copilotAvatarReady`; timebox load and fall back to base asset.
-2. **Shuri:** Lazy-load sam-js vendor module inside C64 speech path so boot failures don't block avatar canvas.
-3. **Howard the Duck:** Approved implementation on QA grounds after repro + regression probe pass (65 passed, 0 failed).
+**Avatar State Replay:** First-open/reload must capture live snapshot before clear, then merge over history before hydrating. Suppress meta tools (`report_intent`, `copilot_avatar_*`).
 
-**Cross-agent impact:** This trio of fixes addresses the boot-blocking load path regression that was preventing the avatar from declaring readiness even when the scene and bridge were healthy. The pattern is: timebox optional assets, set ready from a fallback-capable path, and load non-critical models in the background.
+**Background Visibility:** Reconcile from `session.idle.backgroundTasks.agents`, not `assistant.turn_start`. Agents stay alive across root turns.
 
-**Files affected:** `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/lib/copilot-webview.js`
+**Identity Cleanup:** Late-open must rebuild `liveSubagentStatesByAgentId`. All stale/terminal removal paths must clear full identity cache via `releaseSubagentIdentityState()`.
 
-## 2026-05-18T13:02:05.771+02:00 — Sub-agent Visibility Fix: Howard Approval
+**Background Identity:** Task snapshot `description` is durable identity when `agentId` missing. Normalize and feed through `resolveSubagentDisplayData()` so later updates don't revert to stale aliases.
 
-**Status:** ✅ APPROVED (79/79 regression checks passing)
+**Squad Role:** Label enrichment only. Build display names from spawn/runtime/background data, not from `agent.list()` catalog.
 
-Howard the Duck validated the background agent visibility fix:
-- Verified avatar UI was missing the first real visibility handoff, not a rendering primitive
-- Weak update-only traffic produced zero non-root cards in live webview
-- Sending `addSubagent()` immediately surfaced expected Howard/Tony cards
-- Tightened `.github/extensions/copilot-avatar\probe-regression.mjs` to guard webview-side pending-state contract
+**Weak Hints:** `subagent.selected` is weak hint only. Identity authority: `subagent.started` + runtime + background.
 
-**Team impact:** Background agents now stay visible and correctly reconciled across coordinator turns, eliminating the symptom where three running agents would disappear from the avatar UI despite still being active in the platform task list.
+**Clippy Gating:** Feedback wrappers gated in main.mjs; clear state in content/main.js on mode change.
+
+**Retire Guard:** 1200ms fallback retire is sharpest disappearance seam. Guard must bail out while agent in background snapshot.
+
+_Earlier detailed learnings archived in history-archive.md_
+
+## 2026-05-18T11:57:44.088+02:00 — Avatar Load Resilience & Visibility Fixes (Decision Merged)
+
+Team orchestration recorded decisions in `decisions.md`:
+1. **Vision:** Optional GLB loads must not gate `window.__copilotAvatarReady`; timebox and fall back.
+2. **Shuri:** Lazy-load sam-js inside C64 path to avoid blocking avatar canvas.
+3. **Howard:** Approved after regression pass (65 passed, 0 failed).
+
+Pattern: Timebox optional assets, set ready from fallback, load non-critical in background.
+
+**Background Visibility Fix** ✅ APPROVED (79/79 regression checks)
+- Background agents now correctly reconciled and stay visible across coordinator turns
+- Fixed symptom where running agents would disappear from avatar UI despite platform task activity
+
+**Files affected:** `.github/extensions/copilot-avatar/content/main.js`, `lib/copilot-webview.js`, `probe-regression.mjs`

@@ -9,7 +9,38 @@
 
 Revised avatar sub-agent visibility and identity integration following QA feedback on background-task metadata flow and card materialization.
 
-**Latest Focus:** Background identity refresh — runtime/background agent names and descriptions now outrank spawn-tool aliases, with card materialization from background-task snapshots.
+**Latest Focus:** Simplify sub-agent runtime state model per team architecture review.
+
+---
+
+## 2026-05-18 — Team Decision: Simpler Subagent Runtime Model
+
+**From:** Scribe (orchestration log 2026-05-18T14:11:43.269Z)  
+**Coordinator:** Tony Stark (Lead)
+
+### Your Task
+
+**Proposal:** Simplify subagent runtime state into one canonical card model keyed by visible owner (`agentId` when known, otherwise `pending:${toolCallId}`).
+
+**Target Architecture:**
+- One visible-card state map (collapse current `toolAgentIdsByToolCallId`, `subagentSpawnMetadataByAgentId`, `backgroundAgentMetadataByAgentId`)
+- Minimal alias maps for runtime `agentId` and `toolCallId` (replace multi-stage hydrated-state rebinding caches)
+- One spawn/runtime correlation seam
+- One late-open replay path
+- One optional Squad enrichment lookup
+
+**Benefits:**
+- Eliminates duplicated live/history reducers and fuzzy pending-to-background matching
+- Removes racing state maps and heuristic caches
+- Clearer identity ownership seam
+
+**Risky Seam to Delete:**
+- Fallback positional bind in `bindPendingStartedSubagentsToBackgroundAgents()` — can reassign wrong visible owner when multiple pending cards exist.
+
+**Status:** ✅ Proposal logged in decisions.md  
+**Next:** Implementation review, coordinate with Vision for catalog/live distinction.
+
+---
 
 ---
 
@@ -70,3 +101,9 @@ Revised avatar sub-agent visibility and identity integration following QA feedba
 
 **Impact:** Late-open reloads and background-task carries will converge on same agent names/detail text the runtime exposes, instead of leaving old cast aliases stuck on screen.
 
+## Learnings
+
+- 2026-05-18T16:11:43.269+02:00 — The Copilot SDK surface used here does not expose a direct "list subagents" call; the extension reconstructs current sub-agents from `session.getMessages()` and from `session.idle.data.backgroundTasks.agents` in `.github/extensions/copilot-avatar/main.mjs`.
+- 2026-05-18T16:11:43.269+02:00 — Current sub-agent identity flow in `.github/extensions/copilot-avatar/main.mjs` is spread across visibility aliases (`subagentIdsByToolCallId`, `runtimeSubagentVisibilityIdsByAgentId`), runtime tool correlation (`toolAgentIdsByToolCallId`), spawn hints, weak selection hints, and background metadata caches.
+- 2026-05-18T16:11:43.269+02:00 — Squad naming is metadata-only: `.github/extensions/copilot-avatar/lib/squad-context.mjs` loads roster/config/casting into `agentsByKey`, and `resolveSquadAgentMetadata()` can decorate a live sub-agent only after runtime or spawn data provides a stable lookup key.
+- 2026-05-18T16:11:43.269+02:00 — Jimmy's current preference is simplicity over aggressive rebinding: the product goal is to show the real current sub-agents, then let Squad supply the human names when possible.
