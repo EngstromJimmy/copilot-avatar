@@ -68,3 +68,17 @@ Probe suite hardened to 74/74 for Peter's confirmed full SAM formant implementat
 ---
 
 For detailed archived context, see history-archive.md.
+
+## Recent Sessions (cont.)
+
+### 2026-05-18 — MS_SAM/C64 Validation Contract Acceptance (COMPLETED)
+- **Agent:** howard-the-duck-2
+- **Status:** Validation gate for speech-engine rename revision accepted
+- **Scope:** Probe-regression.mjs acceptance criteria; 78/78 probes green + syntax checks
+- **Result:** Engine split (MS_SAM vs C64) enforced; legacy migration validated; retro synth separation confirmed; browser-only/no-network constraint confirmed; no `sam` active-path leakage
+- **Deliverable:** MS_SAM / C64 Validation Contract merged into decisions.md
+
+## Learnings
+
+- **2026-05-18T07:57:31.584+02:00 — MS_SAM/C64 validation contract:** `.github/extensions/copilot-avatar\probe-regression.mjs` is now the lightweight acceptance gate for the browser speech split. The honest contract is `ms_sam` for the browser voice-scoring path in `content/main.js`, `c64` for the existing formant synth (`C64_VOICES`, `speakC64`, `synthesizeSamAudio`), and legacy `engine: 'sam'` / `samVoice` must migrate to `c64` / `c64Voice` through both `main.mjs` normalization and the webview load path.
+- **2026-05-18T07:57:31.584+02:00 — Anti-relabel evidence for MS_SAM:** A credible `MS_SAM` pass in this repo means `speakMsSam()` stays on the browser voice seam (`speakWebSpeech` + `scoreMsSamVoice`/`resolveMsSamVoice`) and never touches `synthesizeSamAudio`, `SAM_PHONEME_DATA`, or `C64_VOICES`. If those retro-formant symbols leak into the `MS_SAM` branch, treat it as a mislabeled `C64` regression and reject it.

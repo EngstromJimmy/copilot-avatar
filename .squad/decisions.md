@@ -218,3 +218,25 @@ Do **not** keep the current browser synthesizer under a Microsoft SAM-style labe
 - **`speechSynthesis` is opportunistic, not deterministic.** On some Windows setups the browser may expose Microsoft-installed voices, but availability, naming, and quality vary by OS/browser and are not portable.
 - **Open replacement data is the real work.** A true browser-native `MS_SAM` approximation would need an openly licensed voice corpus and a different synthesis architecture, likely with a larger payload and more tuning.
 
+# MS_SAM / C64 Validation Contract
+
+**Date:** 2026-05-18T07:57:31.584+02:00  
+**Agent:** Howard the Duck  
+**Requested by:** Jimmy Engstrom
+
+## Decision
+
+Use `.github/extensions/copilot-avatar\probe-regression.mjs` as the acceptance gate for the speech-engine rename revision.
+
+## Required Evidence
+
+- Engine select exposes `MS_SAM` on `ms_sam` and keeps the legacy formant path on `c64`.
+- No visible/runtime speech path still treats `sam` as the active engine id.
+- `main.mjs` normalization and `content/main.js` restore logic both migrate legacy `engine: 'sam'` / `samVoice` into `c64` / `c64Voice`.
+- `MS_SAM` stays browser-only and reference-driven: scored local browser voices (`scoreMsSamVoice`, `resolveMsSamVoice`) and no `samtts.com` or copied web assets.
+- `C64` owns the retro formant synth (`C64_VOICES`, `speakC64`, `synthesizeSamAudio`).
+
+## Why
+
+This catches the two ugly regressions most likely to slip through review: a cosmetic rename that leaves stale `sam` state paths behind, and a mislabeled browser synth that still pretends to be Microsoft SAM instead of an honest C64-style path.
+
