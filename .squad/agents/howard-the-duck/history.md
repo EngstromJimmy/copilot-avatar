@@ -62,3 +62,20 @@ Avatar load resilience: Optional GLB loads timebox, set ready from fallback, loa
 Cards materialize from background-task snapshots; prevents disappearing agents during reload/idle handoff.
 
 _Earlier detailed session logs and learnings archived in history-archive.md_
+
+## Learnings
+
+- 2026-05-18T16:32:01.320+02:00 — `.github/extensions/copilot-avatar/probe-regression.mjs` now imports `lib/squad-context.mjs` directly, proves Squad alias resolution with `tester` → `Howard the Duck`, and finds an inactive parent cwd so the same probe covers non-Squad projects.
+- 2026-05-18T16:32:01.320+02:00 — The sub-agent regression contract is now explicit: Copilot runtime/background state owns visibility, while Squad metadata is optional enrichment only; non-Squad naming must still fall back to runtime labels before stale spawn aliases.
+
+## 2026-05-18 — Squad-Optional Probe Contract
+
+**From:** Scribe (team decision recorded via orchestration)
+
+Howard's regression probe contract finalized: probe-regression.mjs must verify sub-agent visibility in both Squad and non-Squad contexts.
+- Squad is enrichment-only, not a visibility requirement
+- Probes must assert: visibility stays runtime/background-owned
+- Coverage: positive probe from repo root, negative probe from inactive cwd
+- Real regressions: early disappearance, wrong visible names, hidden Squad dependency
+
+This contract ensures the cleanup works for both Squad and non-Squad projects, as per user directive.

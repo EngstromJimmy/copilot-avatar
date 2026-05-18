@@ -72,3 +72,54 @@ ame / description), not in subagent.started when runtime agent is generic. Solut
 - **Webview seam isolation:** ddSubagent is sole card-creation entrypoint; updates must no-op if card not created yet
 - **First-render gate removed:** Copilot sub-agent presence alone is sufficient for visibility
 - **Identity hints accepted:** Recent subagent.selected cached as short-lived naming hint, reused across sync events
+---
+
+## Sessions 2026-05-17 to 2026-05-18 (Archived from main history.md)
+
+### 2026-05-18T16:32:01.320Z — Runtime Authority Cleanup Decision (Finalized)
+
+**From:** Scribe (team decision recorded via orchestration)
+
+Finalized Vision's runtime authority cleanup decision: Visibility ownership stays with Copilot runtime events + session.idle.data.backgroundTasks.agents. Squad enriches metadata only when stable keys exist. .squad/team.md preferred over .squad/roster.md. Provisional cards bind on exact stable identity overlap or unambiguous 1:1 seams.
+
+### Key Learnings (2026-05-18)
+
+- Background reconciliation must only bind provisional pending:{toolCallId}` to runtime agents on exact stable overlap or true 1:1 seams
+- Fallback retire timers safest for provisional pending cards only; concrete cards use terminal events
+- Squad metadata loading must prefer .squad/team.md, merge .squad/roster.md as legacy fallback
+
+### Approved Sessions
+
+**2026-05-18T11:57:44.088+02:00 — Avatar Load Resilience & Visibility Fixes**
+- Optional GLB loads timebox to fallback; no gate on ready
+- Lazy-load sam-js in C64 path
+- Background agents reconcile correctly (79/79 regression checks)
+
+**2026-05-18T13:03:44.655+02:00 — Clippy Feedback Gating Decision**
+- Gated intro/status wrappers to Clippy-only mode
+- Both extension-side and webview-side guards active
+
+### Sub-agent Visibility Fix (2026-05-18)
+
+**Bug:** hydrateSubagentRuntimeFromHistory() removed running sub-agents via redundant waitingForRetire cleanup  
+**Fix:** Removed post-loop cleanup; completion driven by subagent.completed / subagent.failed terminal events  
+**Added:** SubagentStartedData.model forwarding for immediate display
+
+### Constraint Audit (2026-05-18)
+
+Confirmed: subagent.selected remains weak hint only; subagent.started is render authority. No regressions found.
+
+### Late-open Naming Session (2026-05-17T20:31:24.735Z)
+
+Full Squadron integration restored; 16 inbox decisions merged covering sub-agent badge/detail, voice persistence, Squad cleanup, late-open sequencing, window behavior.
+
+Identity flow: (1) spawn metadata → (2) Squad casting/roster → (3) fallback
+
+### Release Documentation (2026-05-17)
+
+v0.2.1 release documented in README covering: sub-agent names, activity detail, stale card cleanup, voice persistence, window behavior.
+
+### Window Always-On-Top Fix (2026-05-17T22:35:00+02:00)
+
+Fixed unconditional lwaysOnTop by gating to 	ransparentWindow parameter. Framed windows now behave as normal windows.
+

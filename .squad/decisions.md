@@ -811,3 +811,40 @@ Await Jimmy's verification of Tony Stark presence in avatar UI and background lo
   - Root replay suppresses avatar/meta tool names like `report_intent` and `copilot_avatar_*` so first-open state reflects real work, not extension plumbing.
   - Regression probes should cover both the merged root-state replay seam and the suppression of internal root tool noise.
 
+# 2026-05-18
+
+## Vision — Runtime authority cleanup
+
+**Date:** 2026-05-18T16:32:01.320+02:00
+
+### Decision
+
+- Sub-agent visibility ownership stays with Copilot runtime events plus session.idle.data.backgroundTasks.agents.
+- Provisional pending:{toolCallId}` cards may bind to background runtime ids only on exact stable identity overlap, or when the unmatched seam is an unambiguous 1:1 pair.
+- Squad metadata enriches runtime cards only when stable Squad keys exist from runtime or spawn metadata; weak subagent.selected hints stay display-only.
+- .squad/team.md is the preferred roster source when present, with .squad/roster.md merged as legacy fallback instead of replacing team metadata.
+
+### Why
+
+This removes hidden ownership guesses between pending starts and background snapshots, which was the main seam that could render the wrong agent under the wrong name. It also keeps non-Squad projects on runtime-first naming while still letting Squad projects add role/description data when the metadata join is stable.
+
+## Howard the Duck — Squad-optional probe contract
+
+**Recorded:** 2026-05-18T16:32:01.320+02:00
+
+**Decision:** probe-regression.mjs must verify the sub-agent contract in both Squad and non-Squad contexts.
+
+**Why:** The user risk is not just bad Squad enrichment. The real regressions are early disappearance, wrong visible names, and any hidden requirement that Squad metadata be present before Copilot-owned sub-agents stay visible.
+
+**Implication:** Keep one positive loadSquadContext() probe at the repo root, one negative probe from an inactive parent cwd, and explicit assertions that visibility stays runtime/background-owned while Squad remains enrichment-only.
+
+## User directive
+
+**Recorded:** 2026-05-18T16:32:01.320+02:00
+
+**By:** Jimmy Engstrom (via Copilot)
+
+**What:** Make the subagent cleanup work for both Squad and non-Squad projects; cross-project behavior is important.
+
+**Why:** User request — captured for team memory.
+
