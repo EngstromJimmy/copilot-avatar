@@ -476,3 +476,129 @@ Gate `speakClippySummary()` and `flushClippySummary()` behind `isClippyAvatar()`
 
 The feedback lead-ins are persona-specific Clippy chrome; in Copilot mode they add duplicate, off-brand narration instead of the raw assistant response.
 
+---
+
+# Sub-agent Background Identity Mismatch — Howard Review 1
+
+**Date:** 2026-05-18T13:02:05.771+02:00  
+**Agent:** Howard the Duck  
+**Status:** Rejected
+
+## Finding
+
+Reproduced Jimmy's mismatch: the runtime/background-task identity can say one thing while the avatar card keeps a stale alias and stale work copy. Vision's current revision still repairs visibility by background ids only; it does not bring background-task identity metadata onto the card or let fresher runtime labels beat cached spawn aliases.
+
+## Evidence
+
+Live avatar repro: after rendering one card as `Tony Stark`, sending a later runtime-style update with `agentName: 'Vision'` and a new description left the visible card unchanged (`Tony Stark … Verify avatar UI visibility`). Sending a strong `displayName: 'Vision'` finally changed the header, but the detail line still stayed on the old spawn summary. Source review matches the repro: `getBackgroundAgentsFromSessionIdle()` only keeps `agentId` + `description`, `bindPendingStartedSubagentsToBackgroundAgents()` binds visibility ids but no identity fields, `resolveSubagentDisplayFields()` ranks `spawnMetadata.displayName` ahead of `runtimeDisplayName` / `runtimeAgentName`, and `resolveSubagentTaskSummary()` iterates `[spawnMetadata?.description, runtimeDescription]`. The lightweight probe now fails on those seams.
+
+## Required Revision
+
+Peter Parker should revise this next. The fix needs one consistent source-of-truth path so background-task/runtime identity and description fields can actually update the visible card instead of leaving Tony/Howard-era spawn aliases stuck on screen.
+
+---
+
+# Sub-agent Visibility with Missing agentId — Howard Review 2
+
+**Date:** 2026-05-18T13:02:05.771+02:00  
+**Agent:** Howard the Duck  
+**Status:** Rejected
+
+## Finding
+
+Reproduced Jimmy's "spawned again, still no visible change" report against the current workspace and tightened the lightweight QA probe to catch the hole. The avatar renderer is healthy, but Vision's revision only changed background-agent pruning; it still cannot materialize a missing Tony/Howard card when the runtime never delivered the original `addSubagent` render handoff.
+
+## Evidence
+
+Live avatar probe after reload: the window was ready and still showed `overlayCount: 0`. A weak-update repro (`setAgentIntent` / `setAgentThinking` for missing Tony/Howard ids) also left `afterWeak: 0`, while manual `addSubagent()` immediately raised the count to 2 and both cards became visible — the draw path works once it gets the first render payload. Source review matches the symptom: `tool.execution_start` for spawn tools only caches spawn metadata, `session.idle` only calls `reconcileLiveBackgroundSubagents(getBackgroundAgentIdsFromSessionIdle(event))`, and both background reconcile helpers loop existing state/maps and remove stale ids without iterating the incoming background ids to create missing cards. The hardened lightweight check (`node probe-regression.mjs`) now fails 81 passed / 2 failed on exactly that gap.
+
+## Required Revision
+
+Peter Parker should revise this next. The new implementation must prove that the background-agent fallback can surface a never-rendered Tony/Howard card (or restore an equivalent first-render handoff) rather than only preserving/removing cards that already existed.
+
+---
+
+# Background Identity Refresh — Peter Parker Revision Approved
+
+**Date:** 2026-05-18T13:02:05.771+02:00  
+**Agent:** Howard the Duck  
+**Status:** Approved
+
+## Finding
+
+Peter's revision fixes the rejected sub-agent UI artifact. The avatar can now materialize cards from background-task snapshots, stale Tony-style spawn aliases no longer outrank fresher runtime/background identity, and runtime/background description text is promoted ahead of old spawn copy.
+
+## Evidence
+
+Source review shows three key repairs in `.github/extensions/copilot-avatar\main.mjs`: 
+1. Provisional visible owners for `subagent.started` without `event.agentId`, then `bindPendingStartedSubagentsToBackgroundAgents()` + `reconcileLiveBackgroundSubagents()` / `reconcileHydratedBackgroundSubagents()` to materialize missing cards from background snapshots
+2. Normalized background metadata caching (`normalizeBackgroundAgentMetadata`, `cacheBackgroundAgentMetadata`, `buildBackgroundSubagentPayload`) so runtime/background display name + task summary survive into card payloads
+3. `resolvePreferredSquadAgentMetadata()` and runtime-first display/task-summary resolution so fresh Vision-style identity and description beat stale Tony-style spawn hints
+
+The existing lightweight validation was updated to match the new contract and now passes: `node probe-regression.mjs` → 92 passed, 0 failed.
+
+## Team Impact
+
+Approved. In human terms: when the platform finally knows "this is Vision and here's what Vision is doing," the avatar now updates the card to Vision, uses the newer task text, and can even create the card if the UI never got the first render event.
+
+---
+
+# Clippy Feedback Gating Re-review — Approved
+
+**Date:** 2026-05-18T13:03:44.655+02:00  
+**Agent:** Howard the Duck  
+**Status:** Approved
+
+## Finding
+
+Re-reviewed the current workspace for the Clippy-only feedback rule and confirmed the intro/status lead-ins are now blocked in Copilot mode while still available in Clippy mode.
+
+## Evidence
+
+`.github/extensions/copilot-avatar/main.mjs` now gates `assistant.turn_end` through `shouldUseClippySummaryFeedback()` before calling `flushClippySummary`, and `.github/extensions/copilot-avatar/content/main.js` now makes both `speakClippySummary()` and `flushClippySummary()` return early when `avatarStyle !== 'clippy'`. Running the existing lightweight validation (`node probe-regression.mjs` from `.github/extensions/copilot-avatar`) now finishes 81 passed / 0 failed, including the Clippy-only summary assertions.
+
+---
+
+# Vision — Clippy Feedback Gating Decision
+
+**Date:** 2026-05-18T13:03:44.655+02:00  
+**Agent:** Vision
+
+## Decision
+
+The intro/status wrapper phrases (`There is an update`, `We hit a snag`, `You're all set`) are a Clippy-only contract.
+
+`.github/extensions/copilot-avatar/main.mjs` must only call `flushClippySummary()` when the active avatar style is `clippy`, and `.github/extensions/copilot-avatar/content/main.js` must clear any staged Clippy summary state whenever Copilot uses the raw speech path or the UI exits Clippy mode.
+
+## Why
+
+The regression lived at the extension ↔ webview seam: the webview already refused to speak wrapped summaries in Copilot mode, but the extension still unconditionally forwarded turn-end messages into the Clippy summary path.
+
+Making the mode gate explicit on both sides removes hidden state, keeps Copilot on raw speech only, and makes future failures point to the correct seam immediately.
+
+## Files
+
+- `.github/extensions/copilot-avatar/main.mjs`
+- `.github/extensions/copilot-avatar/content/main.js`
+- `.github/extensions/copilot-avatar/probe-regression.mjs`
+
+---
+
+# Peter Parker — Background Identity Should Repair Visible Cards
+
+**Date:** 2026-05-18T13:26:10.974+02:00  
+**Agent:** Peter Parker  
+**Status:** Proposed
+
+## Decision
+
+When `session.idle.data.backgroundTasks.agents` provides a stable runtime agent identity, the avatar should cache that richer snapshot (`agentId`, runtime name/display name, description/task summary) and use it to repair or materialize the visible card. Spawn-tool hints still bootstrap ambiguous starts, but they must stop outranking fresher background/runtime identity once the platform gives us a stable owner.
+
+## Rationale
+
+Jimmy's repro showed the runtime task list on `Vision` while the UI stayed on `Tony Stark`, which means stale spawn aliases were still winning after a better runtime identity existed. The fix in `.github/extensions/copilot-avatar/main.mjs` now lets strong runtime/background identity beat cached spawn labels, prefers fresh runtime descriptions for badge/task copy, and makes background reconciliation add missing cards instead of only pruning known ones.
+
+## Impact
+
+Late-open reloads and background-task carries should now converge on the same agent names/detail text the runtime exposes, instead of leaving old cast aliases stuck on screen.
+

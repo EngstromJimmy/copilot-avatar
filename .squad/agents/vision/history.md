@@ -92,6 +92,21 @@ Full Squadron integration restored for late-open avatar naming. All three agents
 
 **Key outcome:** Sub-agent identity now flows: (1) cached spawn metadata → (2) Squad casting/roster → (3) generic fallback. Cast names resolve correctly. Late-open windows rebuild identity from session.getMessages() history replay.
 
+### 2026-05-18T13:02:05.771+02:00 — Background Agent Visibility Proposal (Rejected)
+
+Proposed stopping `assistant.turn_start` state clearing and reconciling visible sub-agents from `session.idle.data.backgroundTasks.agents` in both live runtime and late-open history replay. Howard's review identified critical gaps:
+- Background-task identity metadata not flowing to visible cards
+- Spawn-style aliases still outranking fresher runtime names  
+- Missing cards could not be materialized from background snapshots
+
+**Result:** Rejected. Peter Parker revised with runtime/background identity precedence + card materialization support.
+
+### 2026-05-18T13:03:44.655+02:00 — Clippy Feedback Gating Decision
+
+Proposed gating intro/status wrapper phrases (`There is an update`, `We hit a snag`, `You're all set`) to Clippy-only mode in `.github/extensions/copilot-avatar/main.mjs` and `content/main.js`. Howard's re-review confirmed Shuri's implementation gates both paths correctly.
+
+**Result:** Approved. Both extension-side and webview-side guards now active.
+
 ## Archived Sessions
 
 **Earlier work documented in history-archive.md:**
@@ -110,6 +125,10 @@ Full Squadron integration restored for late-open avatar naming. All three agents
 - 2026-05-18T11:57:44.088+02:00 — When `avatarStyle === 'clippy'`, keep the default avatar visible until `clippyRoot` actually exists; otherwise a slow Clippy asset load creates a blank window even though the page and bridge are already healthy.
 - 2026-05-18T13:02:05.771+02:00 — Background sub-agent visibility must reconcile from `session.idle.data.backgroundTasks.agents`, not from root `assistant.turn_start`; background agents can stay alive across root turns, so clearing avatar cards on the next top-level turn hides still-running agents from `.github/extensions/copilot-avatar/main.mjs`.
 - 2026-05-18T13:02:05.771+02:00 — Late-open replay should prune historical idle ghosts with the latest `session.idle` background-agent snapshot while keeping active-tool agents visible; the guard now lives in `.github/extensions/copilot-avatar/main.mjs`, and `.github/extensions/copilot-avatar/probe-regression.mjs` covers the contract.
+- 2026-05-18T13:03:44.655+02:00 — Clippy-only feedback wrappers must be gated in `.github/extensions/copilot-avatar/main.mjs` before `flushClippySummary()` is called, and `.github/extensions/copilot-avatar/content/main.js` must clear staged Clippy summary state whenever Copilot speaks raw text or the avatar leaves Clippy mode.
+- 2026-05-18T13:02:05.771+02:00 — `subagent.started` can be authoritative for visibility even when `event.agentId` is absent; `.github/extensions/copilot-avatar/main.mjs` must mint a provisional visible id from `toolCallId`, render immediately, and later alias concrete runtime/background agent ids back onto that visible owner.
+- 2026-05-18T13:02:05.771+02:00 — When late background/task metadata is richer than cached spawn aliases, `.github/extensions/copilot-avatar/main.mjs` should let fresh runtime labels and descriptions outrank spawn fallbacks so a bound background agent can correct stale Tony/Howard-style card text instead of freezing the first guess.
+- 2026-05-18T13:02:05.771+02:00 — Background task snapshots are not just a liveness seam; their `description` text can be the only durable human identity when `agentId` is opaque or missing from earlier events. `.github/extensions/copilot-avatar/main.mjs` must normalize that description into name/detail fields and feed it back through `resolveSubagentDisplayData()` so later intent/model updates cannot revert the card to stale spawn aliases.
 
 ## 2026-05-18T11:57:44.088+02:00 — Avatar Load Resilience Fix (Decision Merged)
 

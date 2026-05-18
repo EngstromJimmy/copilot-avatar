@@ -26,59 +26,15 @@ Howard the Duck — QA & Validation specialist for the CopilotAvatar extension.
 
 ## Current Focus
 
-Probe suite hardened to 74/74 for Peter's confirmed full SAM formant implementation. All groups complete. Awaiting next test campaign.
+QA validation for avatar sub-agent visibility and identity refresh in background-task handling. Recent approval cycle closed on Peter Parker's three-part fix: provisional visibility owners, background metadata caching, and runtime-first identity resolution.
 
-## Recent Sessions
+## Learnings from 2026-05-18 Identity Refresh Cycle
 
-### 2026-05-18 — SAM TTS Regression Coverage Completion (COMPLETED)
-- **Agent:** howard-the-duck-1
-- **Status:** Delivered final regression test suite with 74/74 passing probes
-- **Scope:** SAM browser-only/no-network constraints, persistence, sub-agent visibility, late-open replay, weak-hint selection
-- **Commits:** f820751, 74404dd, 0f30416
-- **Validation:** All regression vectors exercised; ready for integration
-
-### 2026-05-18 — Peter's SAM Formant Implementation Pass — Probe Hardening (COMPLETED)
-- **Task:** Harden Groups 3 and 13 for Peter's confirmed full formant synthesizer (removed seam-agnostic relaxations from Shuri's pass)
-- **Group 3:** Added `synthesizeSamAudio`, `audioBufferToWavDataUrl`, `SAM_PHONEME_DATA` assertions; added SAM_VOICES schema check (pitch/formantShift/rate per entry)
-- **Group 13:** Restored `OfflineAudioContext` assertion; made `samG2P` absence a hard failure (function confirmed present at 2820 chars, pure text transform)
-- **Outcome:** 74/74 passing. Committed `0f30416`.
-- **Key fact:** `samG2P` is 2820 chars, no fetch/XHR/WebSocket — pure deterministic G2P. `SAM_VOICES` schema: `{ id, name, pitch, formantShift, rate }` × 6.
-
-### 2026-05-18 — SAM TTS + Sub-Agent Visibility Regression Probe (COMPLETED)
-- **Task:** Write regression coverage for SAM TTS (feat/microsoft-sam-tts) and sub-agent visibility miss
-- **Scope:** Full source audit of SAM TTS + sub-agent replay paths; wrote `probe-regression.mjs`
-- **Outcome:** 49/49 probes green. Documented multi-root-turn sub-agent visibility miss as a known coordinator risk. SAM: custom Web Audio formant engine, no external deps, persistence ordering correct, all UI hooks wired.
-- **Probe file:** `.github/extensions/copilot-avatar/probe-regression.mjs`
-
-### 2026-05-17 — SAM Branch Handoff Verification
-- **From:** Scribe (Session Logger)
-- **Status:** Branch switch (eat/microsoft-sam-tts) verified clean and ready
-- **Outcome:** Worktree clean; handoff to Jimmy Engstrom confirmed
-
-### 2026-05-17T22:31:24 — Late-open Naming Session (COMPLETED)
-- **Outcome:** Full Squadron integration restored; late-open naming implementation approved
-- **Validated By:** Howard the Duck with source + live testing
-- **Decisions Merged:** 16 inbox entries consolidating sub-agent contract decisions
-
-### 2026-05-17T19:25:39 — Mic Capsule Geometry Fix (APPROVED)
-- **Problem:** Capsule corrupted (0.0264, 0.0572) → corrected to (0.024, 0.052)
-- **Validation:** Node syntax check passed; Squad gating and face-clearance offsets intact
-- **Status:** Safe data corruption bug fix
+For detailed session logs from early SAM and probe work, see history-archive.md.
 
 ---
 
-For detailed archived context, see history-archive.md.
-
-## Recent Sessions (cont.)
-
-### 2026-05-18 — MS_SAM/C64 Validation Contract Acceptance (COMPLETED)
-- **Agent:** howard-the-duck-2
-- **Status:** Validation gate for speech-engine rename revision accepted
-- **Scope:** Probe-regression.mjs acceptance criteria; 78/78 probes green + syntax checks
-- **Result:** Engine split (MS_SAM vs C64) enforced; legacy migration validated; retro synth separation confirmed; browser-only/no-network constraint confirmed; no `sam` active-path leakage
-- **Deliverable:** MS_SAM / C64 Validation Contract merged into decisions.md
-
-## Learnings
+## Key QA Learnings and Decisions
 
 - **2026-05-18T07:57:31.584+02:00 — MS_SAM/C64 validation contract:** `.github/extensions/copilot-avatar\probe-regression.mjs` is now the lightweight acceptance gate for the browser speech split. The honest contract is `ms_sam` for the browser voice-scoring path in `content/main.js`, `c64` for the existing formant synth (`C64_VOICES`, `speakC64`, `synthesizeSamAudio`), and legacy `engine: 'sam'` / `samVoice` must migrate to `c64` / `c64Voice` through both `main.mjs` normalization and the webview load path.
 - **2026-05-18T07:57:31.584+02:00 — Anti-relabel evidence for MS_SAM:** A credible `MS_SAM` pass in this repo means `speakMsSam()` stays on the browser voice seam (`speakWebSpeech` + `scoreMsSamVoice`/`resolveMsSamVoice`) and never touches `synthesizeSamAudio`, `SAM_PHONEME_DATA`, or `C64_VOICES`. If those retro-formant symbols leak into the `MS_SAM` branch, treat it as a mislabeled `C64` regression and reject it.
@@ -88,6 +44,10 @@ For detailed archived context, see history-archive.md.
 - **2026-05-18T11:57:44.088+02:00 — Avatar load triage seam:** An immediate post-`reload:true` snapshot can look dead (`canvasCount: 0`, no exported `window.setSquadContext`/`clearSubagents`, only static HTML controls) even when the avatar is just mid-reload. For a real load verdict in this repo, reload extensions, reopen the window, and require `window.__copilotAvatarReady === true` plus one live canvas and the exported window handlers before calling it broken.
 - **2026-05-18T13:03:44.655+02:00 — Clippy intro gating seam:** The “It looks like …” preambles belong to `content\main.js` `summarizeForClippy()` / `flushClippySummary()`, but root-turn completion in `.github/extensions/copilot-avatar\main.mjs` is still unsafe unless that path is explicitly guarded for `avatarStyle === 'clippy'`. QA now treats any unconditional `assistant.turn_end` → `flushClippySummary` path as a Copilot regression, and `.github/extensions/copilot-avatar\probe-regression.mjs` carries the lightweight source assertion for it.
 - **2026-05-18T13:02:05.771+02:00 — UI visibility repro seam:** In `content\main.js`, weak non-root updates (`setAgentActivity` / `setAgentIntent` / `setAgentThinking` without strong identity) intentionally queue and render nothing; the card appears only once `addSubagent()` or another strong-identity payload reaches `ensureAvatar()`. QA now treats zero visible `.subagent-label` cards after weak updates as expected webview behavior and requires extension-side evidence that `main.mjs` replays `addSubagent` for active agents. The lightweight gate in `.github/extensions/copilot-avatar\probe-regression.mjs` now asserts both sides of that contract.
+- **2026-05-18T13:03:44.655+02:00 — Approved Clippy-only summary gate:** The safe contract is now double-guarded: `main.mjs` uses `shouldUseClippySummaryFeedback()` so `assistant.turn_end` only calls `flushClippySummary` in Clippy mode, and `content\main.js` makes both `speakClippySummary()` and `flushClippySummary()` bail out when `!isClippyAvatar()`. For QA in this repo, that is enough evidence that Copilot mode cannot surface the Clippy lead-ins while Clippy still can.
+- **2026-05-18T13:02:05.771+02:00 — Background reconciliation false-positive:** A `session.idle` fix is not enough if it only loops existing sub-agent state and prunes stale ids. In this repo, explicit Tony/Howard spawns can still produce zero visible cards because `tool.execution_start` for spawn tools only caches metadata, weak page updates stay queued, and neither `reconcileLiveBackgroundSubagents()` nor `reconcileHydratedBackgroundSubagents()` materializes a missing card. QA now rejects any “background-agent visibility” fix whose probe never checks that the background path can surface unseen agents, not just keep or remove ones already rendered.
+- **2026-05-18T13:02:05.771+02:00 — Background identity mismatch seam:** When a card already exists, stale spawn metadata can outrank fresher runtime/background-task identity. In `.github/extensions/copilot-avatar\main.mjs`, `resolveSubagentDisplayFields()` still prefers `spawnMetadata.displayName` over `runtimeDisplayName`/`runtimeAgentName`, and `resolveSubagentTaskSummary()` still prefers `spawnMetadata.description` over `runtimeDescription`; paired with `.github/extensions/copilot-avatar\content\main.js` keeping the old strong `displayName`, a background-task “Vision” can stay rendered as Tony Stark with stale task copy.
+- **2026-05-18T13:02:05.771+02:00 — Approved background identity refresh seam:** Peter’s fix closes the Tony→Vision mismatch by caching normalized background-task metadata (`agentId`, display name, task summary/description), materializing missing cards from that cache, and routing Squad lookup through `resolvePreferredSquadAgentMetadata()` so strong runtime/background identity is tried before stale spawn aliases. The lightweight gate now needs to assert the provisional-visibility path plus this runtime-first Squad wrapper; with those checks updated, `.github/extensions/copilot-avatar\probe-regression.mjs` passes 92/92.
 
 ## 2026-05-18T07:24:45Z — Cross-Agent Update: SAM Library Migration Complete
 
@@ -129,3 +89,33 @@ Tested Clippy-only feedback gating implementation and found Copilot mode can sti
 **Required revision:** Implementation must guard the `main.mjs` call site by Clippy mode OR make `flushClippySummary()` bail out when avatar style is not `clippy`.
 
 **Escalation:** Clippy-only feedback revision escalated to frontend/runtime specialist — Shuri is locked out for this revision cycle. QA gate (`node probe-regression.mjs`) now enforces 73 assertions across Clippy routing, C64 persistence, and sub-agent visibility contracts.
+
+## 2026-05-18T13:26:10.974+02:00 — Session Close: Sub-agent UI Identity & Visibility Fix Approved
+
+**Status:** ✅ APPROVED
+
+**Final Review Summary:**
+- Vision's initial background-visibility proposal: REJECTED (incomplete identity metadata flow + card materialization gaps)
+- Background-task identity mismatch complaint: REPRODUCED (stale Tony/Howard spawn aliases blocking fresh Vision identity from appearing on cards)
+- Peter Parker's revision: APPROVED (three-part fix: provisional visibility + normalized background metadata + runtime-first Squad resolution)
+- Clippy feedback gating re-review: APPROVED (double-guarded gates in both `main.mjs` and `content/main.js` confirmed working)
+
+**Validation Evidence:**
+- Background identity refresh: `node probe-regression.mjs` → 92 passed, 0 failed
+- Clippy gating: `node probe-regression.mjs` → 81 passed, 0 failed
+- Live repro: cards now materialize from background-task snapshots; runtime/background identity now overrides stale spawn aliases
+
+**Decisions merged to `decisions.md`:**
+- Sub-agent Background Identity Mismatch (rejected, but identified seam)
+- Sub-agent Visibility with Missing agentId (rejected, but identified seam)
+- Background Identity Refresh — Peter Parker Revision (approved)
+- Clippy Feedback Gating Re-review (approved)
+- Vision — Clippy Feedback Gating Decision (approved)
+- Peter Parker — Background Identity Should Repair Visible Cards (proposed for next iteration)
+
+**Team Impact:** Squad coordination across Vision, Peter Parker, and Howard the Duck successfully diagnosed and fixed avatar UI convergence bugs. Spawn-alias stale state no longer blocks fresh runtime identity. Background-task snapshots can now materialize missing cards. QA contract updated to validate both identity precedence and card materialization seams.
+
+**Next QA Focus:** Monitor for regressions in:
+- Background-task identity updates repainting stale spawn-alias cards
+- Missing background-task agents materializing from `session.idle` snapshots
+- Clippy mode properly gating intro/status feedback lead-ins in both extension and webview layers
