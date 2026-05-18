@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 const CONFIG_FILES = ["squad.config.ts", "squad.config.js", "squad.config.json"];
-const ROSTER_FILES = ["roster.md", "team.md"];
+const ROSTER_FILES = ["team.md", "roster.md"];
 const EMPTY_MAP = Object.freeze([]);
 
 let squadSdkPromise;
@@ -252,82 +252,110 @@ async function loadCharterMetadata(squadPath, referencePath, fallbackRole = "") 
     };
 }
 
-async function loadRosterMetadata(squadPath) {
-    for (const fileName of ROSTER_FILES) {
-        const rosterPath = join(squadPath, fileName);
-        if (!existsSync(rosterPath)) {
-            continue;
-        }
+function parseSimpleRoster(content) {
+    return String(content || "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#") && !line.startsWith(">") && !line.startsWith("|"))
+        .map((line) => {
+            const cleaned = line.replace(/^[^\p{L}\p{N}@]+/u, "").trim();
+            const match = cleaned.match(/^(.+?)\s+—\s+(.+?)(?:\s{2,}(.*))?$/u);
+            if (!match) {
+                return null;
+            }
 
-        const content = await safeReadFile(rosterPath);
-        if (!content) {
-            continue;
-        }
-
-        const coordinatorRows = parseMarkdownTable(extractSection(content, "Coordinator"));
-        const memberRows = parseMarkdownTable(extractSection(content, "Members"));
-        const codingAgentRows = parseMarkdownTable(extractSection(content, "Coding Agent"));
-        const coordinatorName = coordinatorRows[0]?.[0] || "";
-        let rosterAgents = [...memberRows, ...codingAgentRows]
-            .map(([name, role, charterPath = "", status = ""]) => ({
-                id: deriveAgentId({ name, charterPath }),
+            const [, name, role, notes = ""] = match;
+            const id = normalizeAgentKey(name);
+            return {
+                id,
                 name: cleanMarkdownText(name),
                 displayName: cleanMarkdownText(name),
                 role: cleanMarkdownText(role),
-                charterPath: cleanMarkdownText(charterPath),
-                status: cleanMarkdownText(status),
-            }))
-            .filter((agent) => !shouldSkipRosterValue(agent.displayName) && agent.id);
+                charterPath: "",
+                status: "",
+                description: truncateText(notes ? `${role} - ${notes}` : role, 160),
+            };
+        })
+        .filter((agent) => agent && !shouldSkipRosterValue(agent.displayName) && agent.id);
+}
 
-        if (!rosterAgents.length) {
-            rosterAgents = parseSimpleRoster(content).map((agent) => ({
-                ...agent,
-                charterPath: agent.charterPath || deriveDefaultCharterPath(agent.id),
-            }));
-        }
-
-        const agents = await Promise.all(rosterAgents.map(async (agent) => ({
-            ...agent,
-            description: await loadCharterSummary(squadPath, agent.charterPath, agent.role) || agent.description,
-        })));
-
-        return {
-            coordinatorName,
-            agents,
-        };
+async function loadRosterFileMetadata(squadPath, fileName) {
+    const rosterPath = join(squadPath, fileName);
+    if (!existsSync(rosterPath)) {
+        return null;
     }
 
-    function parseSimpleRoster(content) {
-        return String(content || "")
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter((line) => line && !line.startsWith("#") && !line.startsWith(">") && !line.startsWith("|"))
-            .map((line) => {
-                const cleaned = line.replace(/^[^\p{L}\p{N}@]+/u, "").trim();
-                const match = cleaned.match(/^(.+?)\s+—\s+(.+?)(?:\s{2,}(.*))?$/u);
-                if (!match) {
-                    return null;
-                }
+    const content = await safeReadFile(rosterPath);
+    if (!content) {
+        return null;
+    }
 
-                const [, name, role, notes = ""] = match;
-                const id = normalizeAgentKey(name);
-                return {
-                    id,
-                    name: cleanMarkdownText(name),
-                    displayName: cleanMarkdownText(name),
-                    role: cleanMarkdownText(role),
-                    charterPath: "",
-                    status: "",
-                    description: truncateText(notes ? `${role} - ${notes}` : role, 160),
-                };
-            })
-            .filter((agent) => agent && !shouldSkipRosterValue(agent.displayName) && agent.id);
+    const coordinatorRows = parseMarkdownTable(extractSection(content, "Coordinator"));
+    const memberRows = parseMarkdownTable(extractSection(content, "Members"));
+    const codingAgentRows = parseMarkdownTable(extractSection(content, "Coding Agent"));
+    const coordinatorName = coordinatorRows[0]?.[0] || "";
+    let rosterAgents = [...memberRows, ...codingAgentRows]
+        .map(([name, role, charterPath = "", status = ""]) => ({
+            id: deriveAgentId({ name, charterPath }),
+            name: cleanMarkdownText(name),
+            displayName: cleanMarkdownText(name),
+            role: cleanMarkdownText(role),
+            charterPath: cleanMarkdownText(charterPath),
+            status: cleanMarkdownText(status),
+        }))
+        .filter((agent) => !shouldSkipRosterValue(agent.displayName) && agent.id);
+
+    if (!rosterAgents.length) {
+        rosterAgents = parseSimpleRoster(content).map((agent) => ({
+            ...agent,
+            charterPath: agent.charterPath || deriveDefaultCharterPath(agent.id),
+        }));
+    }
+
+    const agents = await Promise.all(rosterAgents.map(async (agent) => ({
+        ...agent,
+        description: await loadCharterSummary(squadPath, agent.charterPath, agent.role) || agent.description,
+    })));
+
+    return {
+        coordinatorName,
+        agents,
+    };
+}
+
+function mergeRosterAgentMetadata(primary = {}, fallback = {}) {
+    return {
+        id: primary.id || fallback.id || "",
+        name: primary.name || fallback.name || "",
+        displayName: primary.displayName || fallback.displayName || "",
+        role: primary.role || fallback.role || "",
+        charterPath: primary.charterPath || fallback.charterPath || "",
+        status: primary.status || fallback.status || "",
+        description: primary.description || fallback.description || "",
+    };
+}
+
+function mergeRosterMetadata(primary = null, fallback = null) {
+    const mergedAgents = new Map();
+
+    for (const agent of fallback?.agents || []) {
+        mergedAgents.set(agent.id, { ...agent });
+    }
+
+    for (const agent of primary?.agents || []) {
+        mergedAgents.set(agent.id, mergeRosterAgentMetadata(agent, mergedAgents.get(agent.id)));
     }
 
     return {
-        coordinatorName: "",
-        agents: [],
+        coordinatorName: cleanMarkdownText(primary?.coordinatorName || fallback?.coordinatorName || ""),
+        agents: [...mergedAgents.values()],
     };
+}
+
+async function loadRosterMetadata(squadPath) {
+    const rosterMetadata = await Promise.all(ROSTER_FILES.map((fileName) => loadRosterFileMetadata(squadPath, fileName)));
+    const [teamMetadata, legacyRosterMetadata] = rosterMetadata;
+    return mergeRosterMetadata(teamMetadata, legacyRosterMetadata);
 }
 
 function findConfigMarker(startDir) {
