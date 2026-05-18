@@ -183,3 +183,38 @@ Treat Copilot SDK `subagent.selected` as weak, best-effort naming hint only. Nev
 - Prefer correlation order: spawn tool metadata → `subagent.started` names → Squad roster/casting → `subagent.selected` hint → raw runtime fallback
 - If product needs guaranteed naming for concurrent starts, add correlation seam around parent spawn tool metadata; do not let `subagent.selected` mint cards
 
+# Voice Engine Naming Decision: C64 vs MS_SAM
+
+**Decided by:** Tony Stark (Lead)  
+**Requested by:** Jimmy Engstrom  
+**Date:** 2026-05-18T07:57:31.584+02:00  
+
+## User Directive
+
+Rename the Microsoft SAM engine to `MS_SAM`; if the current synthesized voice path is actually the C64-style implementation, keep it available but rename that engine to `C64`.
+
+## Decision
+
+Do **not** keep the current browser synthesizer under a Microsoft SAM-style label. The implementation in `.github/extensions/copilot-avatar/content/main.js` is an original Web Audio formant synth with a tiny rule-based grapheme-to-phoneme pass and hand-tuned retro presets; that is materially closer to a **C64 / Software Automatic Mouth-inspired** path than to the later Microsoft SAPI voice family.
+
+### Rationale
+
+- The current engine is built from `SAM_PHONEME_DATA`, `samG2P()`, and `synthesizeSamAudio()` — a lightweight formant/noise synthesizer, not a packaged Microsoft voice or SAPI runtime.
+- The preset list (`sam`, `elf`, `cylon`, `vader`, `stuffy`, `gruff`) reads like retro character variants, not Microsoft voice identities.
+- The referenced site markets "Microsoft SAM" aggressively, but its public page also points at the open `discordier/sam` lineage and separate Tetyys/SAPI4 offerings. That is marketing plus mixed backends, not evidence that our current browser path matches the original Microsoft voice.
+
+### Action Items for Implementation (Peter)
+
+1. **Rename honestly first.** Treat the current `sam` engine as `c64` in UI copy and code-facing identifiers where practical. If persistence keys must survive, add a migration from `samVoice`/`engine: 'sam'` to the new name instead of breaking saved settings.
+2. **Reserve `MS_SAM` for a distinct path.** Only ship an `MS_SAM` option if it uses a clearly separate seam — for example, browser/OS `speechSynthesis` when a Microsoft SAM-like system voice is actually exposed. Do not relabel the current formant synth as `MS_SAM`.
+3. **Do not promise Mike/Mary from this synth.** Mike/Mary/Bonzi-class voices are different assets and engines, not parameter presets on top of this formant table.
+4. **Be explicit in UI text.** Current retro engine copy should say browser-native, retro, no API key, and avoid claims like "authentic Microsoft SAM" or "SAPI-compatible."
+5. **If time is short, prefer the honest cut.** Shipping `C64` now is better than shipping a mislabeled fake `MS_SAM`.
+
+### Technical Constraints
+
+- **No proprietary voice assets.** We cannot copy Microsoft voice databases, DLLs, diphone tables, or extracted phoneme rules.
+- **Browser-only synthesis is the hard limit.** A pure JS/Web Audio formant synth will not naturally land on Mike/Mary timbre; those voices depend on proprietary voice data and different synthesis pipelines.
+- **`speechSynthesis` is opportunistic, not deterministic.** On some Windows setups the browser may expose Microsoft-installed voices, but availability, naming, and quality vary by OS/browser and are not portable.
+- **Open replacement data is the real work.** A true browser-native `MS_SAM` approximation would need an openly licensed voice corpus and a different synthesis architecture, likely with a larger payload and more tuning.
+

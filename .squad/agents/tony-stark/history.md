@@ -105,6 +105,13 @@ Older work documented in `history-archive.md`:
 
 ## Learnings
 
+### 2026-05-18T07:57:31.584+02:00 — Retro voice naming review
+
+- `.github/extensions/copilot-avatar/content/main.js` current "SAM" path is an original browser-side Web Audio formant synth (`samG2P` + `SAM_PHONEME_DATA` + `synthesizeSamAudio`), not a Microsoft SAPI voice implementation.
+- The current preset seam (`sam`, `elf`, `cylon`, `vader`, `stuffy`, `gruff`) is honest only as a retro/C64-style engine family; it should not be marketed as authentic MS SAM or as Mike/Mary-adjacent.
+- If product wants `MS_SAM`, keep it as a separate seam from the retro synth and prefer system/browser voice delegation or another clearly distinct implementation rather than relabeling the existing engine.
+- Key files for this decision: `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/content/index.html`, `.github/extensions/copilot-avatar/main.mjs`.
+
 ### 2026-05-18T00:04:39.350+02:00 — SDK seam review for live sub-agents and SAM
 
 - Copilot SDK 0.1.32 gives authoritative sub-agent lifecycle on `subagent.started` and correlated follow-up traffic through `toolCallId` / `parentToolCallId`, but `subagent.selected` has no correlation id; treat it as a weak naming hint only.
@@ -187,3 +194,20 @@ Older work documented in `history-archive.md`:
 **Team Impact:** Shuri's frontend implementation and Peter Parker's engine details now grounded in your architectural guardrails. Decisions consolidated and deduplicated in .squad/decisions.md (5 inbox entries merged into 2 canonical entries).
 
 **Orchestration:** Full logs recorded in `.squad/orchestration-log/2026-05-17T22-04-39Z-tony-stark.md`
+
+## 2026-05-18T05:57:31Z — Voice Engine Naming Clarification: C64 vs MS_SAM
+
+**Decision:** Rename existing browser synth to `C64`; reserve `MS_SAM` for truly separate implementation.
+
+**Rationale:** Current engine is original Web Audio formant synth (`SAM_PHONEME_DATA`, `samG2P()`, `synthesizeSamAudio()`) — honest lineage is C64-style retro, not Microsoft SAPI. Preset list (`sam`, `elf`, `cylon`, `vader`, `stuffy`, `gruff`) reads retro, not Microsoft. No proprietary voice assets in use.
+
+**Action Items for Peter (Implementation):**
+1. Rename current `sam` engine to `c64` with migration path for persistence keys
+2. Reserve `MS_SAM` only for distinct seam (e.g., browser OS `speechSynthesis` with actual Microsoft voice)
+3. Do not relabel current formant synth as `MS_SAM`
+4. Explicit UI text: browser-native, retro, no API key, avoid "authentic Microsoft SAM" claims
+5. If time is short, prefer honest cut now over mislabeled implementation
+
+**Key File:** `.github/extensions/copilot-avatar/content/main.js`
+
+**Status:** Documented in decisions.md. Ready for implementation.

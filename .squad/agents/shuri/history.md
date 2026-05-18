@@ -162,3 +162,25 @@ All three agents' names resolve through casting aliases and Squad context:
 - shuri → Shuri
 - ision → Vision
 - 	ester → Howard the Duck
+
+## 2026-05-18T05:57:31Z — Cross-Agent Update: Voice Engine Naming — C64 vs MS_SAM Clarification
+
+**From:** Scribe (Session Logger) per Tony Stark (Lead)
+
+**Decision:** Rename existing browser synth to `C64`; reserve `MS_SAM` for truly separate implementation.
+
+**Your UI/Frontend Impact:**
+Current SAM engine being renamed from `sam` identifier to `c64` for honest branding. Update UI copy and engine selector:
+- Engine option label: "C64 Retro" (was "Microsoft SAM" — which was premature branding)
+- Section heading: "C64 Voice Presets" (was "Microsoft SAM")
+- Help text: "Browser-native retro synth, no API key, no internet required"
+- Avoid copy like "authentic Microsoft SAM" or SAPI-compatible"
+- Keep `sam-js@0.3.1` MIT credit in footer/about
+
+**Why:** Current engine is original Web Audio formant synth (`SAM_PHONEME_DATA`, `samG2P()`, `synthesizeSamAudio()`) — honest lineage is C64-style retro, not Microsoft SAPI. Preset list reads retro. No proprietary Microsoft voice assets involved.
+
+**Files to Update:**
+- `.github/extensions/copilot-avatar/content/index.html` (UI labels, section IDs may rename from `#tts-sam-section` to `#tts-c64-section`)
+- `.github/extensions/copilot-avatar/content/main.js` (UI copy, state variable naming if needed)
+
+**Status:** Full decision documented in decisions.md. Peter Parker handling backend/settings renaming (sam→c64). You handle UI copy update.

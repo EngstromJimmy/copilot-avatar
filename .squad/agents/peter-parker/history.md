@@ -127,3 +127,22 @@ Two critical decisions merged to `decisions.md`:
 **Why:** Clarify contract with users and maintainers about ownership model.
 
 **Team Impact:** All agents now have clear reference for how Copilot and Squad interact in sub-agent visibility.
+
+## 2026-05-18T05:57:31Z — Cross-Agent Update: Voice Engine Naming — C64 vs MS_SAM Decision
+
+**From:** Scribe (Session Logger) per Tony Stark (Lead)
+
+**Decision:** Rename existing browser synth to `C64`; reserve `MS_SAM` for truly separate implementation.
+
+**Your Action Items:**
+1. Rename current `sam` engine to `c64` in `.github/extensions/copilot-avatar/content/main.js` with migration path for persistence keys (old `samVoice`/`engine: 'sam'` → new `c64Voice`/`engine: 'c64'`)
+2. Reserve `MS_SAM` only for distinct seam (e.g., browser OS `speechSynthesis` with actual Microsoft voice)
+3. Do not relabel current formant synth as `MS_SAM`
+4. Explicit UI text: browser-native, retro, no API key, avoid "authentic Microsoft SAM" claims
+5. If time is short, prefer honest cut now over mislabeled implementation
+
+**Why:** Current engine is original Web Audio formant synth (`SAM_PHONEME_DATA`, `samG2P()`, `synthesizeSamAudio()`) — honest lineage is C64-style retro, not Microsoft SAPI. Preset list (`sam`, `elf`, `cylon`, `vader`, `stuffy`, `gruff`) reads retro. No proprietary voice assets involved. Prevents false attribution.
+
+**Files to Update:** `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/content/index.html`, `.github/extensions/copilot-avatar/main.mjs`
+
+**Status:** Documented in decisions.md and orchestration log. Ready for implementation.
