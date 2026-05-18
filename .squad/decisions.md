@@ -396,3 +396,83 @@ I do **not** currently have evidence of a real load-blocking product regression 
 
 When someone reports "avatar not loading," first distinguish **mid-reload blank frame** from **real boot failure**. The acceptance signal is page-ready plus rendered scene, not a single DOM sample taken during refresh.
 
+---
+
+# Background Agent Visibility — Vision
+
+**Date:** 2026-05-18T13:02:05.771+02:00  
+**Agent:** Vision  
+**Status:** Implemented
+
+## Decision
+
+Stop clearing sub-agent runtime/UI state on root `assistant.turn_start`; instead reconcile visible sub-agents from `session.idle.data.backgroundTasks.agents` in both live runtime and late-open history replay.
+
+## Why
+
+Copilot background agents can remain alive across top-level turns. Using `assistant.turn_start` as a hard reset hid still-running Howard/Tony cards even though the platform task list still showed them as started/idle.
+
+---
+
+# Agent Visibility Review — Howard the Duck
+
+**Date:** 2026-05-18T13:02:05.771+02:00  
+**Agent:** Howard the Duck  
+**Status:** Approved
+
+## What Verified
+
+The avatar UI was missing the first real visibility handoff, not a rendering primitive. Weak update-only traffic produced zero non-root cards in the live webview; sending `addSubagent()` immediately surfaced the expected Howard/Tony cards. Tightened `.github/extensions/copilot-avatar\probe-regression.mjs` so QA now guards the webview-side pending-state contract in addition to the existing `subagent.started` and late-open replay assertions.
+
+## Evidence
+
+Live avatar probe: after `clearSubagents({ preserveRoot: true })`, weak `setAgentActivity` / `setAgentIntent` / `setAgentThinking` calls left `overlayCount: 0`; adding `addSubagent()` for Howard and Tony raised the overlay count to 2 and both cards became visible after render settle. Source review matches that behavior: `main.mjs` now calls `addSubagent` directly from `subagent.started`, late-open replay clears + rehydrates before replay, and `content/main.js` queues weak updates until a render-authorizing payload arrives. `node probe-regression.mjs` now passes 79/79.
+
+## Team Impact
+
+If someone says "the agents ran but never appeared," the first question is whether the extension ever emitted `addSubagent` (or an equivalent strong-identity first render), not whether the webview can draw cards once it gets one.
+
+---
+
+# User Directive: Clippy-Only Feedback
+
+**Date:** 2026-05-18T13:03:44.655+02:00  
+**By:** Jimmy Engstrom (via Copilot)  
+**Requested:** Intro/status feedback like "There is an update" or "We have hit a snag" should only be available when running Clippy, never Copilot.
+
+---
+
+# Clippy Feedback Gating Review — Howard the Duck
+
+**Date:** 2026-05-18T13:03:44.655+02:00  
+**Agent:** Howard the Duck  
+**Status:** Rejected
+
+## What Checked
+
+Tightened `.github/extensions/copilot-avatar/probe-regression.mjs` so the lightweight QA gate now rejects any path where Copilot mode can still reach the Clippy-only intro/status summaries.
+
+## Evidence
+
+`content/main.js` keeps the "It looks like …" strings inside `summarizeForClippy()`, but `main.mjs` `assistant.turn_end` still calls `flushClippySummary` unconditionally after root messages. Running `node probe-regression.mjs` from `.github/extensions/copilot-avatar` now finishes 72 passed / 1 failed, with the failing assertion `Copilot mode cannot reach Clippy intro/status summaries`.
+
+## Required Revision
+
+Shuri should revise the implementation so Copilot mode cannot reach `flushClippySummary` — either guard the `main.mjs` call site by Clippy mode or make `flushClippySummary()` bail out when the avatar style is not `clippy`.
+
+---
+
+# Clippy-Only Feedback Implementation — Shuri
+
+**Date:** 2026-05-18T13:03:44.655+02:00  
+**Agent:** Shuri  
+**Status:** In Progress
+
+## Decision
+
+Gate `speakClippySummary()` and `flushClippySummary()` behind `isClippyAvatar()` so intro/status wrappers like `There is an update` and `We hit a snag` never surface in Copilot mode.
+
+## Rationale
+
+The feedback lead-ins are persona-specific Clippy chrome; in Copilot mode they add duplicate, off-brand narration instead of the raw assistant response.
+

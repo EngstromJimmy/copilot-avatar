@@ -86,6 +86,8 @@ For detailed archived context, see history-archive.md.
 - **2026-05-18T09:24:45.011+02:00 — C64 settings regression pattern:** The C64 panel in `.github/extensions/copilot-avatar\content\index.html` is part of the product contract now: voice alone is not enough. QA should expect persisted `c64Voice` plus mouth/pitch/throat/speed-style controls in `main.mjs`, `content\main.js`, and the regression probe, and UI-copy assertions should target visible labels instead of raw migration ids.
 - **2026-05-18T09:24:45.011+02:00 — SAM probe false-positive guard:** For the finished `sam-js` migration, the regression probe should key off removed helpers (`SAM_PHONEME_DATA`, `samG2P()`, `synthesizeSamAudio()`) rather than legacy character names like `cylon`/`vader`, because those can remain as honest presets. It should also accept helper-wrapped vendor usage (`buildC64SamInstance()` + `sam.wav(...)`) and combined restore bootstraps (`initialC64Preset`) instead of requiring inline `if/else` assignment blocks.
 - **2026-05-18T11:57:44.088+02:00 — Avatar load triage seam:** An immediate post-`reload:true` snapshot can look dead (`canvasCount: 0`, no exported `window.setSquadContext`/`clearSubagents`, only static HTML controls) even when the avatar is just mid-reload. For a real load verdict in this repo, reload extensions, reopen the window, and require `window.__copilotAvatarReady === true` plus one live canvas and the exported window handlers before calling it broken.
+- **2026-05-18T13:03:44.655+02:00 — Clippy intro gating seam:** The “It looks like …” preambles belong to `content\main.js` `summarizeForClippy()` / `flushClippySummary()`, but root-turn completion in `.github/extensions/copilot-avatar\main.mjs` is still unsafe unless that path is explicitly guarded for `avatarStyle === 'clippy'`. QA now treats any unconditional `assistant.turn_end` → `flushClippySummary` path as a Copilot regression, and `.github/extensions/copilot-avatar\probe-regression.mjs` carries the lightweight source assertion for it.
+- **2026-05-18T13:02:05.771+02:00 — UI visibility repro seam:** In `content\main.js`, weak non-root updates (`setAgentActivity` / `setAgentIntent` / `setAgentThinking` without strong identity) intentionally queue and render nothing; the card appears only once `addSubagent()` or another strong-identity payload reaches `ensureAvatar()`. QA now treats zero visible `.subagent-label` cards after weak updates as expected webview behavior and requires extension-side evidence that `main.mjs` replays `addSubagent` for active agents. The lightweight gate in `.github/extensions/copilot-avatar\probe-regression.mjs` now asserts both sides of that contract.
 
 ## 2026-05-18T07:24:45Z — Cross-Agent Update: SAM Library Migration Complete
 
@@ -111,4 +113,19 @@ Team orchestration recorded three related decisions in `decisions.md`:
 
 **Cross-agent impact:** The QA trap is now documented: mid-reload snapshots can falsely report load failure. The real acceptance signal is `window.__copilotAvatarReady === true` plus rendered scene and exported handlers, not a single DOM sample during refresh. All three fixes demonstrate the pattern: timebox optional assets, set ready from fallback, load non-critical models in background.
 
+**Team Impact:** The QA trap is now documented: mid-reload snapshots can falsely report load failure. The real acceptance signal is `window.__copilotAvatarReady === true` plus rendered scene and exported handlers, not a single DOM sample during refresh. All three fixes demonstrate the pattern: timebox optional assets, set ready from fallback, load non-critical models in background.
+
 **Files affected:** `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/lib/copilot-webview.js`
+
+## 2026-05-18T13:03:44.655+02:00 — Clippy Feedback Gating Review: Rejection & Escalation
+
+**Status:** ❌ REJECTED (72 passed / 1 failed)
+
+Tested Clippy-only feedback gating implementation and found Copilot mode can still reach intro/status summaries:
+- `content/main.js` keeps "It looks like …" strings inside `summarizeForClippy()`
+- But `main.mjs` `assistant.turn_end` still calls `flushClippySummary` unconditionally after root messages
+- Failing assertion: `Copilot mode cannot reach Clippy intro/status summaries`
+
+**Required revision:** Implementation must guard the `main.mjs` call site by Clippy mode OR make `flushClippySummary()` bail out when avatar style is not `clippy`.
+
+**Escalation:** Clippy-only feedback revision escalated to frontend/runtime specialist — Shuri is locked out for this revision cycle. QA gate (`node probe-regression.mjs`) now enforces 73 assertions across Clippy routing, C64 persistence, and sub-agent visibility contracts.

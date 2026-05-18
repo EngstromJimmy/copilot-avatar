@@ -108,6 +108,8 @@ Full Squadron integration restored for late-open avatar naming. All three agents
 
 - 2026-05-18T11:57:44.088+02:00 — The avatar webview boot path in `.github/extensions/copilot-avatar/content/main.js` must not await optional GLB assets before setting `window.__copilotAvatarReady`; if `model.glb` or `clippy.glb` stalls, fall back to `createBaseAsset(null)`, set ready from the fallback scene, and continue optional model loading in the background.
 - 2026-05-18T11:57:44.088+02:00 — When `avatarStyle === 'clippy'`, keep the default avatar visible until `clippyRoot` actually exists; otherwise a slow Clippy asset load creates a blank window even though the page and bridge are already healthy.
+- 2026-05-18T13:02:05.771+02:00 — Background sub-agent visibility must reconcile from `session.idle.data.backgroundTasks.agents`, not from root `assistant.turn_start`; background agents can stay alive across root turns, so clearing avatar cards on the next top-level turn hides still-running agents from `.github/extensions/copilot-avatar/main.mjs`.
+- 2026-05-18T13:02:05.771+02:00 — Late-open replay should prune historical idle ghosts with the latest `session.idle` background-agent snapshot while keeping active-tool agents visible; the guard now lives in `.github/extensions/copilot-avatar/main.mjs`, and `.github/extensions/copilot-avatar/probe-regression.mjs` covers the contract.
 
 ## 2026-05-18T11:57:44.088+02:00 — Avatar Load Resilience Fix (Decision Merged)
 
@@ -119,3 +121,15 @@ Team orchestration recorded three related decisions in `decisions.md`:
 **Cross-agent impact:** This trio of fixes addresses the boot-blocking load path regression that was preventing the avatar from declaring readiness even when the scene and bridge were healthy. The pattern is: timebox optional assets, set ready from a fallback-capable path, and load non-critical models in the background.
 
 **Files affected:** `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/lib/copilot-webview.js`
+
+## 2026-05-18T13:02:05.771+02:00 — Sub-agent Visibility Fix: Howard Approval
+
+**Status:** ✅ APPROVED (79/79 regression checks passing)
+
+Howard the Duck validated the background agent visibility fix:
+- Verified avatar UI was missing the first real visibility handoff, not a rendering primitive
+- Weak update-only traffic produced zero non-root cards in live webview
+- Sending `addSubagent()` immediately surfaced expected Howard/Tony cards
+- Tightened `.github/extensions/copilot-avatar\probe-regression.mjs` to guard webview-side pending-state contract
+
+**Team impact:** Background agents now stay visible and correctly reconciled across coordinator turns, eliminating the symptom where three running agents would disappear from the avatar UI despite still being active in the platform task list.
