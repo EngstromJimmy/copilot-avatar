@@ -33,7 +33,11 @@ const DEFAULT_SETTINGS = Object.freeze({
     clippyElevenlabsVoiceName: '',
     clippyElevenlabsCloneSourceHash: '',
     clippyRefAudio: null,
-    samVoice: 'sam',
+    c64Voice: 'sam',
+    c64Speed: 72,
+    c64Pitch: 64,
+    c64Throat: 128,
+    c64Mouth: 128,
     showSpokenText: true,
     showAvatarBadges: true,
     showModelBadges: false,
@@ -102,10 +106,38 @@ function normalizeSettings(settings) {
     }
 
     const nextSettings = { ...DEFAULT_SETTINGS, ...settings };
+    if (settings.engine === 'sam') {
+        nextSettings.engine = 'c64';
+    } else if (settings.engine === 'ms_sam') {
+        nextSettings.engine = 'webspeech';
+    }
+    if (!settings.c64Voice && settings.samVoice) {
+        nextSettings.c64Voice = settings.samVoice;
+    }
+    if (!settings.voice && settings.msSamVoice && settings.msSamVoice !== '__auto__') {
+        nextSettings.voice = settings.msSamVoice;
+    }
+    delete nextSettings.msSamVoice;
+    delete nextSettings.samVoice;
+    nextSettings.c64Voice = typeof nextSettings.c64Voice === "string" && nextSettings.c64Voice.trim()
+        ? nextSettings.c64Voice.trim()
+        : DEFAULT_SETTINGS.c64Voice;
+    nextSettings.c64Speed = normalizeIntegerSetting(nextSettings.c64Speed, DEFAULT_SETTINGS.c64Speed, 20, 255);
+    nextSettings.c64Pitch = normalizeIntegerSetting(nextSettings.c64Pitch, DEFAULT_SETTINGS.c64Pitch, 0, 255);
+    nextSettings.c64Throat = normalizeIntegerSetting(nextSettings.c64Throat, DEFAULT_SETTINGS.c64Throat, 0, 255);
+    nextSettings.c64Mouth = normalizeIntegerSetting(nextSettings.c64Mouth, DEFAULT_SETTINGS.c64Mouth, 0, 255);
     nextSettings.windowWidth = normalizeWindowDimension(nextSettings.windowWidth, DEFAULT_SETTINGS.windowWidth, 320, 4096);
     nextSettings.windowHeight = normalizeWindowDimension(nextSettings.windowHeight, DEFAULT_SETTINGS.windowHeight, 360, 3072);
     nextSettings.windowSizeUnits = settings.windowSizeUnits === "physical" ? "physical" : "";
     return nextSettings;
+}
+
+function normalizeIntegerSetting(value, fallback, min, max) {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+        return fallback;
+    }
+    return Math.min(max, Math.max(min, Math.round(numericValue)));
 }
 
 function normalizeWindowDimension(value, fallback, min, max) {
@@ -127,10 +159,11 @@ function shouldKeepAvatarAlwaysOnTop(settings) {
 
 async function loadSettings() {
     try {
-        return normalizeSettings(JSON.parse(await readFile(settingsPath, "utf-8")));
+        activeSettings = normalizeSettings(JSON.parse(await readFile(settingsPath, "utf-8")));
     } catch {
-        return { ...DEFAULT_SETTINGS };
+        activeSettings = { ...DEFAULT_SETTINGS };
     }
+    return { ...activeSettings };
 }
 
 function applySettingsToWebview(settings) {
@@ -140,9 +173,14 @@ function applySettingsToWebview(settings) {
     webview.alwaysOnTop = shouldKeepAvatarAlwaysOnTop(settings);
 }
 
+function shouldUseClippySummaryFeedback(settings = activeSettings) {
+    return settings?.avatarStyle === "clippy";
+}
+
 async function saveSettings(settings) {
     const currentSettings = await loadSettings();
     const nextSettings = normalizeSettings({ ...currentSettings, ...settings });
+    activeSettings = nextSettings;
     const transparencyChanged = webview.transparent !== nextSettings.transparentWindow;
     const alwaysOnTopChanged = webview.alwaysOnTop !== shouldKeepAvatarAlwaysOnTop(nextSettings);
     const windowStyleChanged = transparencyChanged || alwaysOnTopChanged;

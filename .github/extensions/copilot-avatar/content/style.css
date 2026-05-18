@@ -615,10 +615,19 @@ body.tiny-layout .agent-detail {
 }
 
 #tts-rate-value,
-#tts-pitch-value {
+#tts-pitch-value,
+#tts-c64-speed-value,
+#tts-c64-pitch-value,
+#tts-c64-throat-value,
+#tts-c64-mouth-value {
   color: #e6edf3;
   font-size: 13px;
   text-align: center;
+}
+
+.tts-c64-controls {
+  display: grid;
+  gap: 8px;
 }
 
 #tts-dropdown input[type="text"],
@@ -690,6 +699,7 @@ body.tiny-layout .agent-detail {
 #clippy-retro-voice-btn,
 #voxtral-rerecord-btn,
 #tts-webspeech-test-btn,
+#tts-c64-test-btn,
 #tts-ai-test-btn,
 #elevenlabs-clone-btn,
 #elevenlabs-delete-btn {
@@ -710,6 +720,7 @@ body.tiny-layout .agent-detail {
 #clippy-retro-voice-btn:hover,
 #voxtral-rerecord-btn:hover,
 #tts-webspeech-test-btn:hover,
+#tts-c64-test-btn:hover,
 #tts-ai-test-btn:hover,
 #elevenlabs-clone-btn:hover,
 #elevenlabs-delete-btn:hover {
@@ -722,6 +733,7 @@ body.tiny-layout .agent-detail {
 }
 
 #tts-webspeech-test-btn,
+#tts-c64-test-btn,
 #tts-ai-test-btn,
 #elevenlabs-clone-btn {
   border-color: rgba(88, 166, 255, 0.35);

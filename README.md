@@ -16,7 +16,7 @@ A cheerful 3D Copilot sidekick that lives in a native window beside your termina
 
 ### 0.2.0
 
-- **Expanded text-to-speech**: Web Speech, Voxtral, and ElevenLabs support in one avatar window
+- **Expanded text-to-speech**: Web Speech, SAM (Software Automatic Mouth) C64 version, Voxtral, and ElevenLabs support in one avatar window
 - **Voxtral options**: use Mistral Cloud or a local vLLM server, plus reference-audio workflows for Clippy
 - **New Clippy avatar mode**: animated paperclip mode with Clippy-specific speech behavior and retro sample generation
 - **Transparent window mode**: keep the avatar floating cleanly beside the terminal
@@ -45,7 +45,7 @@ So I built this: a little screen buddy with some personality. It makes Copilot f
 - **RoboDuck variant**: some agents can show up in full RoboDuck mode with the classic avatar head and a snap-on GLB duckbill
 - **Live response and working text**: final root-agent messages and current work status can stay visible beside the avatar
 - **Built-in TTS**: voice, speed, pitch, and saved settings so your desktop buddy can actually talk back
-  - Use the Web Speech API, Voxtral, or ElevenLabs TTS
+  - Use Web Speech, the legacy SAM (Software Automatic Mouth) C64 version synth, Voxtral, or ElevenLabs TTS
   - Point Voxtral at Mistral Cloud or a local vLLM server
   - Record, import, or generate a retro Clippy reference clip for Voxtral reference audio
   - Load ElevenLabs account voices directly from your ElevenLabs account
@@ -112,7 +112,7 @@ Open the avatar window, keep coding, and let it react to the session in real tim
 
 Sub-agents appear automatically when the current session emits sub-agent lifecycle events, so the whole scene fills out as work gets delegated.
 
-Select **Avatar → Clippy** in settings to show the animated grey `clippy.glb` paperclip on a transparent background. Clippy mode prefers an AI voice engine, hides response/status overlays, and speaks a short Clippy-style summary of the final Copilot response instead of reading the message verbatim. Import or record a reference clip while Clippy is selected to save it as the default Voxtral voice source. You can also use **Generate retro Clippy sample** to fetch a short pitched-up Microsoft Sam-style SAPI4 reference WAV at setup time instead of bundling an audio file. With ElevenLabs selected, choose one of your account voices instead.
+Select **Avatar → Clippy** in settings to show the animated grey `clippy.glb` paperclip on a transparent background. Clippy mode prefers an AI voice engine, hides response/status overlays, and speaks a short Clippy-style summary of the final Copilot response instead of reading the message verbatim. Import or record a reference clip while Clippy is selected to save it as the default Voxtral voice source. You can also use **Generate retro Clippy sample** to fetch a short pitched-up Microsoft Sam-style SAPI4 reference WAV at setup time instead of bundling an audio file. For local-only retro voices, the Speech tab now keeps the homegrown formant synth labeled as **SAM (Software Automatic Mouth) C64 version**, while system/browser voices stay under **Web Speech**.
 
 If Squad is available for the workspace, the avatar picks up that metadata automatically. Without Squad, it still works great as a plain Copilot companion.
 
@@ -142,11 +142,11 @@ The root avatar uses the same activity-state system even when there are no sub-a
 | ⚙️ button | Open settings dropdown |
 | General / Speech tabs | Switch between avatar/window controls and TTS controls |
 | Avatar dropdown | Choose Copilot or Clippy |
-| Engine dropdown | Choose Web Speech, Voxtral, or ElevenLabs |
+| Engine dropdown | Choose Web Speech, SAM (Software Automatic Mouth) C64 version, Voxtral, or ElevenLabs |
 | Show avatar badges | Show or hide the full badge card under each avatar |
 | Show model badges | Show or hide the model line inside each badge card |
-| Voice dropdown | Select a system voice |
-| Test selected voice | Preview the currently selected Web Speech, Voxtral, or ElevenLabs voice |
+| Voice dropdown | Select a system/browser voice or a SAM (Software Automatic Mouth) C64 version preset |
+| Test selected voice | Preview the currently selected Web Speech, SAM (Software Automatic Mouth) C64 version, Voxtral, or ElevenLabs voice |
 | Voxtral backend | Choose Mistral Cloud or local vLLM |
 | ElevenLabs API key | Load voices from your ElevenLabs account |
 | Generate retro Clippy sample | Fetch and save a pitched-up Microsoft Sam-style reference clip for Clippy |

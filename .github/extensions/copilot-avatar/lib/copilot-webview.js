@@ -62,11 +62,22 @@ const BRIDGE_JS = `(() => {
 
 function staticHandler(rootDir) {
     return async (req, res) => {
-        if (req.url === "/__bridge.js") {
+        const requestPath = decodeURIComponent((req.url || "/").split("?")[0]);
+        if (requestPath === "/__bridge.js") {
             res.writeHead(200, { "Content-Type": "text/javascript" });
             return res.end(BRIDGE_JS);
         }
-        const rel = req.url === "/" ? "/index.html" : decodeURIComponent(req.url.split("?")[0]);
+        if (requestPath === "/__vendor__/sam-js.mjs") {
+            try {
+                const buf = await readFile(resolve(rootDir, "..", "node_modules", "sam-js", "dist", "samjs.esm.min.js"));
+                res.writeHead(200, { "Content-Type": "text/javascript" });
+                return res.end(buf);
+            } catch {
+                if (!res.headersSent) res.writeHead(404);
+                return res.end();
+            }
+        }
+        const rel = requestPath === "/" ? "/index.html" : requestPath;
         const abs = normalize(join(rootDir, rel));
         if (!abs.startsWith(rootDir + sep)) return res.writeHead(403).end();
         try {
