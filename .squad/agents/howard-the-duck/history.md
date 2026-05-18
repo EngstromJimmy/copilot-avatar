@@ -85,6 +85,7 @@ For detailed archived context, see history-archive.md.
 - **2026-05-18T09:24:45.011+02:00 — discordier/sam migration seam:** For the new C64/SAM work, the lightweight gate must look for a real `sam-js` / `discordier/sam` seam in `.github/extensions/copilot-avatar\package.json`, `content\index.html`, or `content\main.js`, and reject any build that still ships `SAM_PHONEME_DATA`, `samG2P()`, or `synthesizeSamAudio()` from the in-file formant synth.
 - **2026-05-18T09:24:45.011+02:00 — C64 settings regression pattern:** The C64 panel in `.github/extensions/copilot-avatar\content\index.html` is part of the product contract now: voice alone is not enough. QA should expect persisted `c64Voice` plus mouth/pitch/throat/speed-style controls in `main.mjs`, `content\main.js`, and the regression probe, and UI-copy assertions should target visible labels instead of raw migration ids.
 - **2026-05-18T09:24:45.011+02:00 — SAM probe false-positive guard:** For the finished `sam-js` migration, the regression probe should key off removed helpers (`SAM_PHONEME_DATA`, `samG2P()`, `synthesizeSamAudio()`) rather than legacy character names like `cylon`/`vader`, because those can remain as honest presets. It should also accept helper-wrapped vendor usage (`buildC64SamInstance()` + `sam.wav(...)`) and combined restore bootstraps (`initialC64Preset`) instead of requiring inline `if/else` assignment blocks.
+- **2026-05-18T11:57:44.088+02:00 — Avatar load triage seam:** An immediate post-`reload:true` snapshot can look dead (`canvasCount: 0`, no exported `window.setSquadContext`/`clearSubagents`, only static HTML controls) even when the avatar is just mid-reload. For a real load verdict in this repo, reload extensions, reopen the window, and require `window.__copilotAvatarReady === true` plus one live canvas and the exported window handlers before calling it broken.
 
 ## 2026-05-18T07:24:45Z — Cross-Agent Update: SAM Library Migration Complete
 
@@ -100,3 +101,14 @@ For detailed archived context, see history-archive.md.
 **Why:** Ensures QA scope matches implementation reality; prevents false failures on reasonable external-library patterns.
 
 **Team Impact:** Shuri handled frontend webview integration, Peter updated runtime settings. All C64 voice controls properly persisted and validated through external library seam.
+
+## 2026-05-18T11:57:44.088+02:00 — Avatar Load Resilience Fix (Decision Merged)
+
+Team orchestration recorded three related decisions in `decisions.md`:
+1. **Vision:** Optional avatar GLB loads must not gate `window.__copilotAvatarReady`; timebox load and fall back to base asset.
+2. **Shuri:** Lazy-load sam-js vendor module inside C64 speech path so boot failures don't block avatar canvas.
+3. **Howard the Duck:** Approved implementation on QA grounds after repro + regression probe pass (65 passed, 0 failed).
+
+**Cross-agent impact:** The QA trap is now documented: mid-reload snapshots can falsely report load failure. The real acceptance signal is `window.__copilotAvatarReady === true` plus rendered scene and exported handlers, not a single DOM sample during refresh. All three fixes demonstrate the pattern: timebox optional assets, set ready from fallback, load non-critical models in background.
+
+**Files affected:** `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/lib/copilot-webview.js`

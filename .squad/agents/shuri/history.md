@@ -49,3 +49,23 @@ Avatar 3D rendering and Squad-specific visual flair.
 **Why:** Delivers honest browser-native SAM implementation, avoids custom synth maintenance, follows existing audio pipeline pattern.
 
 **Team Impact:** Peter handled runtime persistence/migration, Howard updated regression probe contract. All C64 voice controls now route through external library.
+
+## Learnings
+
+### 2026-05-18T11:57:44.088+02:00 — Avatar load resilience after SAM vendor migration
+
+- **Architecture decision:** the avatar scene in `.github/extensions/copilot-avatar/content/main.js` should not hard-fail boot on a speech-engine vendor module; C64 speech can degrade independently, but the canvas and ready handshake must still come up.
+- **Pattern:** lazy-load `/__vendor__/sam-js.mjs` inside the C64 speech path and reset the cached promise on failure so a stale or temporarily missing vendor route does not blank the whole webview.
+- **User preference:** keep the scope tight to the load failure and only touch directly related regressions.
+- **Key file paths:** `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/lib/copilot-webview.js`, `.github/extensions/copilot-avatar/probe-regression.mjs`.
+
+## 2026-05-18T11:57:44.088+02:00 — Avatar Load Resilience Fix (Decision Merged)
+
+Team orchestration recorded three related decisions in `decisions.md`:
+1. **Vision:** Optional avatar GLB loads must not gate `window.__copilotAvatarReady`; timebox load and fall back to base asset.
+2. **Shuri:** Lazy-load sam-js vendor module inside C64 speech path so boot failures don't block avatar canvas.
+3. **Howard the Duck:** Approved implementation on QA grounds after repro + regression probe pass (65 passed, 0 failed).
+
+**Cross-agent impact:** This trio of fixes addresses the boot-blocking load path regression that was preventing the avatar from declaring readiness even when the scene and bridge were healthy. Vision fixed the GLB timeout path, Shuri fixed the vendor module load failure path. Both patterns share: timebox optional assets, set ready from fallback, load non-critical models in background.
+
+**Files affected:** `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/lib/copilot-webview.js`

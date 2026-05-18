@@ -103,3 +103,19 @@ Full Squadron integration restored for late-open avatar naming. All three agents
 - Mic State Handoff Bug & Web-Ready Gating
 - Sub-agent Fallback Collapse Fix (May 16)
 - Initial identity/badge system design
+
+## Learnings
+
+- 2026-05-18T11:57:44.088+02:00 — The avatar webview boot path in `.github/extensions/copilot-avatar/content/main.js` must not await optional GLB assets before setting `window.__copilotAvatarReady`; if `model.glb` or `clippy.glb` stalls, fall back to `createBaseAsset(null)`, set ready from the fallback scene, and continue optional model loading in the background.
+- 2026-05-18T11:57:44.088+02:00 — When `avatarStyle === 'clippy'`, keep the default avatar visible until `clippyRoot` actually exists; otherwise a slow Clippy asset load creates a blank window even though the page and bridge are already healthy.
+
+## 2026-05-18T11:57:44.088+02:00 — Avatar Load Resilience Fix (Decision Merged)
+
+Team orchestration recorded three related decisions in `decisions.md`:
+1. **Vision:** Optional avatar GLB loads must not gate `window.__copilotAvatarReady`; timebox load and fall back to base asset.
+2. **Shuri:** Lazy-load sam-js vendor module inside C64 speech path so boot failures don't block avatar canvas.
+3. **Howard the Duck:** Approved implementation on QA grounds after repro + regression probe pass (65 passed, 0 failed).
+
+**Cross-agent impact:** This trio of fixes addresses the boot-blocking load path regression that was preventing the avatar from declaring readiness even when the scene and bridge were healthy. The pattern is: timebox optional assets, set ready from a fallback-capable path, and load non-critical models in the background.
+
+**Files affected:** `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/lib/copilot-webview.js`

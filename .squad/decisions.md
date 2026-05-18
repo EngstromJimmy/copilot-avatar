@@ -322,3 +322,77 @@ Update `.github/extensions/copilot-avatar\probe-regression.mjs` so it validates 
 - **2026-05-18T09:24:45.011+02:00:** After Peter and Shuri landed the finished migration, the product implementation now satisfies the intended contract: `sam-js` is vendored through the webview, `speakC64()` routes through the external library, and the C64 panel persists voice plus speed, pitch, throat, and mouth.
 - The only remaining issue was in QA scope: the regression probe had become too literal and false-failed on helper-wrapped `sam-js` usage plus a combined `initialC64Preset` restore path. I updated the probe to match the real contract without relaxing the substantive checks.
 
+---
+
+# Avatar Load Fix — Vision
+
+**Date:** 2026-05-18T11:57:44.088+02:00  
+**Agent:** Vision  
+**Requested by:** Jimmy Engstrom
+
+## Decision
+
+Do not let optional avatar GLB loads gate `window.__copilotAvatarReady`.
+
+## Why
+
+The avatar page was booting far enough to create the canvas and controls, but it never declared itself ready because `content/main.js` awaited `model.glb` and `clippy.glb` before `initializeRootAvatar()` and the ready flag. In live repro, `model.glb` timed out while the rest of the page was healthy, so the extension kept treating the window as not loaded.
+
+## Implementation
+
+- Timebox `model.glb` and fall back to `createBaseAsset(null)` if it stalls.
+- Set up the root avatar and mark the page ready from that fallback-capable path.
+- Load `clippy.glb` after readiness in the background.
+- Keep the default avatar visible until `clippyRoot` actually exists, so a slow Clippy asset does not produce a blank scene.
+
+---
+
+# Avatar Load Fix — Shuri
+
+**Date:** 2026-05-18T11:57:44.088+02:00  
+**Requested by:** Jimmy Engstrom  
+**Agent:** Shuri
+
+## Decision
+
+Do not let the vendored `sam-js` C64 speech module participate in page boot as a static top-level import.
+
+## Why
+
+The SAM migration changed `content/main.js` from a self-contained page module into one that could fail before scene setup if `/__vendor__/sam-js.mjs` was unavailable for any reason. That is the wrong failure boundary: speech preview can fail locally, but the avatar canvas and `window.__copilotAvatarReady` handshake still need to come up so the product visibly loads.
+
+## Implementation
+
+- Move `sam-js` loading behind an async helper inside the C64 speech path.
+- Cache the constructor after a successful load, but clear the cached promise on failure so later retries can recover.
+- Keep the rest of the avatar startup path unchanged so the fix stays scoped to the SAM migration regression.
+
+---
+
+# Avatar Load Review — Howard the Duck
+
+**Date:** 2026-05-18T11:57:44.088+02:00  
+**Requested by:** Jimmy Engstrom  
+**Agent:** Howard the Duck  
+**Status:** Approved after repro pass
+
+## What I checked
+
+- `node --check` on `main.mjs`, `lib/squad-context.mjs`, `content/main.js`, and `probe-regression.mjs`
+- `node probe-regression.mjs`
+- Live avatar open/reload behavior through the project `copilot-avatar` extension
+
+## Evidence
+
+- Syntax stayed clean and the lightweight regression probe passed (`65 passed, 0 failed`).
+- After `extensions_reload` and a full reopen, the live window reported `window.__copilotAvatarReady === true`, one rendered canvas, and working exported handlers (`setSquadContext`, `clearSubagents`, `addSubagent`, `setAgentActivity`).
+- The only blank state I could catch was an immediate post-refresh snapshot during `reload:true`: no canvas yet, no exported handlers yet, and only static HTML controls visible. That is a timing snapshot, not a persistent boot failure.
+
+## Review decision
+
+I do **not** currently have evidence of a real load-blocking product regression in the checked-in avatar code. Current live build passes the repo's lightweight validation and loads after a proper extension reload + reopen, so I am not rejecting the implementation on QA grounds.
+
+## Team guidance
+
+When someone reports "avatar not loading," first distinguish **mid-reload blank frame** from **real boot failure**. The acceptance signal is page-ready plus rendered scene, not a single DOM sample taken during refresh.
+
