@@ -51,6 +51,8 @@ Solution: Load the latest casting snapshot into the roster lookup to keep avatar
 - 2026-05-16T22:45:02.806+02:00 — Fallback retirement is safer at root `assistant.turn_end` than per-tool completion. A sub-agent can finish one tool and still be actively running the broader task, so clearing its card on `tool.execution_complete` makes live work disappear mid-turn.
 - 2026-05-16T22:45:02.806+02:00 — For this avatar, stale-active cards are less harmful than disappearing live work. If the runtime has not sent `subagent.completed` / `subagent.failed` yet, keep the card visible and let the next directive-boundary reset clean up leftovers instead of guessing from quiet gaps.
 - 2026-05-18T00:04:39.350+02:00 — SAM TTS runs entirely in the browser via `sam-js@0.3.1` (MIT, jsdelivr CDN) using the `wav()` method. The output is a `Uint8Array` WAV blob, played via an `HTMLAudioElement` exactly like the Voxtral/ElevenLabs path — this keeps `stopGeneratedSpeechPlayback()` and `ttsAudioPlayer` working without extra plumbing. Voice presets (SAM, Elf, Cylon, Vader, Stuffy, Gruff) are static constants so no async fetch is needed; `populateSamVoices()` fires once at init. Persistence follows the same `saveTtsSettings` / `savedTts.samVoice` pattern as all other per-engine voice fields.
+- 2026-05-18T07:57:31.584+02:00 — The voice split now keeps `voice`, `msSamVoice`, and `c64Voice` separate in `.github/extensions/copilot-avatar/content/main.js`, with `.github/extensions/copilot-avatar/main.mjs` migrating legacy `engine: 'sam'` / `samVoice` settings to `c64` / `c64Voice`. `MS_SAM` stays browser-only by ranking local `speechSynthesis` voices toward classic Windows-family names (Mike, Mary, Sam, David, Mark, Zira), while the old formant presets remain explicit under the `C64` engine.
+- 2026-05-18T09:24:45.011+02:00 — For browser-only packages in this extension, keep the dependency in `.github/extensions/copilot-avatar/package.json`, expose it through a narrow allowlisted path in `.github/extensions/copilot-avatar/lib/copilot-webview.js`, and persist any engine-specific controls (`c64Voice`, `c64Speed`, `c64Pitch`, `c64Throat`, `c64Mouth`) in both `.github/extensions/copilot-avatar/main.mjs` and `.github/extensions/copilot-avatar/content/main.js` so preset picks and manual slider tweaks survive reloads.
 
 ## 2026-05-17T22:04:39Z — Scribe: SAM TTS Engine Decision Consolidation
 
@@ -146,3 +148,18 @@ Two critical decisions merged to `decisions.md`:
 **Files to Update:** `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/content/index.html`, `.github/extensions/copilot-avatar/main.mjs`
 
 **Status:** Documented in decisions.md and orchestration log. Ready for implementation.
+
+## 2026-05-18T07:24:45Z — Cross-Agent Update: SAM Library Migration Complete
+
+**From:** Team orchestration (Shuri, Peter Parker, Howard the Duck)
+
+**What:** SAM text-to-speech engine migration to external sam-js library complete:
+- C64 settings persistence implemented (c64Voice, c64Speed, c64Pitch, c64Throat, c64Mouth)
+- Legacy `engine: 'sam'` / `samVoice` migration logic to new `c64` / `c64Voice` identifiers
+- Runtime/config persistence aligned with external library requirements
+- Webview vendor route configured in lib/copilot-webview.js
+- sam-js from discordier/sam integrated into package.json dependencies
+
+**Why:** Delivers honest external-library implementation, removes custom synth maintenance burden, follows existing persistence patterns.
+
+**Team Impact:** Shuri handled frontend webview integration, Howard updated regression probe contract. All C64 voice controls now routed through external library, settings persist properly across sessions.

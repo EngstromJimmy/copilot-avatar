@@ -240,3 +240,85 @@ Use `.github/extensions/copilot-avatar\probe-regression.mjs` as the acceptance g
 
 This catches the two ugly regressions most likely to slip through review: a cosmetic rename that leaves stale `sam` state paths behind, and a mislabeled browser synth that still pretends to be Microsoft SAM instead of an honest C64-style path.
 
+---
+
+# C64 SAM dependency + persistence decision
+
+- **Date:** 2026-05-18T09:24:45.011+02:00
+- **Requested by:** Jimmy Engstrom
+- **Author:** Peter Parker
+
+## Decision
+
+Use the upstream `sam-js` package from the `discordier/sam` project as the C64 speech engine dependency, and serve it into the avatar webview through a single allowlisted vendor route instead of keeping the custom in-file synthesizer.
+
+## Why
+
+- Keeps the runtime honest: the shipped C64 engine now uses the external SAM implementation directly.
+- Avoids broad static-file exposure from the extension root; only the `sam-js` module is mounted for the webview.       
+- Lets C64-specific settings persist alongside the rest of TTS state without overloading Web Speech fields.
+
+## Persisted settings
+
+- `c64Voice`
+- `c64Speed`
+- `c64Pitch`
+- `c64Throat`
+- `c64Mouth`
+
+## Touched seams
+
+- `.github/extensions/copilot-avatar/package.json`
+- `.github/extensions/copilot-avatar/package-lock.json`
+- `.github/extensions/copilot-avatar/lib/copilot-webview.js`
+- `.github/extensions/copilot-avatar/main.mjs`
+- `.github/extensions/copilot-avatar/content/main.js`
+- `.github/extensions/copilot-avatar/content/index.html`
+
+---
+
+# Decision: Use the packaged sam-js webview seam for C64 speech
+
+**Date:** 2026-05-18T09:24:45.011+02:00
+**Requested by:** Jimmy Engstrom
+**Agent:** Shuri
+
+## Decision
+Keep the C64 voice engine fully browser-side and use the existing packaged `sam-js` dependency served by `.github/extensions/copilot-avatar/lib/copilot-webview.js` at `/__vendor__/sam-js.mjs`.
+
+Speech generation should go through `SamJs.wav()` in `.github/extensions/copilot-avatar/content/main.js`, then into a Blob URL and `Audio` element so it follows the same lightweight playback seam as the other generated-audio engines.       
+
+## Why
+This keeps the avatar extension self-contained, avoids introducing a CDN-only dependency when the extension already has a working vendor-module seam, and finally replaces the temporary hand-built formant synth with the real external library the user asked for.
+
+It also preserves the UI work already done for C64 presets and sliders (`c64Voice`, `c64Speed`, `c64Pitch`, `c64Throat`, `c64Mouth`) instead of inventing a second settings model.
+
+## Files
+- `.github/extensions/copilot-avatar/content/main.js`
+- `.github/extensions/copilot-avatar/lib/copilot-webview.js`
+- `.github/extensions/copilot-avatar/package.json`
+- `.github/extensions/copilot-avatar/main.mjs`
+
+---
+
+# Decision: Scope the SAM regression probe to the real library seam and visible UI contract
+
+**Agent:** Howard the Duck  
+**Date:** 2026-05-18T09:24:45.011+02:00  
+**Requested by:** Jimmy Engstrom
+
+## Decision
+Update `.github/extensions/copilot-avatar\probe-regression.mjs` so it validates the new `discordier/sam` migration directly and scopes copy assertions to visible UI strings instead of raw migration identifiers.
+
+## Why
+- The previous probe could false-fail on internal migration code because `ms_sam` still appeared in normalization paths even when no visible UI claimed `MS_SAM`.
+- The new product request is not a rename-only pass; QA now needs lightweight proof of the external `sam-js` seam plus persisted C64 controls for voice, mouth, pitch, and related parameters.
+
+## Current Review Result
+- The checked-in migration still looks incomplete for the requested feature.
+- `content/main.js` still contains the in-file synth path (`SAM_PHONEME_DATA`, `samG2P()`, `synthesizeSamAudio()`), `package.json` still has no `sam-js` dependency/reference, and the C64 panel in `content/index.html` still exposes only a voice preset selector plus a test button.
+
+## Follow-up
+- **2026-05-18T09:24:45.011+02:00:** After Peter and Shuri landed the finished migration, the product implementation now satisfies the intended contract: `sam-js` is vendored through the webview, `speakC64()` routes through the external library, and the C64 panel persists voice plus speed, pitch, throat, and mouth.
+- The only remaining issue was in QA scope: the regression probe had become too literal and false-failed on helper-wrapped `sam-js` usage plus a combined `initialC64Preset` restore path. I updated the probe to match the real contract without relaxing the substantive checks.
+

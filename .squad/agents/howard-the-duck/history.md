@@ -82,3 +82,21 @@ For detailed archived context, see history-archive.md.
 
 - **2026-05-18T07:57:31.584+02:00 — MS_SAM/C64 validation contract:** `.github/extensions/copilot-avatar\probe-regression.mjs` is now the lightweight acceptance gate for the browser speech split. The honest contract is `ms_sam` for the browser voice-scoring path in `content/main.js`, `c64` for the existing formant synth (`C64_VOICES`, `speakC64`, `synthesizeSamAudio`), and legacy `engine: 'sam'` / `samVoice` must migrate to `c64` / `c64Voice` through both `main.mjs` normalization and the webview load path.
 - **2026-05-18T07:57:31.584+02:00 — Anti-relabel evidence for MS_SAM:** A credible `MS_SAM` pass in this repo means `speakMsSam()` stays on the browser voice seam (`speakWebSpeech` + `scoreMsSamVoice`/`resolveMsSamVoice`) and never touches `synthesizeSamAudio`, `SAM_PHONEME_DATA`, or `C64_VOICES`. If those retro-formant symbols leak into the `MS_SAM` branch, treat it as a mislabeled `C64` regression and reject it.
+- **2026-05-18T09:24:45.011+02:00 — discordier/sam migration seam:** For the new C64/SAM work, the lightweight gate must look for a real `sam-js` / `discordier/sam` seam in `.github/extensions/copilot-avatar\package.json`, `content\index.html`, or `content\main.js`, and reject any build that still ships `SAM_PHONEME_DATA`, `samG2P()`, or `synthesizeSamAudio()` from the in-file formant synth.
+- **2026-05-18T09:24:45.011+02:00 — C64 settings regression pattern:** The C64 panel in `.github/extensions/copilot-avatar\content\index.html` is part of the product contract now: voice alone is not enough. QA should expect persisted `c64Voice` plus mouth/pitch/throat/speed-style controls in `main.mjs`, `content\main.js`, and the regression probe, and UI-copy assertions should target visible labels instead of raw migration ids.
+- **2026-05-18T09:24:45.011+02:00 — SAM probe false-positive guard:** For the finished `sam-js` migration, the regression probe should key off removed helpers (`SAM_PHONEME_DATA`, `samG2P()`, `synthesizeSamAudio()`) rather than legacy character names like `cylon`/`vader`, because those can remain as honest presets. It should also accept helper-wrapped vendor usage (`buildC64SamInstance()` + `sam.wav(...)`) and combined restore bootstraps (`initialC64Preset`) instead of requiring inline `if/else` assignment blocks.
+
+## 2026-05-18T07:24:45Z — Cross-Agent Update: SAM Library Migration Complete
+
+**From:** Team orchestration (Shuri, Peter Parker, Howard the Duck)
+
+**What:** SAM text-to-speech engine migration to external sam-js library complete:
+- Updated regression probe to validate new `discordier/sam` migration directly
+- Scoped UI copy assertions to visible UI strings instead of raw migration identifiers
+- Fixed probe false-positives caused by helper-wrapped `sam-js` usage
+- Validated external library seam, C64 control persistence, MS_SAM/C64 separation
+- Updated `.github/extensions/copilot-avatar/probe-regression.mjs` for new validation contract
+
+**Why:** Ensures QA scope matches implementation reality; prevents false failures on reasonable external-library patterns.
+
+**Team Impact:** Shuri handled frontend webview integration, Peter updated runtime settings. All C64 voice controls properly persisted and validated through external library seam.
