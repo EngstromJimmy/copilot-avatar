@@ -48,6 +48,15 @@ Use this when CopilotAvatar changes touch Squad identity, sub-agent badges, or s
 - `.github/extensions/copilot-avatar/content/main.js` should call `updateRootSquadMicBoom(rootAvatar)` inside `initializeRootAvatar()` so an already-latched `squadRootMicActive` flag still lights up the mic when the mesh appears.
 - A live overlap snapshot can legitimately show `Tony Stark` and `Howard the Duck` together while the root card stays idle; verify the named sub-agent cards by display name, model row, and badge text before the overlap collapses.
 
+## SAM TTS Probe Patterns
+
+- When probing a new TTS engine, assert: (1) `speak()` has an explicit `engine === '<name>'` branch that calls the engine function directly — not an else fallback; (2) the engine function is defined and uses the real synthesis path, not a placeholder that calls `speakWebSpeech`; (3) the engine voice selection persists via `saveSettings` and is restored to the module-level var BEFORE the populate-voices call.
+- For SAM specifically: `speakSam` uses `synthesizeSamAudio` (custom Web Audio API formant engine) — NOT a sam-js npm/CDN call. `SAM_PHONEME_DATA` is the acoustic data table. `SAM_VOICES` holds 6 presets (sam/elf/cylon/vader/stuffy/gruff). All are self-contained in `content/main.js`.
+- Assert `populateSamVoices()` uses `option.selected = id === samVoice` (not `samVoiceSelect.value = samVoice` after the fact) so the DOM reflects the restored value on first paint.
+- Assert `updateEngineUI` has `const isSam = ttsEngine === 'sam'` and that `ttsSamSection.classList.toggle('hidden', !isSam)` plus `ttsWebspeechSection.classList.toggle('hidden', isAiEngine || isSam)` — all three toggles in one function.
+- Assert `canPreviewCurrentVoice` has an explicit `sam` branch. Missing it means the Test button stays disabled even when SAM is selected and voices are loaded.
+- Assert `DEFAULT_SETTINGS.samVoice` exists in `main.mjs` so fresh installs get a valid default without a saveSettings round-trip.
+
 ## Anti-Patterns
 - Approving a stale-state fix without checking both backend cache reset and webview avatar clearing.
 - Approving a suppression fix that only clears ghosts on the next directive while letting same-turn no-completion agents pile up as idle cards.

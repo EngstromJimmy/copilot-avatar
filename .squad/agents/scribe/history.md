@@ -83,3 +83,15 @@ Peter Parker's prior stale-state reset work (clearing `subagentStateById` on ses
 - No history files exceeded summarization threshold
 
 **Health:** System running clean; memory hygiene maintained.
+
+## 2026-05-18 — Session Inbox Merge Complete
+
+**Session:** Squad inbox merge and decision archive  
+**Timestamp:** 2026-05-18T14:32:01.320Z
+
+Merged 3 inbox entries into decisions.md (Vision runtime authority, Howard probe contract, user directive).
+Decisions file 47,380 bytes → ~49,075 bytes. Well under 51,200 byte hard gate.
+All inbox files deleted. No history files required summarization.
+Orchestration logs created for Vision, Howard, Scribe.
+
+**User Directive Captured:** Make subagent cleanup work for both Squad and non-Squad projects; cross-project behavior is important.

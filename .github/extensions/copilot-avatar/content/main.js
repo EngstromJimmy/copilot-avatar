@@ -13,6 +13,8 @@ const THINKING_HOLD_MS = 1800;
 const INTENT_HOLD_MS = 2600;
 const COMPLETION_HOLD_MS = 2000;
 const FAILURE_HOLD_MS = 1100;
+const ASSET_LOAD_TIMEOUT_MS = 4000;
+const C64_SAM_MODULE_URL = '/__vendor__/sam-js.mjs';
 const CLIPPY_MODEL_URL = 'clippy.glb';
 const CLIPPY_TARGET_HEIGHT = 1.55;
 const CLIPPY_SUBAGENT_DROP_FACTOR = 0.2;
@@ -285,6 +287,17 @@ const ttsEngineSelect = document.getElementById('tts-engine-select');
 const ttsWebspeechSection = document.getElementById('tts-webspeech-section');
 const ttsVoxtralSection = document.getElementById('tts-voxtral-section');
 const ttsElevenlabsSection = document.getElementById('tts-elevenlabs-section');
+const ttsC64Section = document.getElementById('tts-c64-section');
+const c64VoiceSelect = document.getElementById('c64-voice-select');
+const ttsC64SpeedInput = document.getElementById('tts-c64-speed-input');
+const ttsC64SpeedValue = document.getElementById('tts-c64-speed-value');
+const ttsC64PitchInput = document.getElementById('tts-c64-pitch-input');
+const ttsC64PitchValue = document.getElementById('tts-c64-pitch-value');
+const ttsC64ThroatInput = document.getElementById('tts-c64-throat-input');
+const ttsC64ThroatValue = document.getElementById('tts-c64-throat-value');
+const ttsC64MouthInput = document.getElementById('tts-c64-mouth-input');
+const ttsC64MouthValue = document.getElementById('tts-c64-mouth-value');
+const ttsC64TestBtn = document.getElementById('tts-c64-test-btn');
 const ttsAiVoiceSection = document.getElementById('tts-ai-voice-section');
 const ttsAiVoiceSourceLabel = document.getElementById('tts-ai-voice-source-label');
 const ttsAiPresetSection = document.getElementById('tts-ai-preset-section');
@@ -351,6 +364,7 @@ let animationStarted = false;
 let lastFrameTime = performance.now();
 let baseAsset = null;
 let duckBeakAsset = null;
+let c64SamCtorPromise = null;
 let clippyRoot = null;
 let clippyMixer = null;
 
@@ -871,6 +885,43 @@ function formatToolLabel(toolName) {
         .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
+function normalizeRuntimeToolToken(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function shouldSuppressRuntimeToolName(toolName) {
+    const normalizedToolName = String(toolName || '').trim();
+    return !!normalizedToolName
+        && (normalizedToolName.startsWith('copilot_avatar_') || normalizedToolName === 'report_intent');
+}
+
+function shouldSuppressRuntimeText(value) {
+    const normalizedText = normalizeRuntimeToolToken(
+        cleanAgentLabel(value).replace(/^[•●▪◦]+\s*/u, '')
+    );
+    if (!normalizedText) {
+        return false;
+    }
+
+    const withoutUsing = normalizedText.startsWith('using ')
+        ? normalizedText.slice('using '.length).trim()
+        : normalizedText;
+    return withoutUsing === 'report intent' || withoutUsing.startsWith('copilot avatar ');
+}
+
+function sanitizeSubagentDetailText(value) {
+    const cleaned = cleanAgentLabel(value);
+    if (!cleaned || shouldSuppressRuntimeText(cleaned)) {
+        return '';
+    }
+    return cleaned;
+}
+
 function describeToolActivity(toolName) {
     const normalized = String(toolName || '').trim().toLowerCase();
     if (!normalized) return '';
@@ -946,22 +997,22 @@ function isRoleLikeDetailText(value, role = '') {
 }
 
 function getAvatarTaskSummary(avatar) {
-    const workDescription = cleanAgentLabel(avatar?.workDescription || '');
+    const workDescription = sanitizeSubagentDetailText(avatar?.workDescription || '');
     if (workDescription) {
         return workDescription;
     }
 
-    const detailText = cleanAgentLabel(avatar?.detailText || '');
+    const detailText = sanitizeSubagentDetailText(avatar?.detailText || '');
     if (detailText) {
         return detailText;
     }
 
-    const taskSummary = cleanAgentLabel(avatar?.taskSummary || '');
+    const taskSummary = sanitizeSubagentDetailText(avatar?.taskSummary || '');
     if (taskSummary) {
         return taskSummary;
     }
 
-    const description = cleanAgentLabel(avatar?.description || '');
+    const description = sanitizeSubagentDetailText(avatar?.description || '');
     if (!description || isRoleLikeDetailText(description, avatar?.role || '')) {
         return '';
     }
@@ -1303,7 +1354,7 @@ function updateClippyAnimationState() {
 }
 
 function updateSceneModeVisibility() {
-    const clippyActive = isClippyAvatar();
+    const clippyActive = isClippyAvatar() && !!clippyRoot;
     const clippyWithSubagents = clippyActive && [...avatars.values()].some((avatar) => !avatar.isRoot && avatar.inLayout);
     if (clippyRoot) {
         clippyRoot.visible = clippyActive;
@@ -1462,9 +1513,25 @@ function normalizeClippyModel(model, root) {
     root.position.set(0, clippyBaseY, 0);
 }
 
+function withTimeout(promise, timeoutMs, label) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms.`)), timeoutMs);
+        promise.then(
+            (value) => {
+                clearTimeout(timer);
+                resolve(value);
+            },
+            (error) => {
+                clearTimeout(timer);
+                reject(error);
+            }
+        );
+    });
+}
+
 async function loadClippyModel(loader) {
     try {
-        const gltf = await loader.loadAsync(CLIPPY_MODEL_URL);
+        const gltf = await withTimeout(loader.loadAsync(CLIPPY_MODEL_URL), ASSET_LOAD_TIMEOUT_MS, 'Clippy model');
         clippyRoot = new THREE.Group();
         clippyRoot.name = 'Clippy';
         clippyRoot.visible = false;
@@ -1930,17 +1997,22 @@ function canPreviewCurrentVoice(engine = ttsEngine) {
     if (engine === 'elevenlabs') {
         return !!elevenlabsApiKey && !!elevenlabsVoiceSelect.value;
     }
+    if (engine === 'c64') {
+        return c64VoiceSelect.options.length > 0;
+    }
     return false;
 }
 
 function updateVoicePreviewButtons() {
-    const webspeechReady = canPreviewCurrentVoice('webspeech');
+    const browserReady = canPreviewCurrentVoice('webspeech');
     const aiReady = canPreviewCurrentVoice(ttsEngine);
     const busyLabel = voicePreviewBusy ? 'Testing...' : 'Test selected voice';
     ttsWebspeechTestBtn.textContent = busyLabel;
     ttsAiTestBtn.textContent = busyLabel;
-    ttsWebspeechTestBtn.disabled = voicePreviewBusy || !webspeechReady;
+    ttsC64TestBtn.textContent = busyLabel;
+    ttsWebspeechTestBtn.disabled = voicePreviewBusy || !browserReady;
     ttsAiTestBtn.disabled = voicePreviewBusy || !aiReady;
+    ttsC64TestBtn.disabled = voicePreviewBusy || !canPreviewCurrentVoice('c64');
 }
 
 async function previewCurrentVoice(engine = ttsEngine) {
@@ -1967,6 +2039,10 @@ async function previewCurrentVoice(engine = ttsEngine) {
             await speakElevenLabs(text, { clippy });
             return true;
         }
+        if (engine === 'c64') {
+            await speakC64(text, { clippy });
+            return true;
+        }
         return false;
     } finally {
         voicePreviewBusy = false;
@@ -1989,6 +2065,7 @@ function applyAvatarStyle({ enforceVoiceDefaults = false } = {}) {
     updateSceneModeVisibility();
     updateCamera();
     if (!isClippyAvatar()) {
+        clearClippySummaryState({ resetDeduplication: true });
         applyClippyBlink(1);
         applyClippyGaze(0, 0);
         setClippySpeaking(false);
@@ -2082,6 +2159,16 @@ function createBaseAsset(modelScene) {
         rootY: size.y * 0.6,
         subY: -size.y * 0.9,
     };
+}
+
+async function loadBaseAvatarAsset(loader) {
+    try {
+        const gltf = await withTimeout(loader.loadAsync('model.glb'), ASSET_LOAD_TIMEOUT_MS, 'Avatar base model');
+        return createBaseAsset(gltf.scene);
+    } catch (error) {
+        console.warn('Unable to load avatar base GLB:', error);
+        return createBaseAsset(null);
+    }
 }
 
 function createDuckBeakAsset(modelScene) {
@@ -2240,6 +2327,18 @@ function isLowConfidenceDisplayName(value, agentId) {
     return !!fallbackLabel && normalized === fallbackLabel;
 }
 
+function isOpaqueSubagentHandle(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return /^call[_-][a-z0-9]+/.test(normalized)
+        || /^agent[-_]?call\b/.test(normalized)
+        || /^subagent[-_]/.test(normalized)
+        || /^pending:/.test(normalized);
+}
+
 function getDisplayIdentityCandidate(agentId, value, source = 'fallback') {
     const label = cleanAgentLabel(value);
     if (!label) return null;
@@ -2282,6 +2381,24 @@ function resolveAvatarDisplayIdentity(agentId, data = {}, currentDisplayName = '
         displayName: best?.label || defaultDisplayName(agentId),
         displayNameSource: best?.source || 'fallback',
     };
+}
+
+function shouldSuppressSubagentPayload(payload = {}) {
+    const agentId = payload.agentId || '';
+    if (!agentId || agentId === ROOT_AGENT_ID || !isOpaqueSubagentHandle(agentId)) {
+        return false;
+    }
+
+    if (hasStrongAgentIdentity(agentId, payload)) {
+        return false;
+    }
+
+    return ![
+        payload.workDescription,
+        payload.detailText,
+        payload.taskSummary,
+        payload.description,
+    ].some((value) => sanitizeSubagentDetailText(value));
 }
 
 function isDuckAgent(data = {}) {
@@ -2579,10 +2696,10 @@ function createAvatarInstance(agentId, data = {}) {
         agentName: data.agentName || '',
         displayName: displayIdentity.displayName,
         displayNameSource: displayIdentity.displayNameSource,
-        description: data.description || '',
-        workDescription: cleanAgentLabel(data.workDescription || data.detailText || data.taskSummary || ''),
-        detailText: cleanAgentLabel(data.detailText || data.taskSummary || ''),
-        taskSummary: cleanAgentLabel(data.taskSummary || ''),
+        description: sanitizeSubagentDetailText(data.description || ''),
+        workDescription: sanitizeSubagentDetailText(data.workDescription || data.detailText || data.taskSummary || ''),
+        detailText: sanitizeSubagentDetailText(data.detailText || data.taskSummary || ''),
+        taskSummary: sanitizeSubagentDetailText(data.taskSummary || ''),
         role: data.role || '',
         modelName: '',
         modelLabel: '',
@@ -2708,10 +2825,10 @@ function updateAvatarMetadata(avatar, data = {}) {
     }, avatar.displayName, avatar.displayNameSource);
     avatar.displayName = displayIdentity.displayName;
     avatar.displayNameSource = displayIdentity.displayNameSource;
-    if (data.description) avatar.description = data.description;
-    if (hasWorkDescription) avatar.workDescription = cleanAgentLabel(data.workDescription);
-    if (hasDetailText) avatar.detailText = cleanAgentLabel(data.detailText);
-    if (hasTaskSummary) avatar.taskSummary = cleanAgentLabel(data.taskSummary);
+    if (Object.prototype.hasOwnProperty.call(data, 'description')) avatar.description = sanitizeSubagentDetailText(data.description);
+    if (hasWorkDescription) avatar.workDescription = sanitizeSubagentDetailText(data.workDescription);
+    if (hasDetailText) avatar.detailText = sanitizeSubagentDetailText(data.detailText);
+    if (hasTaskSummary) avatar.taskSummary = sanitizeSubagentDetailText(data.taskSummary);
     if (data.role) avatar.role = data.role;
     avatar.isDuck = avatar.isDuck || isDuckAgent({
         isDuck: data.isDuck,
@@ -4208,6 +4325,7 @@ window.showMessage = (text) => {
         return;
     }
 
+    clearClippySummaryState();
     speak(text);
     if (!showSpokenText || !text) {
         clearMessageOverlay();
@@ -4270,6 +4388,10 @@ window.resetRootActivity = (payload = {}) => {
 window.addSubagent = (payload = {}) => {
     if (!payload.agentId) {
         pendingSubagents.push(payload);
+        return;
+    }
+    if (shouldSuppressSubagentPayload(payload)) {
+        clearPendingAgentState(payload.agentId);
         return;
     }
 
@@ -4344,6 +4466,10 @@ window.failSubagent = (payload = {}) => {
 
 window.setAgentActivity = (payload = {}) => {
     const resolvedId = payload.agentId || ROOT_AGENT_ID;
+    if (resolvedId !== ROOT_AGENT_ID && shouldSuppressRuntimeToolName(payload.toolName || '')) {
+        clearPendingAgentActivity(resolvedId, payload);
+        return;
+    }
     if (resolvedId !== ROOT_AGENT_ID && !avatars.has(resolvedId)) {
         if (!hasStrongAgentIdentity(resolvedId, payload)) {
             queuePendingAgentActivity(resolvedId, payload);
@@ -4451,6 +4577,25 @@ const VOXTRAL_VOICES_FALLBACK = [
     { slug: 'gb_jane_sarcasm',    name: 'Jane - Sarcasm'    },
 ];
 
+const C64_VOICES = [
+    { id: 'sam', name: 'Classic SAM', speed: 72, pitch: 64, throat: 128, mouth: 128 },
+    { id: 'elf', name: 'Elf', speed: 72, pitch: 64, throat: 110, mouth: 160 },
+    { id: 'robot', name: 'Little Robot', speed: 92, pitch: 60, throat: 190, mouth: 190 },
+    { id: 'stuffy', name: 'Stuffy Guy', speed: 82, pitch: 72, throat: 110, mouth: 105 },
+    { id: 'old-lady', name: 'Little Old Lady', speed: 82, pitch: 32, throat: 145, mouth: 145 },
+    { id: 'alien', name: 'Extra-Terrestrial', speed: 100, pitch: 64, throat: 150, mouth: 200 },
+    { id: 'cylon', name: 'Cylon', speed: 84, pitch: 48, throat: 176, mouth: 112 },
+    { id: 'vader', name: 'Vader', speed: 60, pitch: 40, throat: 96, mouth: 72 },
+    { id: 'gruff', name: 'Gruff', speed: 68, pitch: 44, throat: 88, mouth: 96 },
+];
+const DEFAULT_C64_VOICE = C64_VOICES[0];
+const C64_PARAM_LIMITS = Object.freeze({
+    speed: [20, 255],
+    pitch: [0, 255],
+    throat: [0, 255],
+    mouth: [0, 255],
+});
+
 let ttsEnabled = false;
 let ttsRate = 1.1;
 let ttsPitch = 1.0;
@@ -4473,6 +4618,11 @@ let clippyElevenlabsVoiceId = '';
 let clippyElevenlabsVoiceName = '';
 let clippyElevenlabsCloneSourceHash = '';
 let clippyRefAudio = null;
+let c64Voice = DEFAULT_C64_VOICE.id;
+let c64Speed = DEFAULT_C64_VOICE.speed;
+let c64Pitch = DEFAULT_C64_VOICE.pitch;
+let c64Throat = DEFAULT_C64_VOICE.throat;
+let c64Mouth = DEFAULT_C64_VOICE.mouth;
 let ttsAudioPlayer = null;
 let voxtralAudioCtx = null;
 let activeGeneratedAudioUrl = null;
@@ -4484,6 +4634,57 @@ let showSpokenText = true;
 let showAvatarBadges = true;
 let showModelBadges = false;
 let transparentWindow = true;
+
+function clampC64Param(value, fallback, [min, max]) {
+    const numericValue = Math.round(Number(value));
+    if (!Number.isFinite(numericValue)) {
+        return fallback;
+    }
+    return Math.min(max, Math.max(min, numericValue));
+}
+
+function getC64VoicePreset(voiceId = c64Voice) {
+    return C64_VOICES.find((voice) => voice.id === voiceId) || DEFAULT_C64_VOICE;
+}
+
+function updateC64Value(element, value) {
+    element.textContent = String(value);
+}
+
+function updateC64Controls() {
+    c64VoiceSelect.value = c64Voice;
+    ttsC64SpeedInput.value = String(c64Speed);
+    ttsC64PitchInput.value = String(c64Pitch);
+    ttsC64ThroatInput.value = String(c64Throat);
+    ttsC64MouthInput.value = String(c64Mouth);
+    updateC64Value(ttsC64SpeedValue, c64Speed);
+    updateC64Value(ttsC64PitchValue, c64Pitch);
+    updateC64Value(ttsC64ThroatValue, c64Throat);
+    updateC64Value(ttsC64MouthValue, c64Mouth);
+}
+
+function applyC64VoicePreset(voiceId, { save = false } = {}) {
+    const preset = getC64VoicePreset(voiceId);
+    c64Voice = preset.id;
+    c64Speed = preset.speed;
+    c64Pitch = preset.pitch;
+    c64Throat = preset.throat;
+    c64Mouth = preset.mouth;
+    updateC64Controls();
+    updateVoicePreviewButtons();
+    if (save) {
+        saveTtsSettings();
+    }
+}
+
+function getC64VoiceSettings() {
+    return {
+        speed: clampC64Param(c64Speed, DEFAULT_C64_VOICE.speed, C64_PARAM_LIMITS.speed),
+        pitch: clampC64Param(c64Pitch, DEFAULT_C64_VOICE.pitch, C64_PARAM_LIMITS.pitch),
+        throat: clampC64Param(c64Throat, DEFAULT_C64_VOICE.throat, C64_PARAM_LIMITS.throat),
+        mouth: clampC64Param(c64Mouth, DEFAULT_C64_VOICE.mouth, C64_PARAM_LIMITS.mouth),
+    };
+}
 
 function getVoxtralAudioCtx() {
     if (!voxtralAudioCtx || voxtralAudioCtx.state === 'closed') {
@@ -4602,6 +4803,8 @@ if (savedTts.pitch != null) {
 }
 if (savedTts.voice) {
     ttsVoiceName = savedTts.voice;
+} else if (savedTts.msSamVoice && savedTts.msSamVoice !== '__auto__') {
+    ttsVoiceName = savedTts.msSamVoice;
 }
 if (savedTts.enabled) {
     ttsEnabled = true;
@@ -4611,7 +4814,11 @@ if (savedTts.avatarStyle) {
     avatarStyleSelect.value = avatarStyle;
 }
 if (savedTts.engine) {
-    ttsEngine = savedTts.engine;
+    ttsEngine = savedTts.engine === 'sam'
+        ? 'c64'
+        : savedTts.engine === 'ms_sam'
+            ? 'webspeech'
+            : savedTts.engine;
     ttsEngineSelect.value = ttsEngine;
 }
 if (savedTts.voxtralBackend) {
@@ -4671,6 +4878,12 @@ if (savedTts.clippyRefAudio) {
 if (savedTts.voxtralRefAudio) {
     setVoxtralRefAudio(savedTts.voxtralRefAudio, { rememberForClippy: false, save: false });
 }
+const initialC64Preset = getC64VoicePreset(savedTts.c64Voice || savedTts.samVoice || DEFAULT_C64_VOICE.id);
+c64Voice = initialC64Preset.id;
+c64Speed = clampC64Param(savedTts.c64Speed, initialC64Preset.speed, C64_PARAM_LIMITS.speed);
+c64Pitch = clampC64Param(savedTts.c64Pitch, initialC64Preset.pitch, C64_PARAM_LIMITS.pitch);
+c64Throat = clampC64Param(savedTts.c64Throat, initialC64Preset.throat, C64_PARAM_LIMITS.throat);
+c64Mouth = clampC64Param(savedTts.c64Mouth, initialC64Preset.mouth, C64_PARAM_LIMITS.mouth);
 if (savedTts.showSpokenText != null) {
     showSpokenText = !!savedTts.showSpokenText;
 }
@@ -4716,6 +4929,11 @@ function saveTtsSettings() {
         clippyElevenlabsVoiceName,
         clippyElevenlabsCloneSourceHash,
         clippyRefAudio,
+        c64Voice,
+        c64Speed,
+        c64Pitch,
+        c64Throat,
+        c64Mouth,
         showSpokenText,
         showAvatarBadges,
         showModelBadges,
@@ -4734,17 +4952,20 @@ function updateBackendUI() {
 function updateEngineUI() {
     const isVoxtral = ttsEngine === 'voxtral';
     const isElevenLabs = ttsEngine === 'elevenlabs';
+    const isC64 = ttsEngine === 'c64';
     const isAiEngine = isVoxtral || isElevenLabs;
     const isMyVoice = voxtralVoiceSource === 'myvoice';
-    ttsWebspeechSection.classList.toggle('hidden', isAiEngine);
+    ttsWebspeechSection.classList.toggle('hidden', isAiEngine || isC64);
     ttsVoxtralSection.classList.toggle('hidden', !isVoxtral);
     ttsElevenlabsSection.classList.toggle('hidden', !isElevenLabs);
+    ttsC64Section.classList.toggle('hidden', !isC64);
     ttsAiVoiceSection.classList.toggle('hidden', !isAiEngine);
     ttsAiVoiceSourceLabel.classList.toggle('hidden', !isVoxtral);
     ttsAiPresetSection.classList.toggle('hidden', !isElevenLabs && (!isVoxtral || isMyVoice));
     ttsAiRecordSection.classList.toggle('hidden', !isVoxtral || !isMyVoice);
     voxtralVoiceSelect.parentElement.classList.toggle('hidden', !isVoxtral);
     elevenlabsPresetSection.classList.toggle('hidden', !isElevenLabs);
+    populateWebSpeechVoices();
     if (isVoxtral) {
         updateBackendUI();
     }
@@ -4755,8 +4976,7 @@ function updateEngineUI() {
     updateVoicePreviewButtons();
 }
 
-function populateVoices() {
-    const voices = speechSynthesis.getVoices();
+function populateWebSpeechVoices(voices = speechSynthesis.getVoices(), { saveOnFallback = false } = {}) {
     ttsVoiceSelect.innerHTML = '';
     voices.forEach((voice) => {
         const option = document.createElement('option');
@@ -4765,7 +4985,19 @@ function populateVoices() {
         option.selected = voice.name === ttsVoiceName;
         ttsVoiceSelect.appendChild(option);
     });
+    const hasSavedVoice = !!ttsVoiceName && voices.some((voice) => voice.name === ttsVoiceName);
+    if (!hasSavedVoice && voices.length) {
+        ttsVoiceSelect.selectedIndex = 0;
+        ttsVoiceName = ttsVoiceSelect.value;
+        if (saveOnFallback) {
+            saveTtsSettings();
+        }
+    }
     updateVoicePreviewButtons();
+}
+
+function populateBrowserVoices({ saveOnFallback = false } = {}) {
+    populateWebSpeechVoices(speechSynthesis.getVoices(), { saveOnFallback });
 }
 
 function populateVoxtralVoices(voices) {
@@ -4893,8 +5125,27 @@ async function fetchElevenLabsVoices({ force = false } = {}) {
 }
 
 populateVoxtralVoices(VOXTRAL_VOICES_FALLBACK);
-speechSynthesis.onvoiceschanged = populateVoices;
-populateVoices();
+speechSynthesis.onvoiceschanged = () => populateBrowserVoices({ saveOnFallback: true });
+populateBrowserVoices();
+
+function populateC64Voices() {
+    c64VoiceSelect.innerHTML = '';
+    C64_VOICES.forEach(({ id, name }) => {
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = name;
+        option.selected = id === c64Voice;
+        c64VoiceSelect.appendChild(option);
+    });
+    if (!C64_VOICES.some((voice) => voice.id === c64Voice)) {
+        applyC64VoicePreset(DEFAULT_C64_VOICE.id);
+        return;
+    }
+    updateC64Controls();
+    updateVoicePreviewButtons();
+}
+
+populateC64Voices();
 
 // ── Recording ─────────────────────────────────────────────────────────────────
 
@@ -5163,6 +5414,7 @@ async function generateRetroClippyVoice() {
         saveTtsSettings();
     } catch (err) {
         console.error('Retro Clippy voice generation failed:', err);
+        clippyRetroVoiceBtn.title = 'Not available: remote SAM server removed';
     } finally {
         clippyRetroVoiceBtn.disabled = false;
         clippyRetroVoiceBtn.textContent = previousText;
@@ -5171,15 +5423,15 @@ async function generateRetroClippyVoice() {
 
 // ── TTS engines ───────────────────────────────────────────────────────────────
 
-function speakWebSpeech(text, { clippy = false } = {}) {
+function speakWebSpeech(text, { clippy = false, voiceName = ttsVoiceName, rate = ttsRate, pitch = ttsPitch } = {}) {
     const requestId = beginSpeechRequest();
     speechSynthesis.cancel();
     stopGeneratedSpeechPlayback();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = ttsRate;
-    utterance.pitch = ttsPitch;
-    if (ttsVoiceName) {
-        const voice = speechSynthesis.getVoices().find((item) => item.name === ttsVoiceName);
+    utterance.rate = rate;
+    utterance.pitch = pitch;
+    if (voiceName) {
+        const voice = speechSynthesis.getVoices().find((item) => item.name === voiceName);
         if (voice) utterance.voice = voice;
     }
     if (clippy) {
@@ -5204,6 +5456,8 @@ function releaseGeneratedAudioUrl() {
 function fallbackClippySpeech(text) {
     if (ttsEngine === 'elevenlabs') {
         console.warn('Clippy ElevenLabs speech failed; falling back to Web Speech.');
+    } else if (ttsEngine === 'c64') {
+        console.warn('Clippy C64 speech failed; falling back to Web Speech.');
     } else if (!clippyRefAudio && !voxtralRefAudio) {
         console.warn('Clippy Voxtral speech failed; falling back to Web Speech. Add a Voxtral API key or local server in settings for Clippy voice cloning.');
     }
@@ -5347,6 +5601,60 @@ function stopAllSpeech() {
     speechSynthesis.cancel();
     stopGeneratedSpeechPlayback();
     setClippySpeaking(false);
+}
+
+async function loadC64SamCtor() {
+    if (!c64SamCtorPromise) {
+        c64SamCtorPromise = import(C64_SAM_MODULE_URL)
+            .then((module) => module?.default ?? module?.SamJs ?? module)
+            .then((SamCtor) => {
+                if (typeof SamCtor !== 'function') {
+                    throw new Error('sam-js did not expose a constructor.');
+                }
+                return SamCtor;
+            })
+            .catch((error) => {
+                c64SamCtorPromise = null;
+                throw error;
+            });
+    }
+    return c64SamCtorPromise;
+}
+
+async function buildC64SamInstance() {
+    const SamCtor = await loadC64SamCtor();
+    return new SamCtor(getC64VoiceSettings());
+}
+
+async function speakC64(text, { clippy = false } = {}) {
+    const requestId = beginSpeechRequest();
+    try {
+        speechSynthesis.cancel();
+        stopGeneratedSpeechPlayback();
+        const sam = await buildC64SamInstance();
+        const wavBytes = sam.wav(text);
+        if (!(wavBytes instanceof Uint8Array) || wavBytes.length === 0) {
+            throw new Error('SAM returned no audio data.');
+        }
+        if (!isCurrentSpeechRequest(requestId)) return;
+        activeGeneratedAudioUrl = URL.createObjectURL(new Blob([wavBytes], { type: 'audio/wav' }));
+        const audio = new Audio(activeGeneratedAudioUrl);
+        ttsAudioPlayer = audio;
+        if (clippy) {
+            setClippySpeaking(true);
+            audio.addEventListener('ended', () => {
+                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+            }, { once: true });
+            audio.addEventListener('error', () => {
+                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+            }, { once: true });
+        }
+        await audio.play();
+    } catch (err) {
+        if (clippy && isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+        console.error('C64 TTS failed:', err);
+        if (clippy) fallbackClippySpeech(text);
+    }
 }
 
 // ── Event handlers ────────────────────────────────────────────────────────────
@@ -5498,6 +5806,38 @@ elevenlabsVoiceSelect.addEventListener('change', () => {
     saveTtsSettings();
 });
 
+c64VoiceSelect.addEventListener('change', () => {
+    applyC64VoicePreset(c64VoiceSelect.value, { save: true });
+});
+
+ttsC64TestBtn.addEventListener('click', () => {
+    previewCurrentVoice('c64');
+});
+
+ttsC64SpeedInput.addEventListener('input', () => {
+    c64Speed = clampC64Param(ttsC64SpeedInput.value, c64Speed, C64_PARAM_LIMITS.speed);
+    updateC64Controls();
+    saveTtsSettings();
+});
+
+ttsC64PitchInput.addEventListener('input', () => {
+    c64Pitch = clampC64Param(ttsC64PitchInput.value, c64Pitch, C64_PARAM_LIMITS.pitch);
+    updateC64Controls();
+    saveTtsSettings();
+});
+
+ttsC64ThroatInput.addEventListener('input', () => {
+    c64Throat = clampC64Param(ttsC64ThroatInput.value, c64Throat, C64_PARAM_LIMITS.throat);
+    updateC64Controls();
+    saveTtsSettings();
+});
+
+ttsC64MouthInput.addEventListener('input', () => {
+    c64Mouth = clampC64Param(ttsC64MouthInput.value, c64Mouth, C64_PARAM_LIMITS.mouth);
+    updateC64Controls();
+    saveTtsSettings();
+});
+
 document.querySelectorAll('input[name="ai-voice-source"]').forEach((radio) => {
     radio.addEventListener('change', () => {
         voxtralVoiceSource = radio.value;
@@ -5561,6 +5901,7 @@ window.getVoices = () => {
 window.setVoice = (name) => {
     ttsVoiceName = name;
     ttsVoiceSelect.value = name;
+    updateVoicePreviewButtons();
     saveTtsSettings();
     return `Voice set to: ${name}`;
 };
@@ -5590,6 +5931,11 @@ window.getTtsSettings = () => JSON.stringify({
     elevenlabsHasApiKey: !!elevenlabsApiKey,
     elevenlabsClonedVoiceId,
     clippyElevenlabsVoiceId,
+    c64Voice,
+    c64Speed,
+    c64Pitch,
+    c64Throat,
+    c64Mouth,
     hasClippyRefAudio: !!clippyRefAudio,
     hasClippyModel: !!clippyRoot,
     clippyAnimations: clippyActions.map((action) => action.getClip().name),
@@ -5653,6 +5999,14 @@ function clampSpokenSummary(text, maxLength = 185) {
     return `${clipped.slice(0, breakAt > 70 ? breakAt : maxLength - 1).trim()}...`;
 }
 
+function clearClippySummaryState({ resetDeduplication = false } = {}) {
+    pendingClippyMessage = '';
+    if (resetDeduplication) {
+        lastSpokenClippySummary = '';
+        lastSpokenClippySummaryAt = 0;
+    }
+}
+
 function summarizeForClippy(text) {
     const plain = stripMarkdownForSpeech(text)
         .replace(/https?:\/\/\S+/gi, 'a link')
@@ -5681,12 +6035,15 @@ function summarizeForClippy(text) {
 }
 
 function speakClippySummary(text) {
+    if (!isClippyAvatar()) return false;
     speak(summarizeForClippy(text), { clippy: true });
+    return true;
 }
 
 function flushClippySummary(text = pendingClippyMessage) {
     const sourceText = String(text || '').trim();
-    pendingClippyMessage = '';
+    clearClippySummaryState();
+    if (!isClippyAvatar()) return false;
     if (!sourceText) return false;
 
     const summary = summarizeForClippy(sourceText);
@@ -5710,6 +6067,8 @@ function speak(text, { clippy = false, forceEngine = null } = {}) {
         speakVoxtral(spokenText, { clippy });
     } else if (engine === 'elevenlabs') {
         speakElevenLabs(spokenText, { clippy });
+    } else if (engine === 'c64') {
+        speakC64(spokenText, { clippy });
     } else {
         speakWebSpeech(spokenText, { clippy });
     }
@@ -5722,13 +6081,7 @@ const resizeObserver = new ResizeObserver(() => {
 resizeObserver.observe(container);
 
 const loader = new GLTFLoader();
-try {
-    const gltf = await loader.loadAsync('model.glb');
-    baseAsset = createBaseAsset(gltf.scene);
-} catch {
-    baseAsset = createBaseAsset(null);
-}
-await loadClippyModel(loader);
+baseAsset = await loadBaseAvatarAsset(loader);
 
 initializeRootAvatar();
 updateSceneModeVisibility();
@@ -5738,6 +6091,8 @@ updateBadgeVisibility();
 updateCamera();
 startAnimation();
 window.__copilotAvatarReady = true;
+
+void loadClippyModel(loader);
 
 void (async () => {
     try {

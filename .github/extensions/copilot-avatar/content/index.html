@@ -72,6 +72,7 @@
         <label>Engine
           <select id="tts-engine-select">
             <option value="webspeech">Web Speech</option>
+            <option value="c64">SAM (Software Automatic Mouth) C64 version</option>
             <option value="voxtral">Voxtral</option>
             <option value="elevenlabs">ElevenLabs</option>
           </select>
@@ -93,6 +94,33 @@
             <span id="tts-rate-value">1.1×</span>
           </label>
           <button id="tts-webspeech-test-btn" type="button">Test selected voice</button>
+        </div>
+
+        <!-- C64 controls -->
+        <div id="tts-c64-section" class="hidden">
+          <label>Voice
+            <select id="c64-voice-select"></select>
+          </label>
+          <div class="tts-c64-controls">
+            <label>Speed
+              <input id="tts-c64-speed-input" type="range" min="20" max="255" step="1" value="72" />
+              <span id="tts-c64-speed-value">72</span>
+            </label>
+            <label>Pitch
+              <input id="tts-c64-pitch-input" type="range" min="0" max="255" step="1" value="64" />
+              <span id="tts-c64-pitch-value">64</span>
+            </label>
+            <label>Throat
+              <input id="tts-c64-throat-input" type="range" min="0" max="255" step="1" value="128" />
+              <span id="tts-c64-throat-value">128</span>
+            </label>
+            <label>Mouth
+              <input id="tts-c64-mouth-input" type="range" min="0" max="255" step="1" value="128" />
+              <span id="tts-c64-mouth-value">128</span>
+            </label>
+          </div>
+          <button id="tts-c64-test-btn" type="button">Test selected voice</button>
+          <div class="tts-hint">Classic SAM speech via discordier/sam — pick a preset voice, then tweak speed, pitch, throat, and mouth. Runs locally in the avatar window with no API key.</div>
         </div>
 
         <!-- Voxtral controls -->
