@@ -6,9 +6,27 @@
 
 ## Current Work Status
 
-Architecture review and simplification initiative for sub-agent visibility model. Team now aligned on single-authority approach.
+Idle sleep regression fix applied to v0.2.2 and pushed. System now correctly transitions to sleep emotion after 5 minutes of true inactivity.
 
-**Latest Focus:** Enforcing Copilot runtime as sole visibility authority; Squad as metadata enrichment only.
+**Latest Focus:** Maintaining correctness under state transitions; timer semantics matter.
+
+---
+
+## 2026-05-22 — Idle Sleep Regression Fix Commit
+
+**Decision:** Apply sleep-fix directly to v0.2.2 (released main branch) rather than back-merging from feature branch.
+
+**Rationale:** v0.2.2 was already tagged and SAM TTS work had moved the remote ahead by 25 commits. Cleaner to reset to remote main and reapply the sleep fix as a single, focused patch on top of the release.
+
+**Changes:**
+1. Restored IDLE_SLEEP_MS timeout check in `getActiveRootEmotion()` to return 'sleep' when root is idle for ≥5 minutes
+2. Added timer re-arm in `setWorking(false)` to restart the inactivity countdown when root transitions to idle state
+
+**Commit:** `8ce105e` — "Fix idle sleep regression: restore timeout check and timer reset"  
+**Branch:** main  
+**Status:** Pushed to origin/main ✅
+
+**Key Learning:** Timer resets on state transitions, not on stale mid-work pings. The distinction between "when last activity happened" and "when we stopped working" is critical for correct idle detection.
 
 ---
 
