@@ -1241,6 +1241,7 @@ function setRootEmotion(name, durationMs = EMOTION_HOLD_MS) {
 }
 
 function getActiveRootEmotion(now = performance.now()) {
+    if (!rootWorking && now - rootLastActivityAt >= IDLE_SLEEP_MS) return 'sleep';
     if (rootEmotion.until > now) return rootEmotion.name;
     return 'default';
 }
@@ -4343,14 +4344,18 @@ window.showMessage = (text) => {
 };
 
 window.setWorking = (active) => {
+    const wasWorking = rootWorking;
     if (active) {
-        if (!rootWorking) {
+        if (!wasWorking) {
             clearRootTransientActivity();
         }
         registerRootActivity();
     } else {
         activeSubtaskText = '';
         clearRootTransientActivity();
+        if (wasWorking) {
+            registerRootActivity();
+        }
     }
     rootWorking = !!active;
     updateStatusIndicator();
