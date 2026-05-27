@@ -107,3 +107,19 @@ Revised avatar sub-agent visibility and identity integration following QA feedba
 - 2026-05-18T16:11:43.269+02:00 — Current sub-agent identity flow in `.github/extensions/copilot-avatar/main.mjs` is spread across visibility aliases (`subagentIdsByToolCallId`, `runtimeSubagentVisibilityIdsByAgentId`), runtime tool correlation (`toolAgentIdsByToolCallId`), spawn hints, weak selection hints, and background metadata caches.
 - 2026-05-18T16:11:43.269+02:00 — Squad naming is metadata-only: `.github/extensions/copilot-avatar/lib/squad-context.mjs` loads roster/config/casting into `agentsByKey`, and `resolveSquadAgentMetadata()` can decorate a live sub-agent only after runtime or spawn data provides a stable lookup key.
 - 2026-05-18T16:11:43.269+02:00 — Jimmy's current preference is simplicity over aggressive rebinding: the product goal is to show the real current sub-agents, then let Squad supply the human names when possible.
+- 2026-05-27T09:34:17.883+02:00 — In `.github/extensions/copilot-avatar/extension.mjs`, the real activation seam must block on `await import("./main.mjs")`; fire-and-forget dynamic import can let the entry module resolve before `main.mjs` finishes `extension.createSession(...)`.
+- 2026-05-27T09:34:17.883+02:00 — The SDK migration contract applies to both session paths here: `.github/extensions/copilot-avatar/main.mjs` and `.github/extensions/copilot-avatar/lib/copilot-webview.js` both need `extension.createSession({ onPermissionRequest: approveAll, ... })`.
+
+## 2026-05-27T09:34:17.883+02:00 — Entrypoint/Bootstrap Revision & Approval
+
+**Your Contribution:**
+Revised extension by:
+1. Awaiting main.mjs import in `extension.mjs` (blocking activation pattern)
+2. Restoring `onPermissionRequest: approveAll` on bootstrap session in `lib/copilot-webview.js`
+3. Extending `probe-regression.mjs` to exercise activation path with stubbed import
+
+**Result:** Howard approved; 140/140 regression tests passing.
+
+**Decision Authored:** Decision 3 — Keep avatar entrypoint activation blocking & mirror approveAll on bootstrap
+
+**Impact:** Extension activation pattern restored to blocking semantics. Bootstrap and main session creation now share identical permission contract. Regression coverage now includes real entry module shape verification.

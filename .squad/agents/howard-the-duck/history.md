@@ -65,6 +65,18 @@ _Earlier detailed session logs and learnings archived in history-archive.md_
 
 ## Learnings
 
+- 2026-05-27T09:34:17.883+02:00 — **Entrypoint coverage gap is closed when the probe imports the real entry module shape:** the updated `probe-regression.mjs` now stubs `extension.mjs` with a replacement `./main.mjs` URL, proving activation waits for `main.mjs` evaluation and that startup failures are logged instead of escaping silently.
+- 2026-05-27T09:34:17.883+02:00 — **Bootstrap permission coverage must stay explicit:** approval is justified only because `lib/copilot-webview.js` now passes `onPermissionRequest: approveAll` in `extension.createSession(...)` *and* the probe asserts that bootstrap seam directly. Keep both the code path and the probe check together.
+- 2026-05-27T09:34:17.883+02:00 — **Green probe is not entrypoint proof:** `probe-regression.mjs` is still a lightweight source-assertion harness. It does not exercise `extension.mjs`, and it does not prove the Copilot CLI can activate the extension end-to-end.
+- 2026-05-27T09:34:17.883+02:00 — **Bootstrap permission seam needs explicit coverage:** `main.mjs` passes `onPermissionRequest: approveAll`, but `lib/copilot-webview.js` bootstrap still calls `extension.createSession()` bare. Treat that path as suspect until the regression probe or another repo-local check covers it explicitly.
+- 2026-05-27T09:15:52.041+02:00 — **Avatar Extension SDK Migration Fix:** Three-part issue found and resolved:
+  1. **vscode-jsonrpc ESM exports:** Transitive dependency from copilot-sdk@0.1.32 lacked ESM `exports` field, causing "Cannot find module 'vscode-jsonrpc/node'" error. Fixed by adding exports to node_modules package.json.
+  2. **Copilot SDK breaking API change:** `joinSession()` removed; replaced with `extension.createSession()`. Migrated all call sites in main.mjs and lib/copilot-webview.js.
+  3. **Missing permission handler:** `createSession()` now requires `onPermissionRequest: approveAll` parameter. Imported approveAll and added to session config.
+  - Regression probe extended from 126 to 133 tests; all passing.
+  - User profile synced with fresh dependencies and fixed code.
+  - Extensions no longer fail to load; now runnable from external projects.
+
 - 2026-05-18T16:32:01.320+02:00 — `.github/extensions/copilot-avatar/probe-regression.mjs` now imports `lib/squad-context.mjs` directly, proves Squad alias resolution with `tester` → `Howard the Duck`, and finds an inactive parent cwd so the same probe covers non-Squad projects.
 - 2026-05-18T16:32:01.320+02:00 — The sub-agent regression contract is now explicit: Copilot runtime/background state owns visibility, while Squad metadata is optional enrichment only; non-Squad naming must still fall back to runtime labels before stale spawn aliases.
 
@@ -79,3 +91,21 @@ Howard's regression probe contract finalized: probe-regression.mjs must verify s
 - Real regressions: early disappearance, wrong visible names, hidden Squad dependency
 
 This contract ensures the cleanup works for both Squad and non-Squad projects, as per user directive.
+
+---
+
+## 2026-05-27T09:34:17.883+02:00 — Entrypoint/Bootstrap Coverage Approval
+
+**Your Decisions:**
+- Decision 2: Reject initial coverage claim (identified 3 coverage gaps)
+- Decision 4: Approve Peter Parker's entrypoint/bootstrap revision (140/140 tests)
+
+**What You Verified:**
+1. `extension.mjs` now uses `await import("./main.mjs")` inside guarded startup wrapper
+2. `lib/copilot-webview.js` bootstrap creates session with `onPermissionRequest: approveAll`
+3. `probe-regression.mjs` covers previously missing seams:
+   - Stubbed success path proves entrypoint waits for main.mjs evaluation
+   - Stubbed failure path proves startup errors are logged
+   - Source assertions prove bootstrap keeps `approveAll` permission contract
+
+**Impact:** Real entry module shape now exercised. Bootstrap permission contract verified. Extension ready for integration.
