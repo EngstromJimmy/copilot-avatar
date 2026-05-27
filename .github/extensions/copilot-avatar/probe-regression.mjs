@@ -8,10 +8,12 @@
  *   D. Browser-only/no-network behavior for the retro path remains intact
  *   E. Sub-agent visibility/name guardrails hold for both Squad and non-Squad projects
  *   F. Clippy-only summary intros stay off the Copilot speech path
+ *   G. Copilot SDK API contract: joinSession + getEvents + approveAll handler
+ *   H. Real entrypoint coverage: extension.mjs waits for main.mjs and logs startup failures
  *
  * Run: node probe-regression.mjs  (from the extension root)
  *
- * Technique: lightweight source assertions only — no browser harness, no framework.
+ * Technique: lightweight source assertions plus a stubbed entrypoint import probe — no browser harness, no framework.
  */
 
 import { readFileSync } from "node:fs";
@@ -61,6 +63,52 @@ function normalizeFsPath(value) {
     return text ? resolve(text) : "";
 }
 
+function toDataModuleUrl(source) {
+    return `data:text/javascript;charset=utf-8,${encodeURIComponent(String(source || ""))}`;
+}
+
+function replaceExtensionEntryMainImport(source, replacementUrl) {
+    return String(source || "").replace(
+        /(["'])\.\/main\.mjs\1/,
+        JSON.stringify(replacementUrl)
+    );
+}
+
+async function probeExtensionEntrypoint({ shouldFail = false } = {}) {
+    const probeKey = `__copilotAvatarEntryProbe_${shouldFail ? "fail" : "ok"}_${Math.random().toString(16).slice(2)}`;
+    globalThis[probeKey] = { loaded: false };
+
+    const mainUrl = shouldFail
+        ? toDataModuleUrl(`await Promise.resolve(); throw new Error("probe main load failure");`)
+        : toDataModuleUrl(`await Promise.resolve(); globalThis[${JSON.stringify(probeKey)}].loaded = true;`);
+    const entrySource = replaceExtensionEntryMainImport(read("extension.mjs"), mainUrl);
+    const entryUrl = toDataModuleUrl(entrySource);
+
+    const logs = [];
+    const originalConsoleError = console.error;
+    let importError = null;
+    console.error = (...args) => {
+        logs.push(args.map((arg) => String(arg)).join(" "));
+    };
+
+    try {
+        await import(entryUrl);
+        await Promise.resolve();
+    } catch (error) {
+        importError = error;
+    } finally {
+        console.error = originalConsoleError;
+    }
+
+    const result = {
+        importError,
+        loaded: globalThis[probeKey]?.loaded === true,
+        logs,
+    };
+    delete globalThis[probeKey];
+    return result;
+}
+
 // ── 0. Syntax checks ──────────────────────────────────────────────────────────
 console.log("\n[0] Syntax checks");
 
@@ -77,6 +125,8 @@ for (const rel of ["main.mjs", "lib/squad-context.mjs", "content/main.js", "prob
 // ── Load sources ──────────────────────────────────────────────────────────────
 const mainJs = read("content/main.js");
 const mainMjs = read("main.mjs");
+const extensionMjs = read("extension.mjs");
+const copilotWebviewJs = read("lib/copilot-webview.js");
 const htmlSrc = read("content/index.html");
 const packageJson = read("package.json");
 const repoRoot = normalizeFsPath(execSync("git rev-parse --show-toplevel", { cwd: ROOT, encoding: "utf-8" }));
@@ -144,6 +194,7 @@ const syncRootRuntimeWindow = functionWindow(mainMjs, "syncRootRuntimeState", 20
 const captureLiveSubagentWindow = functionWindow(mainMjs, "captureLiveSubagentRuntimeState", 2800);
 const mergeSubagentSnapshotsWindow = functionWindow(mainMjs, "mergeSubagentRuntimeSnapshots", 2600);
 const refreshSessionContextWindow = functionWindow(mainMjs, "refreshSessionContext", 1600);
+const visibleWindowSyncRetryWindow = functionWindow(mainMjs, "scheduleVisibleWindowStateSyncRetry", 900);
 const backgroundAgentsWindow = functionWindow(mainMjs, "getBackgroundAgentsFromSessionIdle", 1200);
 const backgroundMetadataNormalizeWindow = functionWindow(mainMjs, "normalizeBackgroundAgentMetadata", 1600);
 const liveBackgroundReconcileWindow = functionWindow(mainMjs, "reconcileLiveBackgroundSubagents", 1800);
@@ -482,6 +533,7 @@ if (syncFnMatch) {
     const body = syncFnMatch[0];
     const rootReplayIndex = body.indexOf("syncRootRuntimeState");
     const liveSnapshotIndex = body.indexOf("captureLiveSubagentRuntimeState");
+    const readyGuardIndex = body.indexOf("if (waitForReady && !ready)");
     const clearIndex = body.indexOf("clearSubagents");
     const resetIndex = body.indexOf("resetSubagentRuntimeState");
     const hydrateIndex = body.indexOf("hydrateSubagentRuntimeFromHistory");
@@ -495,6 +547,16 @@ if (syncFnMatch) {
     assert(
         "syncVisibleWindowState: captures live subagent snapshot before clear/reset",
         liveSnapshotIndex !== -1 && liveSnapshotIndex < clearIndex && liveSnapshotIndex < resetIndex
+    );
+    assert(
+        "syncVisibleWindowState: destructive replay waits for a successful ready handshake",
+        /const\s+ready\s*=\s*waitForReady\s*\?\s*await\s+waitForWebviewReady\(\)\s*:\s*true\s*;/.test(body) &&
+            /if\s*\(\s*waitForReady\s*&&\s*!ready\s*\)\s*\{[\s\S]{0,260}scheduleVisibleWindowStateSyncRetry\s*\(/.test(body) &&
+            /if\s*\(\s*waitForReady\s*&&\s*!ready\s*\)\s*\{[\s\S]{0,360}return\s+false\s*;/.test(body) &&
+            readyGuardIndex !== -1 &&
+            readyGuardIndex < clearIndex &&
+            readyGuardIndex < resetIndex,
+        "syncVisibleWindowState() still clears or resets runtime state after a failed ready handshake"
     );
     assert("syncVisibleWindowState: clearSubagents called before rehyd", clearIndex !== -1 && clearIndex < hydrateIndex);
     assert(
@@ -510,10 +572,17 @@ if (syncFnMatch) {
     assert("syncVisibleWindowState: root history replay happens on first-ready sync", false);
     assert("syncVisibleWindowState: root history replay before subagent rehydrate", false);
     assert("syncVisibleWindowState: captures live subagent snapshot before clear/reset", false);
+    assert("syncVisibleWindowState: destructive replay waits for a successful ready handshake", false);
     assert("syncVisibleWindowState: clearSubagents called before rehyd", false);
     assert("syncVisibleWindowState: resetSubagentRuntimeState called before rehyd", false);
     assert("syncVisibleWindowState: merges live subagent snapshot after history hydration", false);
 }
+assert(
+    "main.mjs defines scheduleVisibleWindowStateSyncRetry()",
+    /function\s+scheduleVisibleWindowStateSyncRetry\s*\(/.test(mainMjs) &&
+        /setTimeout\s*\(/.test(visibleWindowSyncRetryWindow),
+    "No bounded retry helper found for a missed webview ready handshake"
+);
 assert("main.mjs defines buildRootRuntimeStateFromHistory()", /async\s+function\s+buildRootRuntimeStateFromHistory\s*\(/.test(mainMjs));
 assert("main.mjs defines syncRootRuntimeState()", /async\s+function\s+syncRootRuntimeState\s*\(/.test(mainMjs));
 assert(
@@ -880,6 +949,87 @@ const retroWindow = sourceWindow(mainMjs, "generateRetroClippyVoice", 500, 0);
 assert("generateRetroClippyVoice: no fetch() call", !retroWindow.includes("fetch("));
 assert("generateRetroClippyVoice: no XMLHttpRequest", !retroWindow.includes("XMLHttpRequest"));
 assert("generateRetroClippyVoice: no active tetyys.com URL", !retroWindow.includes("https://tetyys"));
+
+// ── 16. Copilot SDK API contract: joinSession + getEvents ───────────────────
+console.log("\n[16] Copilot SDK API contract: joinSession + getEvents + approveAll");
+
+assert(
+    "main.mjs imports joinSession from copilot-sdk/extension",
+    /import\s*\{\s*joinSession\s*\}\s*from\s+["']@github\/copilot-sdk\/extension["']/.test(mainMjs)
+);
+assert(
+    "main.mjs imports approveAll from @github/copilot-sdk",
+    /import\s*\{\s*[^}]*approveAll[^}]*\}\s*from\s+["']@github\/copilot-sdk["']/.test(mainMjs)
+);
+assert(
+    "main.mjs no longer imports extension from copilot-sdk/extension",
+    !/import\s*\{\s*extension\s*\}\s*from\s+["']@github\/copilot-sdk\/extension["']/.test(mainMjs)
+);
+assert(
+    "main.mjs calls joinSession()",
+    /const\s+session\s*=\s*await\s+joinSession\s*\(/.test(mainMjs)
+);
+assert(
+    "joinSession call includes onPermissionRequest: approveAll",
+    /joinSession\s*\(\s*\{\s*onPermissionRequest\s*:\s*approveAll/.test(mainMjs)
+);
+assert(
+    "main.mjs uses session.getEvents() for history replay",
+    /\bsession\.getEvents\s*\(/.test(mainMjs)
+ );
+assert(
+    "main.mjs no longer calls session.getMessages()",
+    !/\bsession\.getMessages\s*\(/.test(mainMjs)
+);
+assert(
+    "lib/copilot-webview.js imports joinSession from copilot-sdk/extension",
+    /import\s*\{\s*joinSession\s*\}\s*from\s+["']@github\/copilot-sdk\/extension["']/.test(copilotWebviewJs)
+);
+assert(
+    "lib/copilot-webview.js imports approveAll from @github/copilot-sdk",
+    /import\s*\{\s*[^}]*approveAll[^}]*\}\s*from\s+["']@github\/copilot-sdk["']/.test(copilotWebviewJs)
+);
+assert(
+    "lib/copilot-webview.js no longer imports extension from copilot-sdk/extension",
+    !/import\s*\{\s*extension\s*\}\s*from\s+["']@github\/copilot-sdk\/extension["']/.test(copilotWebviewJs)
+);
+assert(
+    "lib/copilot-webview.js bootstrap joinSession includes onPermissionRequest: approveAll",
+    /joinSession\s*\(\s*\{\s*onPermissionRequest\s*:\s*approveAll/.test(copilotWebviewJs)
+);
+
+// ── 17. Real extension entrypoint seam ────────────────────────────────────────
+console.log("\n[17] Real extension entrypoint seam");
+
+assert(
+    'extension.mjs awaits import("./main.mjs")',
+    /await\s+import\s*\(\s*["']\.\/main\.mjs["']\s*\)/.test(extensionMjs),
+    'Expected awaited import("./main.mjs") in extension.mjs so activation waits for main session setup'
+);
+
+const entrypointSuccessProbe = await probeExtensionEntrypoint();
+assert(
+    "extension.mjs waits for main.mjs evaluation before activation resolves",
+    !entrypointSuccessProbe.importError && entrypointSuccessProbe.loaded,
+    entrypointSuccessProbe.importError
+        ? `Unexpected import error: ${entrypointSuccessProbe.importError.message}`
+        : "Entrypoint resolved before the stub main module finished evaluating"
+);
+
+const entrypointFailureProbe = await probeExtensionEntrypoint({ shouldFail: true });
+assert(
+    "extension.mjs logs startup failures instead of rejecting the entrypoint",
+    !entrypointFailureProbe.importError &&
+        entrypointFailureProbe.logs.some((line) => line.includes("[copilot-avatar] Failed to load extension:")),
+    entrypointFailureProbe.importError
+        ? `Entrypoint rejected: ${entrypointFailureProbe.importError.message}`
+        : "Did not capture the expected startup failure log"
+);
+assert(
+    "extension.mjs logs a stack line for startup failures",
+    entrypointFailureProbe.logs.some((line) => line.includes("[copilot-avatar] Stack:")),
+    "Did not capture the expected stack log line"
+);
 
 // ── Summary ────────────────────────────────────────────────────────────────────
 console.log(`\n${"─".repeat(60)}`);

@@ -98,4 +98,20 @@ Posted identity check-in notification at 15:34 UTC+2 to enable cross-team verifi
 - Fallback chains essential: final key (displayName or opaque ID) keeps downstream functional
 - One visible-card state map per architecture decision required for robustness
 
+---
+
+## 2026-05-27T10:56:05.917+02:00 — Avatar Runtime Fix Commit Scope
+
+**Decision:** Ship the repo-side runtime fix as one focused commit limited to the avatar extension sources plus Tony-owned team memory. Leave health reports and unrelated `.squad/` churn out of the commit.
+
+**What shipped:**
+1. `extension.mjs` now awaits `main.mjs` and logs startup failures instead of silently dropping activation.
+2. `main.mjs` and `lib/copilot-webview.js` now use the current SDK contract (`joinSession({ onPermissionRequest: approveAll })`, `session.getEvents()`).
+3. `main.mjs` preserves runtime state when the webview misses the ready handshake and retries sync instead of clearing live cards too early.
+4. `probe-regression.mjs` now locks those seams with source assertions and an entrypoint import probe.
+
+**Validation:** `node --check extension.mjs`, `node --check main.mjs`, `node --check lib/copilot-webview.js`, `node --check probe-regression.mjs`, and `node probe-regression.mjs` all passed (`143 passed, 0 failed`).
+
+**Key Learning:** This fix is not "just a loader tweak." The seam is three-part: modern SDK session wiring, non-destructive late-open replay, and visible startup logging. Miss one and the runtime still looks flaky.
+
 _Earlier detailed work and decisions archived in history-archive.md_

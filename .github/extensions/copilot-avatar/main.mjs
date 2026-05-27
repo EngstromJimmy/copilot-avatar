@@ -1,6 +1,7 @@
 // Copilot Avatar extension — shows a 3D Copilot head in a native window
 // and displays agent responses beneath it as floating text.
 import { joinSession } from "@github/copilot-sdk/extension";
+import { approveAll } from "@github/copilot-sdk";
 import { join, basename } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import { CopilotWebview } from "./lib/copilot-webview.js";
@@ -46,6 +47,7 @@ const clippyDefaultVoxtralVoice = 'en_paul_excited';
 const retroClippySampleText = "It looks like you're writing some code. Need a hand? I can help with that.";
 const WEBVIEW_READY_POLL_MS = 100;
 const WEBVIEW_READY_TIMEOUT_MS = 5000;
+const WEBVIEW_SYNC_RETRY_MS = 1000;
 const FALLBACK_SUBAGENT_RETIRE_MS = 5000;
 const SUBAGENT_SPAWN_TOOLS = new Set(["task", "runSubagent", "agent"]);
 const GENERIC_AGENT_LABELS = new Set([
@@ -268,17 +270,26 @@ async function callWindowFunction(name, value, timeoutMs = 2000) {
 
 async function syncVisibleWindowState({ waitForReady = false } = {}) {
     if (!webview._handle) {
-        return;
+        cancelPendingVisibleWindowStateSync();
+        return false;
     }
 
-    if (waitForReady) {
-        await waitForWebviewReady();
-    }
+    const ready = waitForReady ? await waitForWebviewReady() : true;
 
     await syncTitle();
+
+    if (waitForReady && !ready) {
+        const scheduledRetry = scheduleVisibleWindowStateSyncRetry();
+        if (scheduledRetry) {
+            await session.log("[avatar] Webview page missed the ready handshake; preserving runtime state and retrying sync.");
+        }
+        return false;
+    }
+
+    cancelPendingVisibleWindowStateSync();
     await syncSquadContext();
     if (waitForReady) {
-        const events = await session.getMessages().catch(() => []);
+        const events = await session.getEvents().catch(() => []);
         const liveSubagentSnapshot = captureLiveSubagentRuntimeState();
         await syncRootRuntimeState(events);
         await callWindowFunction("clearSubagents", { preserveRoot: true }, 3000);
@@ -288,9 +299,37 @@ async function syncVisibleWindowState({ waitForReady = false } = {}) {
         mergeHydratedSubagentRuntimeState(mergedSubagentState);
         await replayHydratedSubagentsToWebview(mergedSubagentState.activeSubagentsByAgentId);
     }
+
+    return true;
 }
 
+let pendingVisibleWindowStateSync = null;
 let pendingWebviewReopen = null;
+
+function cancelPendingVisibleWindowStateSync() {
+    if (!pendingVisibleWindowStateSync) {
+        return;
+    }
+
+    clearTimeout(pendingVisibleWindowStateSync);
+    pendingVisibleWindowStateSync = null;
+}
+
+function scheduleVisibleWindowStateSyncRetry() {
+    if (!webview._handle || pendingVisibleWindowStateSync) {
+        return false;
+    }
+
+    pendingVisibleWindowStateSync = setTimeout(() => {
+        pendingVisibleWindowStateSync = null;
+        if (!webview._handle) {
+            return;
+        }
+        void syncVisibleWindowState({ waitForReady: true });
+    }, WEBVIEW_SYNC_RETRY_MS);
+
+    return true;
+}
 
 async function reopenWebviewForWindowStyleChange() {
     if (pendingWebviewReopen) {
@@ -303,6 +342,7 @@ async function reopenWebviewForWindowStyleChange() {
         }
 
         await new Promise((resolve) => setTimeout(resolve, 0));
+        cancelPendingVisibleWindowStateSync();
         webview.close();
         await webview.show();
         await syncVisibleWindowState({ waitForReady: true });
@@ -1334,7 +1374,7 @@ async function replayHydratedRootRuntimeState(state) {
 }
 
 async function buildRootRuntimeStateFromHistory(events = null) {
-    const historyEvents = Array.isArray(events) ? events : await session.getMessages().catch(() => []);
+    const historyEvents = Array.isArray(events) ? events : await session.getEvents().catch(() => []);
     if (!Array.isArray(historyEvents) || historyEvents.length === 0) {
         return null;
     }
@@ -2399,7 +2439,7 @@ async function replayHydratedSubagentsToWebview(activeSubagentsByAgentId) {
 }
 
 async function hydrateSubagentRuntimeFromHistory({ replayToWebview = false, events = null } = {}) {
-    const historyEvents = Array.isArray(events) ? events : await session.getMessages().catch(() => []);
+    const historyEvents = Array.isArray(events) ? events : await session.getEvents().catch(() => []);
     if (!Array.isArray(historyEvents) || historyEvents.length === 0) {
         return null;
     }
@@ -2598,6 +2638,7 @@ const rootTurnState = {
 };
 
 const session = await joinSession({
+    onPermissionRequest: approveAll,
     tools: [
         {
             name: "copilot_avatar_show",

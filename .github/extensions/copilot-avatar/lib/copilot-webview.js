@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { extname, join, normalize, sep, isAbsolute, resolve } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { joinSession } from "@github/copilot-sdk/extension";
+import { approveAll } from "@github/copilot-sdk";
 
 const __dirname = import.meta.dirname;
 
@@ -95,7 +96,9 @@ export async function bootstrap(extDir) {
     const pkg = join(extDir, "package.json");
     const lock = join(extDir, "package-lock.json");
     if (existsSync(lock) && statSync(pkg).mtimeMs <= statSync(lock).mtimeMs) return;
-    const session = await joinSession();
+    const session = await joinSession({
+        onPermissionRequest: approveAll,
+    });
     await session.log("Installing extension dependencies…");
     execSync("npm install --no-audit --no-fund", { cwd: extDir, stdio: "ignore" });
     await session.log("Dependencies installed.");
