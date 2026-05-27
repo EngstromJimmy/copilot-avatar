@@ -126,3 +126,28 @@ Restart the Copilot CLI/Desktop runtime so it re-reads the repaired settings, ap
 
 
 
+
+---
+date: 2026-05-27T10:56:05.917+02:00
+author: Tony Stark
+subject: Avatar runtime fix scope
+---
+
+# Decision
+
+Ship the avatar runtime repair as a focused repo commit containing only the extension runtime sources and directly related regression coverage. Do not mix in local health reports, unrelated `.squad/` history churn, or runtime-install artifacts.
+
+# Why
+
+- The actual repo deliverable is the runtime contract repair: `joinSession({ onPermissionRequest: approveAll })`, `session.getEvents()`, awaited entrypoint loading with startup logging, and a bounded retry when the webview misses the ready handshake.
+- Those seams are tightly coupled; splitting them creates false confidence because activation, replay, and diagnostics would drift out of sync.
+- Local `.squad/health-report-*` files and unrelated agent-history edits are operator noise, not product changes, and would dilute rollback/review clarity.
+
+# Validation
+
+- `node --check extension.mjs`
+- `node --check main.mjs`
+- `node --check lib/copilot-webview.js`
+- `node --check probe-regression.mjs`
+- `node probe-regression.mjs` → `143 passed, 0 failed`
+
