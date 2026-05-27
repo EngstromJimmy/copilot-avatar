@@ -160,3 +160,22 @@ The currently shipped SDK under ~/.copilot/pkg/win32-x64/1.0.54/copilot-sdk expo
 ### Handoff
 
 Howard verified classification. Vision confirmed repo extension is healthy and synced installed user copies. Next action: User runtime restart.
+
+---
+
+## 2026-05-27T10:21:23.313+02:00 — Avatar SDK Wiring Alignment
+
+**Session:** user-install-sync  
+**Status:** SDK contract updated and validated.
+
+### Work Completed
+
+- Diagnosed SDK drift from old extension.createSession() / getMessages() to current joinSession() / getEvents()
+- Updated main.mjs session wiring to use current SDK contract
+- Updated lib/copilot-webview.js to use new session seam
+- Aligned regression probe to validate new session contract
+- Verified updated code passes validation suite (143/143)
+
+### Next Phase
+
+Ready for integration with synced user install. Activation pending CLI restart.

@@ -139,3 +139,29 @@ Do not classify current report as webview-ready handshake failure. The failing u
 ### Impact
 
 Peter's SDK contract fix is good evidence for project copy, but user copy needs sync + re-enable before it matters. Vision confirmed repair steps complete.
+
+- 2026-05-27T10:21:23.313+02:00 — **User install parity is fixed on disk, but live runtime can still stay disabled until the CLI refreshes its extension state:** the user copy under `C:\Users\JimmyEngstrom\.copilot\extensions\copilot-avatar` and the runtime cache under `C:\Users\JimmyEngstrom\AppData\Roaming\Copilot CLI\extensions\copilot-avatar` now match the repo on all repo-managed files, with only ignored `.tts-settings.json` remaining user-specific.
+- 2026-05-27T10:21:23.313+02:00 — **Settings are no longer the on-disk blocker, but runtime proof still needs a fresh enable signal:** `settings.json` now has an empty `extensions.disabledExtensions` list and permission approvals still exist, yet the live extension manager continues to report both `user:copilot-avatar` and `project:copilot-avatar` as disabled, so QA should not approve runtime readiness without a clean reload/restart that actually launches the avatar extension.
+
+---
+
+## 2026-05-27T10:21:23.313+02:00 — User Install Sync Verification and Runtime Gate
+
+**Session:** user-install-sync  
+**Status:** File sync verified. Runtime readiness REJECTED pending restart.
+
+### Verification Work
+
+- Independently verified user install and AppData sync completeness
+- Confirmed repo-managed files now match between repo copy and installed user copy
+- Verified only local .tts-settings.json differs (expected, preserved)
+- Tested project extension against existing regression probe: passed (143/143)
+- Checked live extension manager state after extensions_reload: both avatar extensions still disabled
+
+### QA Decision
+
+Runtime readiness is restart-bound, not reload-bound. File sync is complete and verified.
+
+### Handoff
+
+Next phase is runtime activation seam (Peter Parker).

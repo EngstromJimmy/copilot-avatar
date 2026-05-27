@@ -112,3 +112,42 @@ Full Copilot CLI/Desktop runtime restart so it re-reads:
 ### Status
 
 System state reconciliation complete. Platform readiness confirmed for user copy once user performs restart.
+
+## 2026-05-27T10:21:23.313+02:00 — User Install Authority Resync
+
+**Work Completed:**
+1. ✅ Mirrored the repo extension into C:\Users\JimmyEngstrom\.copilot\extensions\copilot-avatar while preserving the user's local .tts-settings.json
+2. ✅ Mirrored the same runtime files into the legacy AppData copy to remove stale bootstrap drift there too
+3. ✅ Verified the non-user-specific installed files now match the repo copy in both locations
+4. ✅ Repaired C:\Users\JimmyEngstrom\.copilot\settings.json so project:copilot-avatar stays disabled and user:copilot-avatar is allowed to load
+
+**Key Finding:**
+- The live extension registry still has both avatar copies marked disabled until the runtime reload boundary is crossed, so on-disk repair alone is not enough to flip the running process.
+
+## Learnings
+
+- 2026-05-27T10:21:23.313+02:00 — **Preserve user TTS state during install resync:** mirror the repo extension into user space, but do not overwrite .tts-settings.json or you risk destroying the user's runtime configuration while fixing code drift.
+- 2026-05-27T10:21:23.313+02:00 — **Disable only the project copy when user space is intended authority:** keeping project:copilot-avatar in disabledExtensions avoids dual-authority loading while leaving the repaired user:copilot-avatar eligible after reload/restart.
+
+---
+
+## 2026-05-27T10:21:23.313+02:00 — User Install Authority and Sync Completion
+
+**Session:** user-install-sync  
+**Status:** User extension resync + settings authority finalized. Pending CLI restart.
+
+### Work Completed
+
+- Identified stale lib/copilot-webview.js and probe-regression.mjs in installed user copy (old SDK seam)
+- Synced repo-managed files from project copy to user install
+- Preserved local .tts-settings.json settings during sync
+- Updated settings: disabled project:copilot-avatar, kept user:copilot-avatar enabled
+- Documented that extensions_reload does not clear disabled-state cache; full CLI restart required
+
+### Key Finding
+
+The user extension is authoritative once the Copilot CLI process restarts and re-reads settings and the repaired installed files.
+
+### Next Owner
+
+Awaiting CLI restart. Runtime activation is no longer a code seam.
