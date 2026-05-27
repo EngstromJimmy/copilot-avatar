@@ -20,6 +20,12 @@ Sub-agent visibility, identity resolution, and metadata enrichment integration w
 
 ## Recent Sessions Summary
 
+**2026-05-27T10:06:21.718+02:00 (Project vs user/runtime drift audit)**
+- Repo extension is healthy: lightweight validation stayed green (140/140) and the project copy is not failing from shared code or path resolution.
+- User and AppData copies had drift in `extension.mjs`/`main.mjs`; the AppData copy also still carried the old `vscode-jsonrpc` package metadata seam that breaks `@github/copilot-sdk/extension` import.
+- Synced both installed copies back to the repo version, restored workspace approval for `user:copilot-avatar`, and reduced `disabledExtensions` to `project:copilot-avatar` so only one authority should remain.
+- Important remaining seam: `extensions_reload` still reports `user:copilot-avatar` as disabled after on-disk repair, so this runtime needs a full Copilot restart to pick up the corrected state.
+
 **2026-05-27 (Final Resolution)**
 - Root cause identified: extension explicitly disabled in ~/.copilot/settings.json
 - Removed "user:copilot-avatar" from disabledExtensions list
@@ -71,4 +77,38 @@ Sub-agent visibility, identity resolution, and metadata enrichment integration w
 
 ---
 
+## Learnings
+
+- 2026-05-27T10:06:21.718+02:00 — **Shared avatar code was not the failing seam:** repo validation stayed green, while drift was isolated to installed bootstrap/runtime files (`extension.mjs`, `main.mjs`, and the AppData `vscode-jsonrpc` package metadata).
+- 2026-05-27T10:06:21.718+02:00 — **`extensions_reload` is not enough to clear this disabled-state seam:** after fixing settings and workspace approval on disk, the live runtime still reported `user:copilot-avatar` as disabled. Treat that as a restart-required boundary, not proof that the repaired files are still wrong.
+
 **Detailed work archived in history-archive.md**
+
+## 2026-05-27 — Cross-Agent Session: Runtime Authority & Disabled-State Refresh
+
+**Coordinated with:** Peter Parker (Backend), Howard the Duck (QA)  
+**Context:** End-to-end avatar extension failure and recovery path
+
+### Your Findings & Decision
+
+1. Repo extension is healthy (lightweight validation: 140-143 passed)
+2. Installed user and AppData copies had drift in extension.mjs and main.mjs
+3. AppData copy carried stale vscode-jsonrpc metadata breaking @github/copilot-sdk/extension import
+4. After syncing files + restoring user:copilot-avatar approval: extensions_reload still kept disabled state
+
+### Decision: Restart-Bound Refresh
+
+Keep project:copilot-avatar disabled in settings (no dual-copy conflict). Treat user:copilot-avatar as intended authority once Copilot runtime is restarted.
+
+Do not chase path-resolution or shared-content fixes — remaining live seam is runtime state refresh, not repo code.
+
+### Required Operator Action
+
+Full Copilot CLI/Desktop runtime restart so it re-reads:
+- Repaired settings (disabledExtensions list)
+- Restored user approval
+- Synced user extension files
+
+### Status
+
+System state reconciliation complete. Platform readiness confirmed for user copy once user performs restart.

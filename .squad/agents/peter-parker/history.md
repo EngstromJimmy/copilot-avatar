@@ -109,6 +109,9 @@ Revised avatar sub-agent visibility and identity integration following QA feedba
 - 2026-05-18T16:11:43.269+02:00 — Jimmy's current preference is simplicity over aggressive rebinding: the product goal is to show the real current sub-agents, then let Squad supply the human names when possible.
 - 2026-05-27T09:34:17.883+02:00 — In `.github/extensions/copilot-avatar/extension.mjs`, the real activation seam must block on `await import("./main.mjs")`; fire-and-forget dynamic import can let the entry module resolve before `main.mjs` finishes `extension.createSession(...)`.
 - 2026-05-27T09:34:17.883+02:00 — The SDK migration contract applies to both session paths here: `.github/extensions/copilot-avatar/main.mjs` and `.github/extensions/copilot-avatar/lib/copilot-webview.js` both need `extension.createSession({ onPermissionRequest: approveAll, ... })`.
+- 2026-05-27T10:06:21.718+02:00 — The current Copilot CLI SDK exposed in `C:\Users\JimmyEngstrom\.copilot\pkg\win32-x64\1.0.54\copilot-sdk` exports `joinSession()` from `@github/copilot-sdk/extension`; importing `{ extension }` from that module now throws during startup.
+- 2026-05-27T10:06:21.718+02:00 — Session history replay in this extension must use `session.getEvents()` now; `session.getMessages()` is no longer on the joined session surface and was the next shared crash after the import issue.
+- 2026-05-27T10:06:21.718+02:00 — The installed user copy at `C:\Users\JimmyEngstrom\.copilot\extensions\copilot-avatar` is stale relative to the project copy: it still has the fire-and-forget `extension.mjs` import and older SDK session calls, so user-side failures are not only project-source regressions.
 
 ## 2026-05-27T09:34:17.883+02:00 — Entrypoint/Bootstrap Revision & Approval
 
@@ -123,3 +126,37 @@ Revised extension by:
 **Decision Authored:** Decision 3 — Keep avatar entrypoint activation blocking & mirror approveAll on bootstrap
 
 **Impact:** Extension activation pattern restored to blocking semantics. Bootstrap and main session creation now share identical permission contract. Regression coverage now includes real entry module shape verification.
+
+## 2026-05-27T10:06:21.718+02:00 — SDK Session Contract Correction
+
+**Your Contribution:**
+1. Swapped the extension bootstrap/runtime session seam from `extension.createSession(...)` to `joinSession(...)` in `.github/extensions/copilot-avatar/main.mjs` and `.github/extensions/copilot-avatar/lib/copilot-webview.js`
+2. Replaced history replay calls from `session.getMessages()` to `session.getEvents()`
+3. Tightened `probe-regression.mjs` so it now guards the current SDK import/session contract instead of blessing the stale one
+
+**Result:** `node --check main.mjs`, `node --check lib/copilot-webview.js`, `node --check probe-regression.mjs`, and `node probe-regression.mjs` all passed; regression probe finished 143/143.
+
+**Impact:** The project extension now matches the live Copilot CLI SDK surface again, and the probe will catch future drift on both the join-session import and the history API.
+
+## 2026-05-27 — Cross-Agent Session: SDK Session Contract Decision
+
+**Coordinated with:** Howard the Duck (QA), Vision (Platform)  
+**Context:** Project and user avatar extension failure diagnosis
+
+### Your Decision
+
+Use `joinSession({ onPermissionRequest: approveAll, ... })` for avatar extension session seam in both main.mjs and lib/copilot-webview.js. Use `session.getEvents()` for history replay/hydration. Keep regression probe aligned with that contract so SDK drift gets caught before manual runtime testing.
+
+### Why
+
+The currently shipped SDK under ~/.copilot/pkg/win32-x64/1.0.54/copilot-sdk exports `joinSession()` from extension.js and documents `getEvents()` on CopilotSession. The prior `extension.createSession()` / `getMessages()` combination is stale and breaks both activation and replay.
+
+### Evidence
+
+- Project copy lightweight validation: 143/143 passed
+- SDK contract identified in shipped binaries
+- Stale user copy still uses dead exports
+
+### Handoff
+
+Howard verified classification. Vision confirmed repo extension is healthy and synced installed user copies. Next action: User runtime restart.

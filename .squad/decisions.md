@@ -848,3 +848,80 @@ This removes hidden ownership guesses between pending starts and background snap
 
 **Why:** User request — captured for team memory.
 
+
+
+## 2026-05-27
+
+---
+date: 2026-05-27T10:06:21.718+02:00
+author: Howard the Duck
+---
+
+# Decision: Classify current avatar failure modes before chasing runtime ghosts
+
+## Context
+
+Jimmy reported that both the project avatar extension and the installed user/runtime copy were failing. I reproduced the current seams against the repo copy, the installed user copy, the Copilot CLI extension registry, and the bundled SDK bootstrap path.
+
+## Decision
+
+- Treat the current **project** failure as **settings disablement / extension not loading**, not as an active repo code crash.
+- Treat the current **user/runtime** failure as **stale installed code plus settings disablement**.
+- Do **not** classify the current report as a webview-ready handshake failure; the failing user copy dies before the webview bootstrap can run.
+- Peter Parker's `joinSession()` / `getEvents()` repo fix is good evidence for the project copy, but it does **not** fully address the installed user/runtime failure until the user copy is synced and both extensions are re-enabled.
+
+## Why
+
+- `C:\Users\JimmyEngstrom\.copilot\settings.json` currently lists both `project:copilot-avatar` and `user:copilot-avatar` under `extensions.disabledExtensions`, and after extension reload only `copilot-xray` was running.
+- The repo copy passed the existing lightweight validation (`node --check` trio plus `node probe-regression.mjs`) at 143/143 and its `lib/copilot-webview.js` imported successfully under the CLI-bundled SDK bootstrap.
+- The installed user copy is stale: `main.mjs` matches the repo, but `lib/copilot-webview.js` and `probe-regression.mjs` do not. The stale user `lib/copilot-webview.js` still imports `{ extension }` from `@github/copilot-sdk/extension` and calls `extension.createSession()`, which fails under the bundled CLI SDK with `The requested module '@github/copilot-sdk/extension' does not provide an export named 'extension'`.
+- The installed user `probe-regression.mjs` also remains stale enough to call `git rev-parse --show-toplevel` from the extension directory and crash outside a git repo, so it cannot be trusted as a portable runtime smoke check.
+
+---
+
+---
+date: 2026-05-27T10:06:21.718+02:00
+author: Peter Parker
+---
+
+# Decision: Use joinSession/getEvents for avatar extension session wiring
+
+## Context
+
+Both the project extension and the installed user copy were failing against the current Copilot CLI SDK. Runtime logs showed startup crashes from importing `{ extension }` out of `@github/copilot-sdk/extension`, and the next shared failure path was `session.getMessages()` missing on the resumed session object.
+
+## Decision
+
+- Use `joinSession({ onPermissionRequest: approveAll, ... })` for the avatar extension session seam in both `main.mjs` and `lib/copilot-webview.js`
+- Use `session.getEvents()` for history replay/hydration
+- Keep the regression probe aligned with that contract so SDK drift gets caught before manual runtime testing
+
+## Why
+
+The currently shipped SDK under `C:\Users\JimmyEngstrom\.copilot\pkg\win32-x64\1.0.54\copilot-sdk` exports `joinSession()` from `extension.js` and documents `getEvents()` on `CopilotSession`. The prior `extension.createSession()` / `getMessages()` combination is stale and now breaks both activation and replay.
+
+---
+
+## Decision: Keep one avatar authority and treat disabled-state refresh as restart-bound
+
+- **Date:** 2026-05-27T10:06:21.718+02:00
+- **Agent:** Vision
+- **Status:** Proposed
+
+### What we found
+
+1. The repo extension passed the existing lightweight validation, so the project source is not the current failure seam.
+2. Installed user and AppData copies had drift in `extension.mjs` and `main.mjs`; the AppData copy also had stale `vscode-jsonrpc` metadata that broke `@github/copilot-sdk/extension` import.
+3. After syncing installed files and restoring `user:copilot-avatar` workspace approval, `extensions_reload` still kept `user:copilot-avatar` in a disabled state.
+
+### Decision
+
+- Keep **project:copilot-avatar** disabled in settings so the workspace does not try to run two copies of the same avatar extension.
+- Treat **user:copilot-avatar** as the intended authority once the Copilot runtime is restarted.
+- Do not chase path-resolution or shared-content fixes here; the remaining live seam is runtime state refresh, not repo code.
+
+### Required operator action
+
+Restart the Copilot CLI/Desktop runtime so it re-reads the repaired settings, approvals, and synced user extension files.
+
+

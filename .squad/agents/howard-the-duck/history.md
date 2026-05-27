@@ -109,3 +109,33 @@ This contract ensures the cleanup works for both Squad and non-Squad projects, a
    - Source assertions prove bootstrap keeps `approveAll` permission contract
 
 **Impact:** Real entry module shape now exercised. Bootstrap permission contract verified. Extension ready for integration.
+
+- 2026-05-27T10:06:21.718+02:00 — **Current failure split is settings-disabled project vs stale user install:** the repo copy now passes the lightweight suite (143/143) and its `lib/copilot-webview.js` imports cleanly under the CLI-bundled SDK bootstrap, so today's project-side non-start is the `disabledExtensions` setting rather than a current code crash.
+- 2026-05-27T10:06:21.718+02:00 — **User runtime still has stale bootstrap drift even after the repo fix:** `C:\Users\JimmyEngstrom\.copilot\extensions\copilot-avatar\lib\copilot-webview.js` still imports `{ extension }` and calls `extension.createSession()`, which crashes under the bundled CLI SDK before any webview can start, and the installed `probe-regression.mjs` is stale enough to die outside a git repo.
+- 2026-05-27T10:06:21.718+02:00 — **Do not blame the ready handshake before activation survives startup:** with both avatar extensions disabled in settings and the user copy still failing during SDK import, there is no live evidence of a `__copilotAvatarReady`/webview race in the current failure report.
+
+## 2026-05-27 — Cross-Agent Session: Failure Classification
+
+**Coordinated with:** Peter Parker (Backend), Vision (Platform)  
+**Context:** Diagnosing avatar extension failures in project and user copies
+
+### Your Finding
+
+- Project copy: Settings disablement (not code failure) — disabled in ~/.copilot/settings.json
+- User copy: Stale installed code + settings disablement — still uses dead SDK exports
+- Both project:copilot-avatar and user:copilot-avatar are disabled
+
+### Classification Decision
+
+Do not classify current report as webview-ready handshake failure. The failing user copy dies before webview bootstrap can run. This is an installed/settings seam, not a source code issue in the repo.
+
+### Validation
+
+- Repo copy passed existing lightweight validation (143/143)
+- lib/copilot-webview.js imported successfully under bundled SDK bootstrap
+- Stale user copy imports fail: `extension.createSession()` dead, `getMessages()` missing
+- User probe (probe-regression.mjs) also stale and unsafe to run
+
+### Impact
+
+Peter's SDK contract fix is good evidence for project copy, but user copy needs sync + re-enable before it matters. Vision confirmed repair steps complete.
