@@ -194,3 +194,36 @@ None. The Deepgram supplier seam is in place and validated.
 - Inbox merged (vision-deepgram-tts.md, vision-sync-main.md) → decisions.md
 - Orchestration log: 2026-05-29T15-44-38Z-Vision.md
 - Archive: Not triggered (2.6 KB < 20 KB threshold)
+
+## Learnings
+
+- 2026-05-29T17:58:14.256+02:00 — **Deepgram is a backend callback seam in this extension:** `content/main.js` should request audio through `copilot.generateDeepgramSpeech(...)`, while `.github/extensions/copilot-avatar/main.mjs` owns the signed Deepgram call and returns serialized audio to the webview.
+- 2026-05-29T17:58:14.256+02:00 — **Keep the existing supplier contract intact when repairing a provider:** Jimmy asked to preserve the current supplier architecture and configuration pattern, so the fix stayed inside the established `main.mjs` settings + `content/index.html` controls + `content/main.js` routing + `probe-regression.mjs` coverage seams.
+- 2026-05-29T17:58:14.256+02:00 — **Key Deepgram touchpoints:** when this provider changes, update `.github/extensions/copilot-avatar/main.mjs`, `.github/extensions/copilot-avatar/content/main.js`, `.github/extensions/copilot-avatar/content/index.html`, and `.github/extensions/copilot-avatar/probe-regression.mjs` together or the test path can drift from the runtime path.
+
+## 2026-05-29T17:58:14Z — Deepgram TTS Backend Callback Fix
+
+**Session:** deepgram-tts-test-button  
+**Status:** ✅ Completed and validated
+
+### Work Completed
+
+- Moved Deepgram speech synthesis to backend callback seam in `.github/extensions/copilot-avatar/main.mjs`
+- Updated `content/main.js` to call `copilot.generateDeepgramSpeech(...)` instead of direct browser calls
+- Updated UI documentation in `content/index.html` to reflect backend routing
+- Extended `probe-regression.mjs` with Deepgram backend-callback contract guard
+
+### Validation
+
+- `node --check main.mjs` ✓
+- `node --check lib/squad-context.mjs` ✓
+- `node --check content/main.js` ✓
+- `node probe-regression.mjs` → 161/161 ✓
+
+### Key Finding
+
+Deepgram's sample is a server-side flow, not browser-direct. The existing supplier architecture already provides an explicit backend bridge (`copilot.*` callbacks), so this fix removes the broken seam without inventing new configuration layers.
+
+### Known Limitation
+
+Playback still waits for full MP3 response (not chunk-streamed yet).

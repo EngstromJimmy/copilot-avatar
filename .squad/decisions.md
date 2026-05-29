@@ -123,6 +123,34 @@ The currently shipped SDK under `C:\Users\JimmyEngstrom\.copilot\pkg\win32-x64\1
 Restart the Copilot CLI/Desktop runtime so it re-reads the repaired settings, approvals, and synced user extension files.
 
 
+---
+
+## 2026-05-29
+
+---
+date: 2026-05-29T17:58:14.256+02:00
+author: Vision
+subject: Deepgram backend callback seam
+---
+
+# Decision
+
+Route Deepgram speech generation through the extension backend callback in `.github/extensions/copilot-avatar/main.mjs`, while keeping the existing supplier settings and UI contract in the webview.
+
+# Why
+
+- Deepgram's sample is a server-side flow, not a browser-direct one.
+- The avatar webview path was trying to call Deepgram directly from `content/main.js`, which left the test button silent at the browser/runtime seam.
+- The existing avatar supplier architecture already has an explicit backend bridge (`copilot.*` callbacks), so this fix removes the broken seam without inventing a parallel configuration path.
+
+# Implementation Notes
+
+- `main.mjs` now owns the signed Deepgram request and returns serialized audio data.
+- `content/main.js` now calls `copilot.generateDeepgramSpeech(...)` and plays the returned audio blob locally.
+- `content/index.html` now states that Deepgram runs through the extension backend because browser-direct calls are unsupported.
+- `probe-regression.mjs` now guards the backend-callback contract so future regressions fail at the right seam.
+
+
 
 
 
