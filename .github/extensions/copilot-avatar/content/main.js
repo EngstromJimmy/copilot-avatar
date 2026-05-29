@@ -287,6 +287,7 @@ const ttsEngineSelect = document.getElementById('tts-engine-select');
 const ttsWebspeechSection = document.getElementById('tts-webspeech-section');
 const ttsVoxtralSection = document.getElementById('tts-voxtral-section');
 const ttsElevenlabsSection = document.getElementById('tts-elevenlabs-section');
+const ttsDeepgramSection = document.getElementById('tts-deepgram-section');
 const ttsC64Section = document.getElementById('tts-c64-section');
 const c64VoiceSelect = document.getElementById('c64-voice-select');
 const ttsC64SpeedInput = document.getElementById('tts-c64-speed-input');
@@ -321,6 +322,9 @@ const elevenlabsApikeyInput = document.getElementById('elevenlabs-apikey-input')
 const elevenlabsVoiceSelect = document.getElementById('elevenlabs-voice-select');
 const elevenlabsRefreshBtn = document.getElementById('elevenlabs-refresh-btn');
 const elevenlabsPresetSection = document.getElementById('elevenlabs-preset-section');
+const deepgramApikeyInput = document.getElementById('deepgram-apikey-input');
+const deepgramVoiceSelect = document.getElementById('deepgram-voice-select');
+const deepgramPresetSection = document.getElementById('deepgram-preset-section');
 const elevenlabsCloneControls = document.getElementById('elevenlabs-clone-controls');
 const elevenlabsCloneBtn = document.getElementById('elevenlabs-clone-btn');
 const elevenlabsDeleteBtn = document.getElementById('elevenlabs-delete-btn');
@@ -1998,6 +2002,9 @@ function canPreviewCurrentVoice(engine = ttsEngine) {
     if (engine === 'elevenlabs') {
         return !!elevenlabsApiKey && !!elevenlabsVoiceSelect.value;
     }
+    if (engine === 'deepgram') {
+        return !!deepgramApiKey && !!deepgramVoiceSelect.value;
+    }
     if (engine === 'c64') {
         return c64VoiceSelect.options.length > 0;
     }
@@ -2038,6 +2045,10 @@ async function previewCurrentVoice(engine = ttsEngine) {
         }
         if (engine === 'elevenlabs') {
             await speakElevenLabs(text, { clippy });
+            return true;
+        }
+        if (engine === 'deepgram') {
+            await speakDeepgram(text, { clippy });
             return true;
         }
         if (engine === 'c64') {
@@ -4581,6 +4592,49 @@ const VOXTRAL_VOICES_FALLBACK = [
     { slug: 'gb_oliver_neutral',  name: 'Oliver - Neutral'  },
     { slug: 'gb_jane_sarcasm',    name: 'Jane - Sarcasm'    },
 ];
+const DEEPGRAM_VOICES = [
+    { id: 'aura-2-amalthea-en', name: 'Amalthea' },
+    { id: 'aura-2-andromeda-en', name: 'Andromeda' },
+    { id: 'aura-2-apollo-en', name: 'Apollo' },
+    { id: 'aura-2-arcas-en', name: 'Arcas' },
+    { id: 'aura-2-aries-en', name: 'Aries' },
+    { id: 'aura-2-asteria-en', name: 'Asteria' },
+    { id: 'aura-2-athena-en', name: 'Athena' },
+    { id: 'aura-2-atlas-en', name: 'Atlas' },
+    { id: 'aura-2-aurora-en', name: 'Aurora' },
+    { id: 'aura-2-callista-en', name: 'Callista' },
+    { id: 'aura-2-cora-en', name: 'Cora' },
+    { id: 'aura-2-cordelia-en', name: 'Cordelia' },
+    { id: 'aura-2-delia-en', name: 'Delia' },
+    { id: 'aura-2-draco-en', name: 'Draco' },
+    { id: 'aura-2-electra-en', name: 'Electra' },
+    { id: 'aura-2-harmonia-en', name: 'Harmonia' },
+    { id: 'aura-2-helena-en', name: 'Helena' },
+    { id: 'aura-2-hera-en', name: 'Hera' },
+    { id: 'aura-2-hermes-en', name: 'Hermes' },
+    { id: 'aura-2-hyperion-en', name: 'Hyperion' },
+    { id: 'aura-2-iris-en', name: 'Iris' },
+    { id: 'aura-2-janus-en', name: 'Janus' },
+    { id: 'aura-2-juno-en', name: 'Juno' },
+    { id: 'aura-2-jupiter-en', name: 'Jupiter' },
+    { id: 'aura-2-luna-en', name: 'Luna' },
+    { id: 'aura-2-mars-en', name: 'Mars' },
+    { id: 'aura-2-minerva-en', name: 'Minerva' },
+    { id: 'aura-2-neptune-en', name: 'Neptune' },
+    { id: 'aura-2-odysseus-en', name: 'Odysseus' },
+    { id: 'aura-2-ophelia-en', name: 'Ophelia' },
+    { id: 'aura-2-orion-en', name: 'Orion' },
+    { id: 'aura-2-orpheus-en', name: 'Orpheus' },
+    { id: 'aura-2-pandora-en', name: 'Pandora' },
+    { id: 'aura-2-phoebe-en', name: 'Phoebe' },
+    { id: 'aura-2-pluto-en', name: 'Pluto' },
+    { id: 'aura-2-saturn-en', name: 'Saturn' },
+    { id: 'aura-2-selene-en', name: 'Selene' },
+    { id: 'aura-2-thalia-en', name: 'Thalia' },
+    { id: 'aura-2-theia-en', name: 'Theia' },
+    { id: 'aura-2-vesta-en', name: 'Vesta' },
+    { id: 'aura-2-zeus-en', name: 'Zeus' },
+];
 
 const C64_VOICES = [
     { id: 'sam', name: 'Classic SAM', speed: 72, pitch: 64, throat: 128, mouth: 128 },
@@ -4619,6 +4673,8 @@ let elevenlabsVoice = '';
 let elevenlabsClonedVoiceId = '';
 let elevenlabsClonedVoiceName = '';
 let elevenlabsCloneSourceHash = '';
+let deepgramApiKey = '';
+let deepgramVoice = 'aura-2-asteria-en';
 let clippyElevenlabsVoiceId = '';
 let clippyElevenlabsVoiceName = '';
 let clippyElevenlabsCloneSourceHash = '';
@@ -4859,6 +4915,13 @@ if (savedTts.elevenlabsApiKey) {
 if (savedTts.elevenlabsVoice) {
     elevenlabsVoice = savedTts.elevenlabsVoice;
 }
+if (savedTts.deepgramApiKey) {
+    deepgramApiKey = savedTts.deepgramApiKey;
+    deepgramApikeyInput.value = deepgramApiKey;
+}
+if (savedTts.deepgramVoice) {
+    deepgramVoice = savedTts.deepgramVoice;
+}
 if (savedTts.elevenlabsClonedVoiceId) {
     elevenlabsClonedVoiceId = savedTts.elevenlabsClonedVoiceId;
 }
@@ -4930,6 +4993,8 @@ function saveTtsSettings() {
         elevenlabsClonedVoiceId,
         elevenlabsClonedVoiceName,
         elevenlabsCloneSourceHash,
+        deepgramApiKey,
+        deepgramVoice,
         clippyElevenlabsVoiceId,
         clippyElevenlabsVoiceName,
         clippyElevenlabsCloneSourceHash,
@@ -4957,25 +5022,32 @@ function updateBackendUI() {
 function updateEngineUI() {
     const isVoxtral = ttsEngine === 'voxtral';
     const isElevenLabs = ttsEngine === 'elevenlabs';
+    const isDeepgram = ttsEngine === 'deepgram';
     const isC64 = ttsEngine === 'c64';
-    const isAiEngine = isVoxtral || isElevenLabs;
+    const isAiEngine = isVoxtral || isElevenLabs || isDeepgram;
     const isMyVoice = voxtralVoiceSource === 'myvoice';
+    const showAiPresetSection = isDeepgram || isElevenLabs || (isVoxtral && !isMyVoice);
     ttsWebspeechSection.classList.toggle('hidden', isAiEngine || isC64);
     ttsVoxtralSection.classList.toggle('hidden', !isVoxtral);
     ttsElevenlabsSection.classList.toggle('hidden', !isElevenLabs);
+    ttsDeepgramSection.classList.toggle('hidden', !isDeepgram);
     ttsC64Section.classList.toggle('hidden', !isC64);
     ttsAiVoiceSection.classList.toggle('hidden', !isAiEngine);
     ttsAiVoiceSourceLabel.classList.toggle('hidden', !isVoxtral);
-    ttsAiPresetSection.classList.toggle('hidden', !isElevenLabs && (!isVoxtral || isMyVoice));
+    ttsAiPresetSection.classList.toggle('hidden', !showAiPresetSection);
     ttsAiRecordSection.classList.toggle('hidden', !isVoxtral || !isMyVoice);
     voxtralVoiceSelect.parentElement.classList.toggle('hidden', !isVoxtral);
     elevenlabsPresetSection.classList.toggle('hidden', !isElevenLabs);
+    deepgramPresetSection.classList.toggle('hidden', !isDeepgram);
     populateWebSpeechVoices();
     if (isVoxtral) {
         updateBackendUI();
     }
     if (isElevenLabs) {
         fetchElevenLabsVoices();
+    }
+    if (isDeepgram) {
+        populateDeepgramVoices();
     }
     updateElevenLabsCloneUI();
     updateVoicePreviewButtons();
@@ -5050,6 +5122,31 @@ function populateElevenLabsVoices(voices, { placeholder = 'Select a voice', pres
     } else {
         elevenlabsVoiceSelect.selectedIndex = 0;
         elevenlabsVoice = elevenlabsVoiceSelect.value;
+    }
+    updateVoicePreviewButtons();
+}
+
+function populateDeepgramVoices(voices = DEEPGRAM_VOICES, { saveOnFallback = false } = {}) {
+    const previousVoice = deepgramVoice;
+    deepgramVoiceSelect.innerHTML = '';
+    voices.forEach((voice) => {
+        const option = document.createElement('option');
+        option.value = voice.id;
+        option.textContent = voice.name;
+        option.selected = voice.id === previousVoice;
+        deepgramVoiceSelect.appendChild(option);
+    });
+    if (previousVoice && voices.some((voice) => voice.id === previousVoice)) {
+        deepgramVoiceSelect.value = previousVoice;
+        deepgramVoice = previousVoice;
+    } else if (voices.length) {
+        deepgramVoiceSelect.selectedIndex = 0;
+        deepgramVoice = deepgramVoiceSelect.value;
+        if (saveOnFallback) {
+            saveTtsSettings();
+        }
+    } else {
+        deepgramVoice = '';
     }
     updateVoicePreviewButtons();
 }
@@ -5130,6 +5227,7 @@ async function fetchElevenLabsVoices({ force = false } = {}) {
 }
 
 populateVoxtralVoices(VOXTRAL_VOICES_FALLBACK);
+populateDeepgramVoices();
 speechSynthesis.onvoiceschanged = () => populateBrowserVoices({ saveOnFallback: true });
 populateBrowserVoices();
 
@@ -5458,9 +5556,20 @@ function releaseGeneratedAudioUrl() {
     }
 }
 
+function base64ToBlob(base64, mimeType = 'application/octet-stream') {
+    const binary = atob(String(base64 || ''));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mimeType });
+}
+
 function fallbackClippySpeech(text) {
     if (ttsEngine === 'elevenlabs') {
         console.warn('Clippy ElevenLabs speech failed; falling back to Web Speech.');
+    } else if (ttsEngine === 'deepgram') {
+        console.warn('Clippy Deepgram speech failed; falling back to Web Speech.');
     } else if (ttsEngine === 'c64') {
         console.warn('Clippy C64 speech failed; falling back to Web Speech.');
     } else if (!clippyRefAudio && !voxtralRefAudio) {
@@ -5597,6 +5706,51 @@ async function speakElevenLabs(text, { clippy = false } = {}) {
     } catch (error) {
         if (clippy && isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
         console.error('ElevenLabs TTS failed:', error);
+        if (clippy && isCurrentSpeechRequest(requestId)) fallbackClippySpeech(text);
+    }
+}
+
+async function speakDeepgram(text, { clippy = false } = {}) {
+    const requestId = beginSpeechRequest();
+    if (!deepgramApiKey || !deepgramVoice) {
+        if (clippy) fallbackClippySpeech(text);
+        return;
+    }
+
+    try {
+        speechSynthesis.cancel();
+        stopGeneratedSpeechPlayback();
+        if (!isCurrentSpeechRequest(requestId)) {
+            return;
+        }
+        const result = await copilot.generateDeepgramSpeech({
+            text,
+            model: deepgramVoice,
+        });
+        if (!result?.audioBase64) {
+            throw new Error('Deepgram did not return audio data.');
+        }
+        const blob = base64ToBlob(result.audioBase64, result.mimeType || 'audio/mpeg');
+        if (!isCurrentSpeechRequest(requestId)) {
+            return;
+        }
+        activeGeneratedAudioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(activeGeneratedAudioUrl);
+        applyVoiceWarming(audio);
+        ttsAudioPlayer = audio;
+        if (clippy) {
+            setClippySpeaking(true);
+            audio.addEventListener('ended', () => {
+                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+            }, { once: true });
+            audio.addEventListener('error', () => {
+                if (isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+            }, { once: true });
+        }
+        await audio.play();
+    } catch (error) {
+        if (clippy && isCurrentSpeechRequest(requestId)) setClippySpeaking(false);
+        console.error('Deepgram TTS failed:', error);
         if (clippy && isCurrentSpeechRequest(requestId)) fallbackClippySpeech(text);
     }
 }
@@ -5785,6 +5939,12 @@ elevenlabsApikeyInput.addEventListener('change', () => {
     saveTtsSettings();
 });
 
+deepgramApikeyInput.addEventListener('change', () => {
+    deepgramApiKey = deepgramApikeyInput.value.trim();
+    updateVoicePreviewButtons();
+    saveTtsSettings();
+});
+
 document.querySelectorAll('input[name="voxtral-backend"]').forEach((radio) => {
     radio.addEventListener('change', () => {
         voxtralBackend = radio.value;
@@ -5807,6 +5967,12 @@ voxtralVoiceSelect.addEventListener('change', () => {
 
 elevenlabsVoiceSelect.addEventListener('change', () => {
     elevenlabsVoice = elevenlabsVoiceSelect.value;
+    updateVoicePreviewButtons();
+    saveTtsSettings();
+});
+
+deepgramVoiceSelect.addEventListener('change', () => {
+    deepgramVoice = deepgramVoiceSelect.value;
     updateVoicePreviewButtons();
     saveTtsSettings();
 });
@@ -5934,6 +6100,8 @@ window.getTtsSettings = () => JSON.stringify({
     clippyVoxtralVoice,
     elevenlabsVoice,
     elevenlabsHasApiKey: !!elevenlabsApiKey,
+    deepgramVoice,
+    deepgramHasApiKey: !!deepgramApiKey,
     elevenlabsClonedVoiceId,
     clippyElevenlabsVoiceId,
     c64Voice,
@@ -6072,6 +6240,8 @@ function speak(text, { clippy = false, forceEngine = null } = {}) {
         speakVoxtral(spokenText, { clippy });
     } else if (engine === 'elevenlabs') {
         speakElevenLabs(spokenText, { clippy });
+    } else if (engine === 'deepgram') {
+        speakDeepgram(spokenText, { clippy });
     } else if (engine === 'c64') {
         speakC64(spokenText, { clippy });
     } else {

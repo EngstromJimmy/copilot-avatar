@@ -8,8 +8,9 @@
  *   D. Browser-only/no-network behavior for the retro path remains intact
  *   E. Sub-agent visibility/name guardrails hold for both Squad and non-Squad projects
  *   F. Clippy-only summary intros stay off the Copilot speech path
- *   G. Copilot SDK API contract: joinSession + getEvents + approveAll handler
- *   H. Real entrypoint coverage: extension.mjs waits for main.mjs and logs startup failures
+ *   G. Deepgram supplier wiring stays explicit across UI, persistence, and runtime speech routing
+ *   H. Copilot SDK API contract: joinSession + getEvents + approveAll handler
+ *   I. Real entrypoint coverage: extension.mjs waits for main.mjs and logs startup failures
  *
  * Run: node probe-regression.mjs  (from the extension root)
  *
@@ -171,7 +172,7 @@ const samLibraryReferencePresent = includesAny(`${mainJs}\n${mainMjs}\n${htmlSrc
 const defaultSettingsWindow = sourceWindow(mainMjs, "const DEFAULT_SETTINGS", 1400, 0);
 const savePayloadWindow = sourceWindow(mainJs, "function saveTtsSettings()", 1600, 0);
 const ttsSettingsWindow = sourceWindow(mainJs, "window.getTtsSettings", 900, 0);
-const loadSettingsWindow = sourceWindow(mainJs, "let savedTts = {}", 2600, 0);
+const loadSettingsWindow = sourceWindow(mainJs, "let savedTts = {}", 3600, 0);
 const c64RestoreWindow = sourceWindow(mainJs, "const initialC64Preset", 500, 40);
 const speakWindow = functionWindow(mainJs, "speak", 1200);
 const previewWindow = functionWindow(mainJs, "previewCurrentVoice", 1200);
@@ -180,7 +181,10 @@ const flushClippySummaryWindow = functionWindow(mainJs, "flushClippySummary", 90
 const turnEndWindow = sourceWindow(mainMjs, 'session.on("assistant.turn_end"', 900, 0);
 const startedHandlerWindow = sourceWindow(mainMjs, 'session.on("subagent.started"', 1600, 0);
 const c64SectionWindow = sourceWindow(htmlSrc, 'id="tts-c64-section"', 1600, 0);
+const deepgramSectionWindow = sourceWindow(htmlSrc, 'id="tts-deepgram-section"', 1200, 0);
 const speakC64Window = functionWindow(mainJs, "speakC64", 2800);
+const speakDeepgramWindow = functionWindow(mainJs, "speakDeepgram", 3200);
+const generateDeepgramSpeechWindow = functionWindow(mainMjs, "generateDeepgramSpeech", 2600);
 const ensureAvatarWindow = functionWindow(mainJs, "ensureAvatar", 1400);
 const clearSubagentsWindow = sourceWindow(mainJs, "function clearSubagents({ preserveRoot = true } = {}) {", 1600, 0);
 const setAgentActivityWindow = sourceWindow(mainJs, "window.setAgentActivity = (payload = {}) => {", 1400, 0);
@@ -320,6 +324,90 @@ assert(
     /savedTts\.c64(?:Speed|Rate)/.test(c64RestoreWindow),
     "No savedTts restore found for one or more C64 parameter fields"
 );
+assert(
+    'engine select exposes value="deepgram"',
+    /<option[^>]+value=["']deepgram["'][^>]*>\s*Deepgram\s*<\/option>/i.test(htmlSrc),
+    'Expected value="deepgram" option label "Deepgram" in index.html'
+);
+assert("DEFAULT_SETTINGS includes deepgramApiKey", /\bdeepgramApiKey\s*:/.test(defaultSettingsWindow));
+assert("DEFAULT_SETTINGS includes deepgramVoice", /\bdeepgramVoice\s*:/.test(defaultSettingsWindow));
+assert("saveTtsSettings payload includes deepgramApiKey", /\bdeepgramApiKey\b/.test(savePayloadWindow));
+assert("saveTtsSettings payload includes deepgramVoice", /\bdeepgramVoice\b/.test(savePayloadWindow));
+assert(
+    "load path restores savedTts.deepgramApiKey and savedTts.deepgramVoice",
+    /savedTts\.deepgramApiKey/.test(mainJs) && /savedTts\.deepgramVoice/.test(mainJs),
+    "No savedTts restore found for Deepgram credentials or voice"
+);
+assert(
+    "window.getTtsSettings exposes Deepgram state without leaking the API key",
+    /\bdeepgramVoice\b/.test(ttsSettingsWindow) && /\bdeepgramHasApiKey\b/.test(ttsSettingsWindow),
+    "window.getTtsSettings() is missing Deepgram summary fields"
+);
+assert(
+    "Deepgram settings section keeps the API key input",
+    /deepgram-apikey-input/.test(deepgramSectionWindow),
+    "Deepgram API key input missing from HTML section"
+);
+assert(
+    "Deepgram preset section keeps the voice selector",
+    /deepgram-voice-select/.test(htmlSrc),
+    "Deepgram voice selector missing from HTML"
+);
+assert(
+    "updateEngineUI() tracks Deepgram explicitly",
+    /const\s+isDeepgram\s*=\s*ttsEngine\s*===\s*['"]deepgram['"]/.test(mainJs) &&
+        /ttsDeepgramSection\.classList\.toggle\(\s*['"]hidden['"]\s*,\s*!isDeepgram\s*\)/.test(mainJs) &&
+        /deepgramPresetSection\.classList\.toggle\(\s*['"]hidden['"]\s*,\s*!isDeepgram\s*\)/.test(mainJs),
+    "Deepgram UI toggles are not explicit in updateEngineUI()"
+);
+assert(
+    "canPreviewCurrentVoice() keeps an explicit Deepgram branch",
+    /engine\s*===\s*['"]deepgram['"]/.test(functionWindow(mainJs, "canPreviewCurrentVoice", 800)),
+    "No explicit Deepgram branch found in canPreviewCurrentVoice()"
+);
+assert(
+    "previewCurrentVoice() keeps an explicit Deepgram branch",
+    /engine\s*===\s*['"]deepgram['"]/.test(previewWindow),
+    "No explicit Deepgram branch found in previewCurrentVoice()"
+);
+assert(
+    "speak() keeps an explicit Deepgram branch",
+    /engine\s*===\s*['"]deepgram['"]/.test(speakWindow),
+    "No explicit Deepgram branch found in speak()"
+);
+assert(
+    "dedicated speakDeepgram function exists",
+    !!speakDeepgramWindow,
+    "No dedicated Deepgram speech function found"
+);
+if (speakDeepgramWindow) {
+    assert(
+        "speakDeepgram() routes through the extension backend callback with the selected model",
+        /copilot\.generateDeepgramSpeech\s*\(\s*\{[\s\S]*model:\s*deepgramVoice/.test(speakDeepgramWindow) &&
+            !/https:\/\/api\.deepgram\.com\/v1\/speak/.test(speakDeepgramWindow),
+        "Deepgram browser path should use the backend callback, not a direct fetch"
+    );
+}
+assert(
+    "main.mjs exposes a generateDeepgramSpeech backend callback",
+    /generateDeepgramSpeech:\s*\(payload\)\s*=>\s*generateDeepgramSpeech\(payload\)/.test(mainMjs),
+    "Webview callbacks do not expose generateDeepgramSpeech"
+);
+if (generateDeepgramSpeechWindow) {
+    assert(
+        "generateDeepgramSpeech() calls Deepgram's speak endpoint with token auth and the selected model",
+        /https:\/\/api\.deepgram\.com\/v1\/speak/.test(generateDeepgramSpeechWindow) &&
+            /Authorization:\s*`Token\s*\$\{apiKey\}`/.test(generateDeepgramSpeechWindow) &&
+            /model:\s*voiceModel/.test(generateDeepgramSpeechWindow),
+        "Deepgram backend callback is missing endpoint, token auth, or model selection"
+    );
+    assert(
+        "generateDeepgramSpeech() returns audio payload data for the webview",
+        /audioBase64:\s*buffer\.toString\(["']base64["']\)/.test(generateDeepgramSpeechWindow) &&
+            /mimeType:\s*response\.headers\.get\(["']content-type["']\)/.test(generateDeepgramSpeechWindow),
+        "Deepgram backend callback is not returning serialized audio data"
+    );
+}
 
 // ── 4. Migration: legacy sam settings normalize cleanly ────────────────────────
 console.log("\n[4] Legacy settings migration");

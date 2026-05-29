@@ -45,10 +45,11 @@ So I built this: a little screen buddy with some personality. It makes Copilot f
 - **RoboDuck variant**: some agents can show up in full RoboDuck mode with the classic avatar head and a snap-on GLB duckbill
 - **Live response and working text**: final root-agent messages and current work status can stay visible beside the avatar
 - **Built-in TTS**: voice, speed, pitch, and saved settings so your desktop buddy can actually talk back
-  - Use Web Speech, the legacy SAM (Software Automatic Mouth) C64 version synth, Voxtral, or ElevenLabs TTS
+  - Use Web Speech, the legacy SAM (Software Automatic Mouth) C64 version synth, Voxtral, ElevenLabs, or Deepgram TTS
   - Point Voxtral at Mistral Cloud or a local vLLM server
   - Record, import, or generate a retro Clippy reference clip for Voxtral reference audio
   - Load ElevenLabs account voices directly from your ElevenLabs account
+  - Use Deepgram Aura voices with your API key for natural, low-latency speech synthesis
   - Strip markdown before speaking and persist settings in `.tts-settings.json`
 
 ## Squad Integration
@@ -142,13 +143,14 @@ The root avatar uses the same activity-state system even when there are no sub-a
 | ⚙️ button | Open settings dropdown |
 | General / Speech tabs | Switch between avatar/window controls and TTS controls |
 | Avatar dropdown | Choose Copilot or Clippy |
-| Engine dropdown | Choose Web Speech, SAM (Software Automatic Mouth) C64 version, Voxtral, or ElevenLabs |
+| Engine dropdown | Choose Web Speech, SAM (Software Automatic Mouth) C64 version, Voxtral, ElevenLabs, or Deepgram |
 | Show avatar badges | Show or hide the full badge card under each avatar |
 | Show model badges | Show or hide the model line inside each badge card |
 | Voice dropdown | Select a system/browser voice or a SAM (Software Automatic Mouth) C64 version preset |
-| Test selected voice | Preview the currently selected Web Speech, SAM (Software Automatic Mouth) C64 version, Voxtral, or ElevenLabs voice |
+| Test selected voice | Preview the currently selected Web Speech, SAM (Software Automatic Mouth) C64 version, Voxtral, ElevenLabs, or Deepgram voice |
 | Voxtral backend | Choose Mistral Cloud or local vLLM |
 | ElevenLabs API key | Load voices from your ElevenLabs account |
+| Deepgram API key | Use Deepgram Aura voices with your API key |
 | Generate retro Clippy sample | Fetch and save a pitched-up Microsoft Sam-style reference clip for Clippy |
 | Import prerecorded voice | Save reference audio for Voxtral voice cloning |
 | Speed slider | Adjust rate from 0.5× to 3.0× |

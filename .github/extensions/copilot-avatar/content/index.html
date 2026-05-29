@@ -75,6 +75,7 @@
             <option value="c64">SAM (Software Automatic Mouth) C64 version</option>
             <option value="voxtral">Voxtral</option>
             <option value="elevenlabs">ElevenLabs</option>
+            <option value="deepgram">Deepgram</option>
           </select>
         </label>
 
@@ -157,6 +158,15 @@
           </div>
         </div>
 
+        <div id="tts-deepgram-section" class="hidden">
+          <label>API Key
+            <input id="deepgram-apikey-input" type="password" placeholder="dg_..." autocomplete="off" />
+          </label>
+          <div class="tts-hint">
+            Uses Deepgram Aura voices through the extension backend; browser-direct calls are not supported.
+          </div>
+        </div>
+
         <div id="tts-ai-voice-section" class="hidden">
           <label id="tts-ai-voice-source-label">Voice source
             <div class="tts-radio-group">
@@ -177,6 +187,9 @@
                 <select id="elevenlabs-voice-select"></select>
                 <button id="elevenlabs-refresh-btn" type="button" title="Fetch voices from ElevenLabs">↻</button>
               </div>
+            </label>
+            <label id="deepgram-preset-section" class="hidden">Voice
+              <select id="deepgram-voice-select"></select>
             </label>
           </div>
           <div id="tts-ai-record-section" class="hidden">

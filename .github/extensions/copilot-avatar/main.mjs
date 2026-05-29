@@ -30,6 +30,8 @@ const DEFAULT_SETTINGS = Object.freeze({
     elevenlabsClonedVoiceId: '',
     elevenlabsClonedVoiceName: '',
     elevenlabsCloneSourceHash: '',
+    deepgramApiKey: '',
+    deepgramVoice: 'aura-2-asteria-en',
     clippyElevenlabsVoiceId: '',
     clippyElevenlabsVoiceName: '',
     clippyElevenlabsCloneSourceHash: '',
@@ -205,6 +207,56 @@ async function generateRetroClippyVoice() {
     throw new Error("Retro Clippy voice generation is not available: remote SAM server removed, browser-native path not yet implemented.");
 }
 
+async function readDeepgramErrorDetail(response) {
+    try {
+        const data = await response.clone().json();
+        return data.detail?.message || data.detail || data.message || JSON.stringify(data);
+    } catch {
+        try {
+            return await response.text();
+        } catch {
+            return `HTTP ${response.status}`;
+        }
+    }
+}
+
+async function generateDeepgramSpeech({ text = "", model = DEFAULT_SETTINGS.deepgramVoice } = {}) {
+    const apiKey = String(activeSettings?.deepgramApiKey || "").trim();
+    const spokenText = String(text || "").trim();
+    const voiceModel = String(model || DEFAULT_SETTINGS.deepgramVoice).trim() || DEFAULT_SETTINGS.deepgramVoice;
+    if (!apiKey) {
+        throw new Error("Deepgram API key is not configured.");
+    }
+    if (!spokenText) {
+        throw new Error("Deepgram text is required.");
+    }
+
+    const apiUrl = new URL("https://api.deepgram.com/v1/speak");
+    apiUrl.search = new URLSearchParams({
+        model: voiceModel,
+    }).toString();
+
+    const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+            Authorization: `Token ${apiKey}`,
+            "Content-Type": "application/json",
+            Accept: "audio/mpeg",
+        },
+        body: JSON.stringify({ text: spokenText }),
+    });
+
+    if (!response.ok) {
+        throw new Error(`Deepgram TTS error (${response.status}): ${await readDeepgramErrorDetail(response)}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return {
+        audioBase64: buffer.toString("base64"),
+        mimeType: response.headers.get("content-type") || "audio/mpeg",
+    };
+}
+
 const initialSettings = await loadSettings();
 
 const webview = new CopilotWebview({
@@ -220,6 +272,7 @@ const webview = new CopilotWebview({
         loadSettings: () => loadSettings(),
         saveSettings: (settings) => saveSettings(settings),
         generateRetroClippyVoice: () => generateRetroClippyVoice(),
+        generateDeepgramSpeech: (payload) => generateDeepgramSpeech(payload),
     },
 });
 applySettingsToWebview(initialSettings);
