@@ -151,3 +151,46 @@ The user extension is authoritative once the Copilot CLI process restarts and re
 ### Next Owner
 
 Awaiting CLI restart. Runtime activation is no longer a code seam.
+
+## Learnings
+
+- 2026-05-29T17:44:38.614+02:00 — **Avatar TTS suppliers need four explicit seams:** when adding a new engine, wire it in `.github/extensions/copilot-avatar/main.mjs` defaults, `content/index.html` controls, `content/main.js` preview/save/speak branches, and `probe-regression.mjs`, or the engine can silently fall through to Web Speech.
+- 2026-05-29T17:44:38.614+02:00 — **Deepgram fits the existing supplier pattern without new plumbing layers:** persist `deepgramApiKey` and `deepgramVoice`, keep a provider-specific request function, and reuse the shared AI-voice panel only for common UI chrome.
+
+---
+
+## 2026-05-29T17:44:38.614+02:00 — Deepgram TTS Supplier Integration
+
+**Session:** deepgram-tts  
+**Status:** Completed and validated.
+
+### Work Completed
+
+- Added Deepgram as a selectable TTS supplier in the avatar settings UI
+- Wired Deepgram API key + Aura voice persistence through the extension settings seam
+- Added explicit Deepgram preview/speak routing with provider-specific request handling in `content/main.js`
+- Extended `probe-regression.mjs` so supplier wiring is checked alongside existing avatar regression coverage
+- Ran the extension validation target successfully from `.github/extensions/copilot-avatar`
+
+### Key Finding
+
+Reusing the shared AI-voice UI works safely only when the provider keeps explicit save/load and speech-routing branches; hiding that behind generic fallback logic would make the failure seam ambiguous.
+
+### Next Owner
+
+None. The Deepgram supplier seam is in place and validated.
+
+---
+
+## 2026-05-29T15:44:38Z — Scribe: Session Consolidation
+
+**Scribe Status:** Decisions merged, orchestration logged.
+
+**Decisions Recorded:**
+- Deepgram TTS Supplier Contract: Explicit supplier wiring per seam (no generic abstraction)
+- Repository Sync: Local main synchronized with origin/main
+
+**Session Artifacts:**
+- Inbox merged (vision-deepgram-tts.md, vision-sync-main.md) → decisions.md
+- Orchestration log: 2026-05-29T15-44-38Z-Vision.md
+- Archive: Not triggered (2.6 KB < 20 KB threshold)

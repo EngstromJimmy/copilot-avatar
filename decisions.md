@@ -38,3 +38,31 @@ Proposed adding `agentId` to the Squadron metadata lookup directly. Analysis sho
 **Affected artifacts:**
 - `.github/extensions/copilot-avatar/main.mjs` — `resolveSubagentDisplayData()`, lifecycle event handlers
 - `.github/extensions/copilot-avatar/lib/squad-context.mjs` — casting alias loading, roster join logic
+
+## 2026-05-29 — Vision: Repository Sync from origin/main
+
+**Status:** ✅ COMPLETED
+
+**Task:** Pull latest changes from origin/main into C:\Code\CopilotAvatar
+
+**Sync Actions:**
+1. Stashed working directory changes (modified .squad/agents/scribe/history.md, untracked health reports)
+2. Executed `git pull origin main` → Already up to date
+3. Restored working directory state successfully
+
+**Final State:** Repository synced; local main is 1 commit ahead of origin/main (Scribe merge decisions inbox and session logging).
+
+## 2026-05-29 — Deepgram TTS Supplier Contract
+
+**Status:** Proposed  
+**Date:** 2026-05-29T17:44:38.614+02:00
+
+**Decision:** Keep each avatar TTS supplier explicit at every seam instead of introducing a generic provider abstraction. Reuse shared UI only for common controls, but require a distinct engine id, persisted settings keys, preview branch, speech request function, and probe assertions for each supplier.
+
+**Rationale:** Keeps failures pointed at the right boundary (settings, UI, persistence, network request). Prevents hidden fallthrough to Web Speech when a supplier-specific branch is missed during future additions.
+
+**Affected Files:**
+- `.github/extensions/copilot-avatar/main.mjs`
+- `.github/extensions/copilot-avatar/content/index.html`
+- `.github/extensions/copilot-avatar/content/main.js`
+- `.github/extensions/copilot-avatar/probe-regression.mjs`
